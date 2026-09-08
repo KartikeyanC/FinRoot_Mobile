@@ -1,7 +1,8 @@
 {
-  "_comment": "Copy to config/dev.json and fill in. dev.json is git-ignored. Pass with: flutter run --dart-define-from-file=config/dev.json",
+  "_comment": "Copy to config/dev.json and fill in. dev.json is git-ignored. Run with: flutter run --dart-define-from-file=config/dev.json",
+  "_auth_redirect_note": "The Supabase project's Auth > URL Configuration > Redirect URLs allow-list must include 'finroot://auth-callback' for the password-reset link to open the app. This is an additive dashboard setting with no web impact (M3 report).",
   "FLAVOR": "dev",
   "SUPABASE_URL": "https://<project-ref>.supabase.co",
-  "SUPABASE_ANON_KEY": "<the anon / publishable key — NEVER the service_role key>",
+  "SUPABASE_ANON_KEY": "<the anon / publishable key - NEVER the service_role key>",
   "AUTH_DEEP_LINK_SCHEME": "finroot"
 }

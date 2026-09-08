@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app/app.dart';
 import 'core/config/app_config.dart';
+import 'core/device/device_prefs.dart';
 import 'core/error/error_mapper.dart';
 import 'core/logging/app_logger.dart';
 import 'core/logging/provider_logger.dart';
@@ -34,9 +36,14 @@ Future<void> bootstrap() async {
       };
 
       await initSupabase(config);
+      final prefs = await SharedPreferences.getInstance();
 
       runApp(
-        const ProviderScope(observers: [ProviderLogger()], child: FinRootApp()),
+        ProviderScope(
+          observers: const [ProviderLogger()],
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const FinRootApp(),
+        ),
       );
     },
     (error, stack) {

@@ -24,6 +24,17 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Auth deep link: password-reset / magic links land here as
+                 finroot://auth-callback. supabase_flutter processes the link
+                 and emits the auth event; the app then routes. Keep the scheme
+                 in step with AUTH_DEEP_LINK_SCHEME (config/*.json) and the
+                 Supabase project's Redirect URLs allow-list. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="finroot" android:host="auth-callback"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

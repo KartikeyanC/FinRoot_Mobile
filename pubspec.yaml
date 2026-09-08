@@ -46,7 +46,8 @@ dependencies:
 
   # --- Platform ---
   flutter_secure_storage: ^11.0.0   # session + (M4) DB key
-  local_auth: ^3.0.2                # biometric app lock (M3/settings)
+  shared_preferences: ^2.3.5        # device-local prefs (theme, tenant choice, later: onboarding flags)
+  local_auth: ^3.0.2                # biometric app lock (later phase)
   connectivity_plus: ^7.3.1         # online/offline signal (M5 sync)
 
   # --- Core utilities ---

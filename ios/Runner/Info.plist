@@ -18,6 +18,22 @@
 	<string>finroot_mobile</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Auth deep link: finroot://auth-callback (password-reset / magic links).
+	     Keep in step with AUTH_DEEP_LINK_SCHEME (config/*.json) and the
+	     Supabase project's Redirect URLs allow-list. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.finroot.mobile.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>finroot</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
