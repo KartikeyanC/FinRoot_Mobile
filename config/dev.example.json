@@ -1,0 +1,7 @@
+{
+  "_comment": "Copy to config/dev.json and fill in. dev.json is git-ignored. Pass with: flutter run --dart-define-from-file=config/dev.json",
+  "FLAVOR": "dev",
+  "SUPABASE_URL": "https://<project-ref>.supabase.co",
+  "SUPABASE_ANON_KEY": "<the anon / publishable key — NEVER the service_role key>",
+  "AUTH_DEEP_LINK_SCHEME": "finroot"
+}

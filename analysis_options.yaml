@@ -1,0 +1,39 @@
+# FinRoot Mobile — static analysis.
+# Base: flutter_lints. Additions favour explicitness in a financial codebase.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    # Treat these as build-breaking, not advisory.
+    invalid_annotation_target: ignore
+    todo: ignore
+    deprecated_member_use_from_same_package: warning
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "build/**"
+    - android/**
+    - ios/**
+
+linter:
+  rules:
+    - always_declare_return_types
+    - avoid_dynamic_calls
+    - avoid_print
+    - avoid_redundant_argument_values
+    - cancel_subscriptions
+    - close_sinks
+    - directives_ordering
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - prefer_final_locals
+    - prefer_single_quotes
+    - require_trailing_commas
+    - sort_child_properties_last
+    - unawaited_futures
+    - use_build_context_synchronously
+    - use_super_parameters
