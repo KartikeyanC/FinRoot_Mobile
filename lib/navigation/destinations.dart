@@ -111,7 +111,6 @@ const kMoreEntries = <MoreEntry>[
     Icons.document_scanner_outlined,
     '/bill-scan',
     menu: FeatureMenu.billScan,
-    phase: 'M13',
   ),
   MoreEntry('Voice', Icons.mic_none, '/voice', phase: 'M14'),
   MoreEntry(

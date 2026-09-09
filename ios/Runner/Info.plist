@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- image_picker (M13 bill scan). Device-unverified — no iOS toolchain. -->
+	<key>NSCameraUsageDescription</key>
+	<string>FinRoot uses the camera so you can photograph a receipt to log an expense.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FinRoot needs photo access so you can pick a receipt image to scan.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

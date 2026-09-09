@@ -83,8 +83,14 @@ dependencies:
   flutter_local_notifications: ^22.3.0
   timezone: ^0.11.1               # zoned scheduling for local_notifications
 
+  # --- Bill scan (M13) ---
+  # Camera / gallery capture for the receipt scanner. OCR itself runs in the
+  # shared `scan-receipt` Edge Function (Gemini vision) — no on-device model.
+  # Downscaling is done at pick time via image_picker's own maxWidth/quality.
+  # Native camera is device-unverified (no Android SDK).
+  image_picker: ^1.2.3
+
   # --- Added in later phases (kept here as the intended dependency map) ---
-  # M13 bill scan:     image_picker / camera, image
   # M14 voice:         speech_to_text, permission_handler
 
 dev_dependencies:
