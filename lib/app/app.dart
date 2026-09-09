@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/device/device_prefs.dart';
 import '../design/theme/app_theme.dart';
+import '../features/notifications/application/notification_coordinator.dart';
 import '../features/sync/application/sync_coordinator.dart';
 import 'router.dart';
 
@@ -22,9 +23,10 @@ class FinRootApp extends ConsumerWidget {
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
       routerConfig: router,
-      // Keeps the sync coordinator alive for the app's lifetime.
-      builder: (context, child) =>
-          SyncScope(child: child ?? const SizedBox.shrink()),
+      // Keeps the sync + notification coordinators alive for the app's lifetime.
+      builder: (context, child) => SyncScope(
+        child: NotificationScope(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }

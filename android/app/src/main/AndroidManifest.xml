@@ -2,6 +2,16 @@
     <!-- Supabase + sync. Present in every build type (Flutter only adds it to
          debug/profile automatically). -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- On-device notifications (M12, flutter_local_notifications).
+         DEVICE-UNVERIFIED: no Android SDK / device available to exercise this
+         (same status workmanager carried at M5). POST_NOTIFICATIONS is the
+         Android 13+ runtime prompt; RECEIVE_BOOT_COMPLETED lets the plugin
+         re-register pending schedules after a reboot. We schedule with
+         AndroidScheduleMode.inexactAllowWhileIdle, so no exact-alarm
+         permission is requested. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <application
         android:label="FinRoot"
         android:name="${applicationName}"
@@ -39,6 +49,26 @@
                 <data android:scheme="finroot" android:host="auth-callback"/>
             </intent-filter>
         </activity>
+        <!-- flutter_local_notifications receivers (M12, device-unverified).
+             Deliver a scheduled notification, and re-schedule pending ones
+             after a reboot / app update. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

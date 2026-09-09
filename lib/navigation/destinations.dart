@@ -99,14 +99,12 @@ const kMoreEntries = <MoreEntry>[
     'Recurring',
     Icons.event_repeat_outlined,
     '/recurring',
-    phase: 'M12',
   ),
   MoreEntry(
     'Reminders',
     Icons.notifications_none,
     '/reminders',
     menu: FeatureMenu.reminders,
-    phase: 'M12',
   ),
   MoreEntry(
     'Bill Scan',

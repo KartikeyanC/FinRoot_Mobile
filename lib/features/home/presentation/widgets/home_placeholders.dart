@@ -5,19 +5,6 @@ import '../../../../design/design.dart';
 /// Feed sections whose data source lands in a later phase. Shown as quiet,
 /// honest "coming in M…" cards rather than hidden — the feed's shape is part of
 /// the mobile design language (brief), and a person should see what's planned.
-class HomeUpcomingCard extends StatelessWidget {
-  const HomeUpcomingCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const _ComingSoonCard(
-      icon: Icons.event_repeat_outlined,
-      title: 'Upcoming',
-      body: 'Recurring items and reminders show up here in M12.',
-    );
-  }
-}
-
 class HomeInsightsCard extends StatelessWidget {
   const HomeInsightsCard({super.key});
 

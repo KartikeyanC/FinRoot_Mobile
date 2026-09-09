@@ -15,6 +15,8 @@ import '../features/home/presentation/home_screen.dart';
 import '../features/investments/presentation/investments_screen.dart';
 import '../features/more/presentation/more_screen.dart';
 import '../features/net_worth/presentation/net_worth_screen.dart';
+import '../features/recurring/presentation/recurring_screen.dart';
+import '../features/reminders/presentation/reminders_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/trackers/presentation/tracker_detail_screen.dart';
 import '../features/trackers/presentation/trackers_screen.dart';
@@ -36,6 +38,8 @@ class _Routes {
   static const goals = '/goals';
   static const investments = '/investments';
   static const netWorth = '/net-worth';
+  static const recurring = '/recurring';
+  static const reminders = '/reminders';
 
   /// "More" entries that have a real screen rather than a milestone placeholder.
   static const realScreens = {
@@ -45,6 +49,8 @@ class _Routes {
     goals,
     investments,
     netWorth,
+    recurring,
+    reminders,
   };
 }
 
@@ -192,6 +198,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.netWorth,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const NetWorthScreen(),
+      ),
+      GoRoute(
+        path: _Routes.recurring,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const RecurringScreen(),
+      ),
+      GoRoute(
+        path: _Routes.reminders,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const RemindersScreen(),
       ),
       // Every remaining "More" entry resolves to a milestone placeholder until
       // its feature phase lands.

@@ -76,8 +76,14 @@ dependencies:
   # --- Background sync (M5) ---
   workmanager: ^0.10.10            # OS-scheduled background sync (device config pending)
 
+  # --- On-device notifications (M12) ---
+  # Recurring-item and reminder alerts, scheduled locally. Native setup
+  # (Android receivers/permissions, iOS categories) is device-unverified —
+  # the in-app "Upcoming" surface is the primary, tested path.
+  flutter_local_notifications: ^22.3.0
+  timezone: ^0.11.1               # zoned scheduling for local_notifications
+
   # --- Added in later phases (kept here as the intended dependency map) ---
-  # M12 notifications: flutter_local_notifications, timezone
   # M13 bill scan:     image_picker / camera, image
   # M14 voice:         speech_to_text, permission_handler
 

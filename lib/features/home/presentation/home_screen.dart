@@ -9,6 +9,7 @@ import 'widgets/home_quick_actions.dart';
 import 'widgets/home_recent_activity.dart';
 import 'widgets/home_snapshot_card.dart';
 import 'widgets/home_trackers_section.dart';
+import 'widgets/home_upcoming_card.dart';
 
 /// Home — the mobile financial feed (M6). Everything reads from the local
 /// cache, so the feed paints immediately and works offline; pull-to-refresh
