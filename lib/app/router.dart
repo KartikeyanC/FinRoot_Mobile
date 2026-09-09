@@ -12,7 +12,9 @@ import '../features/auth/presentation/reset_password_screen.dart';
 import '../features/budget/presentation/budget_screen.dart';
 import '../features/goals/presentation/goals_screen.dart';
 import '../features/home/presentation/home_screen.dart';
+import '../features/investments/presentation/investments_screen.dart';
 import '../features/more/presentation/more_screen.dart';
+import '../features/net_worth/presentation/net_worth_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/trackers/presentation/tracker_detail_screen.dart';
 import '../features/trackers/presentation/trackers_screen.dart';
@@ -32,9 +34,18 @@ class _Routes {
   static const accounts = '/accounts';
   static const budget = '/budget';
   static const goals = '/goals';
+  static const investments = '/investments';
+  static const netWorth = '/net-worth';
 
   /// "More" entries that have a real screen rather than a milestone placeholder.
-  static const realScreens = {settings, accounts, budget, goals};
+  static const realScreens = {
+    settings,
+    accounts,
+    budget,
+    goals,
+    investments,
+    netWorth,
+  };
 }
 
 /// The app router.
@@ -171,6 +182,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.goals,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const GoalsScreen(),
+      ),
+      GoRoute(
+        path: _Routes.investments,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const InvestmentsScreen(),
+      ),
+      GoRoute(
+        path: _Routes.netWorth,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const NetWorthScreen(),
       ),
       // Every remaining "More" entry resolves to a milestone placeholder until
       // its feature phase lands.

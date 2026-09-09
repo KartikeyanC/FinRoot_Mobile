@@ -88,14 +88,12 @@ const kMoreEntries = <MoreEntry>[
     Icons.trending_up,
     '/investments',
     menu: FeatureMenu.investments,
-    phase: 'M11',
   ),
   MoreEntry(
     'Net Worth',
     Icons.balance_outlined,
     '/net-worth',
     menu: FeatureMenu.netWorth,
-    phase: 'M11',
   ),
   MoreEntry(
     'Recurring',
