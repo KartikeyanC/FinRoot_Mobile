@@ -7,6 +7,11 @@
 	<string>FinRoot uses the camera so you can photograph a receipt to log an expense.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>FinRoot needs photo access so you can pick a receipt image to scan.</string>
+	<!-- speech_to_text (M14 voice entry). Device-unverified. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>FinRoot uses the microphone so you can speak an expense to log it.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>FinRoot transcribes your speech on device to pre-fill a transaction.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

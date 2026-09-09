@@ -12,6 +12,11 @@
          permission is requested. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
+    <!-- Voice capture (M14, speech_to_text). DEVICE-UNVERIFIED — no Android
+         SDK / mic. RECORD_AUDIO is the runtime prompt; the <queries> block
+         lets Android 11+ resolve the on-device speech recognition service. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
         android:label="FinRoot"
         android:name="${applicationName}"
@@ -84,6 +89,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- speech_to_text (M14) — Android 11+ package visibility for the
+             on-device speech recognition service. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 </manifest>

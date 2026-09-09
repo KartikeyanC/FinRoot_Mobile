@@ -90,8 +90,15 @@ dependencies:
   # Native camera is device-unverified (no Android SDK).
   image_picker: ^1.2.3
 
+  # --- Voice capture (M13→M14) ---
+  # On-device speech-to-text; the transcript is parsed to a Quick Add draft by
+  # a local grammar (lib/features/voice/domain/voice_parse.dart) — no server,
+  # no NLU model. speech_to_text manages its own mic permission. Device-
+  # unverified (no Android SDK).
+  speech_to_text: ^7.4.0
+
   # --- Added in later phases (kept here as the intended dependency map) ---
-  # M14 voice:         speech_to_text, permission_handler
+  # M15 AI insights:   (shared Edge Function, likely)
 
 dev_dependencies:
   flutter_test:
