@@ -34,6 +34,7 @@ void main() {
     String? description,
     String? accountId,
     String? transferTo,
+    String? trackerId,
     required DateTime occurredAt,
     LocalSyncStatus status = LocalSyncStatus.synced,
   }) {
@@ -50,6 +51,7 @@ void main() {
             description: Value(description),
             accountId: Value(accountId),
             transferToAccountId: Value(transferTo),
+            trackerId: Value(trackerId),
             syncStatus: Value(status),
           ),
         );
@@ -132,6 +134,56 @@ void main() {
     await sub.cancel();
 
     expect(seen, [true, false]);
+  });
+
+  test('watchLedger by tracker returns only tagged rows', () async {
+    await insert(id: 'in', trackerId: 'trk-1', occurredAt: DateTime.utc(2026, 9, 5));
+    await insert(id: 'out', occurredAt: DateTime.utc(2026, 9, 6));
+
+    final tagged = await repo.watchLedger('t1', trackerId: 'trk-1').first;
+    expect(tagged.map((t) => t.id), ['in']);
+  });
+
+  group('watchUntaggedInWindow', () {
+    test('untagged non-transfer rows inside [from, toExclusive)', () async {
+      await insert(id: 'early', occurredAt: DateTime.utc(2026, 2, 20));
+      await insert(id: 'in', occurredAt: DateTime.utc(2026, 3, 10));
+      await insert(
+        id: 'tagged',
+        trackerId: 'trk-x',
+        occurredAt: DateTime.utc(2026, 3, 11),
+      );
+      await insert(
+        id: 'xfer',
+        type: 'transfer',
+        occurredAt: DateTime.utc(2026, 3, 12),
+      );
+      await insert(id: 'late', occurredAt: DateTime.utc(2026, 7, 2));
+
+      final pool = await repo
+          .watchUntaggedInWindow(
+            't1',
+            from: DateTime.utc(2026, 3),
+            toExclusive: DateTime.utc(2026, 7),
+          )
+          .first;
+      expect(pool.map((t) => t.id), ['in']);
+    });
+  });
+
+  test('setTrackerIdLocally tags and clears cache rows', () async {
+    await insert(id: 'a', occurredAt: DateTime.utc(2026, 9, 5));
+    await insert(id: 'b', occurredAt: DateTime.utc(2026, 9, 6));
+
+    await repo.setTrackerIdLocally(['a', 'b'], 'trk-9');
+    final rows = await db.select(db.localTransactions).get();
+    expect(rows.every((r) => r.trackerId == 'trk-9'), isTrue);
+
+    await repo.setTrackerIdLocally(['a'], null);
+    final a = await (db.select(
+      db.localTransactions,
+    )..where((t) => t.id.equals('a'))).getSingle();
+    expect(a.trackerId, isNull);
   });
 
   test('groupByDay splits a newest-first list into newest-first day groups', () {

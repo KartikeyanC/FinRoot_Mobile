@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/time/relative_time.dart';
@@ -9,6 +10,9 @@ import '../../../navigation/quick_add_entry.dart';
 import '../../accounts/application/accounts_providers.dart';
 import '../../quick_add/application/quick_add_controller.dart';
 import '../../quick_add/domain/quick_add_draft.dart';
+import '../../trackers/application/tracker_editor_controller.dart';
+import '../../trackers/application/trackers_providers.dart';
+import '../../trackers/presentation/tracker_picker_sheet.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/transactions_providers.dart';
 import '../domain/transaction.dart';
@@ -94,8 +98,7 @@ class _TransactionDetailSheet extends ConsumerWidget {
             _AccountRow(label: 'To', accountId: txn.transferToAccountId),
           ] else
             _AccountRow(label: 'Account', accountId: txn.accountId),
-          if (txn.trackerId != null)
-            const _Row(label: 'Tracker', value: 'Assigned'),
+          if (!isTransfer) _TrackerRow(txn: txn, canWrite: canWrite),
           if ((txn.description ?? '').trim().isNotEmpty)
             _Row(label: 'Note', value: txn.description!.trim()),
           const SizedBox(height: AppSpacing.lg),
@@ -213,6 +216,90 @@ class _AccountRow extends ConsumerWidget {
     return _Row(
       label: label,
       value: account?.name ?? 'Deleted account',
+    );
+  }
+}
+
+class _TrackerRow extends ConsumerWidget {
+  const _TrackerRow({required this.txn, required this.canWrite});
+  final TransactionEntity txn;
+  final bool canWrite;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final messenger = ScaffoldMessenger.of(context);
+
+    Future<void> run(Future<void> Function() action) async {
+      try {
+        await action();
+      } on Failure catch (f) {
+        messenger.showSnackBar(SnackBar(content: Text(f.message)));
+      }
+    }
+
+    if (txn.trackerId == null) {
+      if (!canWrite) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => run(() async {
+              final id = await pickTracker(context);
+              if (id == null) return;
+              await ref
+                  .read(trackerEditorControllerProvider)
+                  .assign(id, [txn.id]);
+            }),
+            icon: const Icon(Icons.playlist_add, size: 18),
+            label: const Text('Assign to a tracker'),
+          ),
+        ),
+      );
+    }
+
+    final tracker = ref.watch(trackerByIdProvider(txn.trackerId!)).value;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              'Tracker',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: InkWell(
+              onTap: tracker == null
+                  ? null
+                  : () => context.push('/tracker/${txn.trackerId}'),
+              child: Text(
+                tracker == null
+                    ? 'Assigned'
+                    : trackerDisplayLabel(tracker.name),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: tracker == null ? null : scheme.primary,
+                ),
+              ),
+            ),
+          ),
+          if (canWrite)
+            TextButton(
+              onPressed: () => run(
+                () => ref
+                    .read(trackerEditorControllerProvider)
+                    .unassign(txn.id),
+              ),
+              child: const Text('Remove'),
+            ),
+        ],
+      ),
     );
   }
 }

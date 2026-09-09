@@ -81,4 +81,64 @@ void main() {
     expect(budgeted.budget!.currency, 'INR');
     expect(open.budget, isNull);
   });
+
+  test('watchAll narrows by a status set, or returns all when null', () async {
+    await insertTracker(id: 'a', startDate: DateTime.utc(2026, 3, 2));
+    await insertTracker(
+      id: 'c',
+      status: 'completed',
+      startDate: DateTime.utc(2026, 4, 2),
+    );
+    await insertTracker(
+      id: 'r',
+      status: 'archived',
+      startDate: DateTime.utc(2026, 5, 2),
+    );
+
+    expect(
+      (await repo.watchAll('t1', statuses: const {'active', 'completed'}).first)
+          .map((t) => t.id)
+          .toSet(),
+      {'a', 'c'},
+    );
+    expect(
+      (await repo.watchAll('t1').first).map((t) => t.id).toSet(),
+      {'a', 'c', 'r'},
+    );
+  });
+
+  test('watchById is live and goes null when removed', () async {
+    await insertTracker(id: 'x', startDate: DateTime.utc(2026, 3, 2));
+
+    final seen = <bool>[];
+    final sub = repo.watchById('x').listen((t) => seen.add(t != null));
+    await Future<void>.delayed(Duration.zero);
+    await repo.removeFromCache('x');
+    await Future<void>.delayed(Duration.zero);
+    await sub.cancel();
+
+    expect(seen, [true, false]);
+  });
+
+  test('cacheServerRow folds a PostgREST tracker row into the cache', () async {
+    await repo.cacheServerRow({
+      'id': 'srv-1',
+      'tenant_id': 't1',
+      'name': 'Wedding',
+      'type': 'Wedding',
+      'start_date': '2026-02-02',
+      'end_date': null,
+      'budget': 300000,
+      'currency': 'INR',
+      'description': 'venue + catering',
+      'status': 'active',
+      'deleted_at': null,
+      'updated_at': '2026-09-09T00:00:00Z',
+    });
+
+    final t = await repo.watchById('srv-1').first;
+    expect(t!.name, 'Wedding');
+    expect(t.budget!.amount, Decimal.parse('300000'));
+    expect(t.description, 'venue + catering');
+  });
 }

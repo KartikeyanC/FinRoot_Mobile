@@ -6,16 +6,14 @@ import '../../../../design/design.dart';
 import '../../../../domain/constants.dart';
 import '../../../../navigation/destinations.dart';
 import '../../../menus/application/menu_providers.dart';
-import '../../../trackers/domain/tracker.dart';
-import '../../application/home_providers.dart';
+import '../../../trackers/application/trackers_providers.dart';
+import '../../../trackers/domain/tracker_draft.dart';
+import '../../../trackers/domain/tracker_spend.dart';
+import '../../../trackers/presentation/widgets/tracker_progress.dart';
 
-/// Active trackers on the feed. Hidden entirely when the trackers menu is
-/// locked for the workspace (the Trackers tab owns the locked state) or when
-/// there are none — trackers are an optional dimension (ADR-0010), not
-/// something to nag about on Home.
-///
-/// Shows the name, type and the server-set budget only. Spend / progress is
-/// server-derived and arrives in M9.
+/// Active trackers on the feed, with spend against budget. Hidden when the
+/// trackers menu is locked (the tab owns that state) or when there are none —
+/// trackers are an optional dimension (ADR-0010), not something to nag about.
 class HomeTrackersSection extends ConsumerWidget {
   const HomeTrackersSection({super.key});
 
@@ -26,8 +24,12 @@ class HomeTrackersSection extends ConsumerWidget {
         MenuStatus.locked;
     if (locked) return const SizedBox.shrink();
 
-    final trackers = ref.watch(activeTrackersProvider).value ?? const [];
-    if (trackers.isEmpty) return const SizedBox.shrink();
+    final all = ref.watch(trackersWithSpendProvider).value ?? const [];
+    final active = all
+        .where((t) => t.tracker.status == 'active')
+        .take(3)
+        .toList();
+    if (active.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -43,9 +45,9 @@ class HomeTrackersSection extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           child: Column(
             children: [
-              for (var i = 0; i < trackers.length; i++) ...[
+              for (var i = 0; i < active.length; i++) ...[
                 if (i > 0) const Divider(height: 1),
-                _TrackerRow(trackers[i]),
+                _TrackerRow(active[i]),
               ],
             ],
           ),
@@ -56,60 +58,41 @@ class HomeTrackersSection extends ConsumerWidget {
 }
 
 class _TrackerRow extends StatelessWidget {
-  const _TrackerRow(this.tracker);
-  final TrackerEntity tracker;
+  const _TrackerRow(this.t);
+  final TrackerWithSpend t;
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
+    final tt = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: AppSpacing.minTouchTarget),
+    return InkWell(
+      onTap: () => context.push('/tracker/${t.tracker.id}'),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-        child: Row(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(Icons.donut_large_rounded, size: 20, color: scheme.primary),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    trackerDisplayLabel(tracker.name),
+            Row(
+              children: [
+                Icon(
+                  trackerTypeIcon(t.tracker.type),
+                  size: 18,
+                  color: scheme.primary,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    trackerDisplayLabel(t.tracker.name),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: t.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                    style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    tracker.type,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            if (tracker.budget != null) ...[
-              const SizedBox(width: AppSpacing.sm),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  AmountText.money(tracker.budget!, signed: false),
-                  const SizedBox(height: 2),
-                  Text(
-                    'budget',
-                    style: t.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            const SizedBox(height: AppSpacing.sm),
+            TrackerProgress(t, compact: true),
           ],
         ),
       ),

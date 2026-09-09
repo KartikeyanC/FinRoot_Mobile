@@ -1,7 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../trackers/data/trackers_repository.dart';
-import '../../trackers/domain/tracker.dart';
 import '../../transactions/data/transactions_repository.dart';
 import '../../transactions/domain/transaction.dart';
 import '../../workspace/application/workspace_providers.dart';
@@ -32,10 +30,3 @@ final recentActivityCountProvider = StreamProvider<int>((ref) {
       .watch(transactionsRepositoryProvider)
       .watchCountSince(tenantId, since);
 }, name: 'recentActivityCount');
-
-/// Active trackers for the feed's trackers section (menu-gated at the widget).
-final activeTrackersProvider = StreamProvider<List<TrackerEntity>>((ref) {
-  final tenantId = ref.watch(currentTenantIdProvider);
-  if (tenantId == null) return Stream.value(const <TrackerEntity>[]);
-  return ref.watch(trackersRepositoryProvider).watchActive(tenantId);
-}, name: 'activeTrackers');

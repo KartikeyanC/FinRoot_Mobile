@@ -9,7 +9,9 @@ import 'package:finroot_mobile/features/home/presentation/home_screen.dart';
 import 'package:finroot_mobile/features/menus/application/menu_providers.dart';
 import 'package:finroot_mobile/features/profile/profile_providers.dart';
 import 'package:finroot_mobile/features/sync/application/sync_status.dart';
+import 'package:finroot_mobile/features/trackers/application/trackers_providers.dart';
 import 'package:finroot_mobile/features/trackers/domain/tracker.dart';
+import 'package:finroot_mobile/features/trackers/domain/tracker_spend.dart';
 import 'package:finroot_mobile/features/transactions/domain/transaction.dart';
 import 'package:finroot_mobile/features/workspace/application/workspace_providers.dart';
 import 'package:finroot_mobile/features/workspace/domain/membership.dart';
@@ -59,7 +61,9 @@ Widget _host({
       syncStatusProvider.overrideWithValue(SyncStatusView.empty),
       recentTransactionsProvider.overrideWith((ref) => Stream.value(recent)),
       recentActivityCountProvider.overrideWith((ref) => Stream.value(count)),
-      activeTrackersProvider.overrideWith((ref) => Stream.value(trackers)),
+      trackersWithSpendProvider.overrideWithValue(
+        AsyncValue.data(foldTrackerSpend(trackers, null)),
+      ),
       menuStatusProvider(
         FeatureMenu.trackers,
       ).overrideWithValue(trackerMenu),

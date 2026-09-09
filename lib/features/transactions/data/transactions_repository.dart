@@ -61,6 +61,7 @@ class TransactionsRepository {
     TxnType? type,
     String? search,
     String? accountId,
+    String? trackerId,
     int limit = 300,
   }) {
     final q = search?.trim().toLowerCase();
@@ -76,6 +77,9 @@ class TransactionsRepository {
           cond = cond &
               (t.accountId.equals(accountId) |
                   t.transferToAccountId.equals(accountId));
+        }
+        if (trackerId != null) {
+          cond = cond & t.trackerId.equals(trackerId);
         }
         if (q != null && q.isNotEmpty) {
           final like = '%$q%';
@@ -93,6 +97,44 @@ class TransactionsRepository {
     return query.watch().map(
       (rows) => rows.map(_toEntity).toList(growable: false),
     );
+  }
+
+  /// Untagged expenses / income in a date window — the pool the "assign older
+  /// transactions to a tracker" flow offers (M9). Transfers are excluded (a
+  /// transfer is not project spend). `[from, toExclusive)`.
+  Stream<List<TransactionEntity>> watchUntaggedInWindow(
+    String tenantId, {
+    required DateTime from,
+    DateTime? toExclusive,
+    int limit = 200,
+  }) {
+    final query = _db.select(_db.localTransactions)
+      ..where((t) {
+        var cond =
+            t.tenantId.equals(tenantId) &
+            t.trackerId.isNull() &
+            t.type.equals(TxnType.transfer.wire).not() &
+            t.syncStatus.equalsValue(LocalSyncStatus.pendingDelete).not() &
+            t.occurredAt.isBiggerOrEqualValue(from);
+        if (toExclusive != null) {
+          cond = cond & t.occurredAt.isSmallerThanValue(toExclusive);
+        }
+        return cond;
+      })
+      ..orderBy([(t) => OrderingTerm.desc(t.occurredAt)])
+      ..limit(limit);
+    return query.watch().map(
+      (rows) => rows.map(_toEntity).toList(growable: false),
+    );
+  }
+
+  /// Optimistically set / clear `tracker_id` on cache rows after an online
+  /// assign. No balance moves — this writes one label column.
+  Future<void> setTrackerIdLocally(List<String> ids, String? trackerId) {
+    if (ids.isEmpty) return Future.value();
+    return (_db.update(_db.localTransactions)
+          ..where((t) => t.id.isIn(ids)))
+        .write(LocalTransactionsCompanion(trackerId: Value(trackerId)));
   }
 
   /// How many transactions the cache holds for [tenantId] with an `occurred_at`

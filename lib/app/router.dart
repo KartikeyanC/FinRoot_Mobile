@@ -12,6 +12,7 @@ import '../features/auth/presentation/reset_password_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/more/presentation/more_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
+import '../features/trackers/presentation/tracker_detail_screen.dart';
 import '../features/trackers/presentation/trackers_screen.dart';
 import '../features/transactions/presentation/transactions_screen.dart';
 import '../features/workspace/application/workspace_providers.dart';
@@ -150,6 +151,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.accounts,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const AccountsScreen(),
+      ),
+      GoRoute(
+        path: '/tracker/:id',
+        parentNavigatorKey: _rootKey,
+        builder: (_, state) =>
+            TrackerDetailScreen(trackerId: state.pathParameters['id']!),
       ),
       // Every remaining "More" entry resolves to a milestone placeholder until
       // its feature phase lands.
