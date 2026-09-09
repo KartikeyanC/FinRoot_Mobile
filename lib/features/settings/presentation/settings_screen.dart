@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/device/device_prefs.dart';
 import '../../../core/providers/providers.dart';
 import '../../../design/design.dart';
-import '../../auth/data/auth_repository.dart';
+import '../../auth/application/sign_out.dart';
 import '../../profile/profile_providers.dart';
 import '../../workspace/presentation/workspace_switcher_sheet.dart';
 
@@ -156,7 +156,7 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
     if (confirmed ?? false) {
-      await ref.read(authRepositoryProvider).signOut();
+      await ref.read(signOutControllerProvider).signOut();
     }
   }
 }

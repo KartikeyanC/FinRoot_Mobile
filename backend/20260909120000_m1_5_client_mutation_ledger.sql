@@ -5,6 +5,12 @@
 --   supabase/migrations/. NOT YET APPLIED. Review backend/M1.5_WEB_IMPACT.md
 --   before applying. Authored by the FinRoot Mobile build (M1 audit §9, R-1).
 --
+--   REV 2 (2026-09-09, during M5): `create_transaction` now accepts an optional
+--   client-supplied `transaction_id` and inserts the row with it, so a row
+--   created offline keeps the same id locally and on the server (no re-keying).
+--   Still additive; still no web impact — the web omits it and the column
+--   default fires exactly as before.
+--
 -- ---- Why -----------------------------------------------------------------
 --
 -- The web app writes a transaction with a raw PostgREST insert
@@ -118,7 +124,12 @@ COMMENT ON TABLE public.client_mutations IS
 --                      | "update_transaction"
 --                      | "delete_transaction",           -- required
 --     "tenant_id":       "<uuid>",                        -- required, the active workspace
---     "transaction_id":  "<uuid>",                        -- required for update / delete
+--     "transaction_id":  "<uuid>",                        -- update/delete: the row's id.
+--                                                         -- create: the client's own id for
+--                                                         -- the new row (offline-first — the
+--                                                         -- local and server ids match from
+--                                                         -- birth, no re-keying). Omit to let
+--                                                         -- the server generate one.
 --     "payload": {                                        -- required for create / update
 --       "type":                    "income|expense|transfer",
 --       "amount":                  "18600.00",            -- string or number, numeric(14,2)
@@ -263,9 +274,13 @@ BEGIN
   -- transactions_recurring_period_unique (source_recurring_id stays NULL).
   IF v_op = 'create_transaction' THEN
     INSERT INTO public.transactions (
-      user_id, tenant_id, type, amount, currency, category, description,
+      id, user_id, tenant_id, type, amount, currency, category, description,
       occurred_at, account_id, payment_mode, transfer_to_account_id, tracker_id
     ) VALUES (
+      -- The client's own id when it supplied one (offline-first), else a fresh
+      -- one. A reused id from a *different* mutation fails the PK — correct; the
+      -- replay of the *same* mutation was already handled in section 3.
+      coalesce(v_txn_id, gen_random_uuid()),
       auth.uid(),
       v_tenant,
       v_payload->>'type',
@@ -366,11 +381,13 @@ END $$;
 -- Post-apply verification — run as a REAL signed-in workspace admin over
 -- PostgREST (rpc/apply_transaction_mutation), not the Management API.
 --
---   -- 1. a create returns status=applied and a row
+--   -- 1. a create with a client-supplied id returns status=applied, and the
+--   --    returned transaction.id equals the id we sent
 --   select public.apply_transaction_mutation(jsonb_build_object(
---     'mutation_id', gen_random_uuid(),
---     'operation',   'create_transaction',
---     'tenant_id',   '<your tenant>',
+--     'mutation_id',    gen_random_uuid(),
+--     'operation',      'create_transaction',
+--     'tenant_id',      '<your tenant>',
+--     'transaction_id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
 --     'payload', jsonb_build_object(
 --       'type','expense','amount','12.34','currency','INR',
 --       'category','Other','occurred_at', now())));
@@ -378,6 +395,8 @@ END $$;
 --   -- 2. resending the SAME envelope returns status=replayed, same row,
 --   --    and adds NO second transaction:
 --   select count(*) from public.transactions where amount = 12.34;   -- expect 1
+--   select count(*) from public.transactions
+--    where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';              -- expect 1
 --
 --   -- 3. a viewer / non-member call raises 'Not authorized for this workspace'
 --

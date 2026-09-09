@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/design.dart';
-import '../../auth/data/auth_repository.dart';
+import '../../auth/application/sign_out.dart';
 import '../application/workspace_providers.dart';
 
 /// Signed in, but no usable workspace. Rare — the signup trigger always creates
@@ -62,7 +62,8 @@ class NoWorkspaceScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 TextButton(
-                  onPressed: () => ref.read(authRepositoryProvider).signOut(),
+                  onPressed: () =>
+                      ref.read(signOutControllerProvider).signOut(),
                   child: const Text('Sign out'),
                 ),
               ],

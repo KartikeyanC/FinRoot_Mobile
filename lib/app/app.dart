@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/device/device_prefs.dart';
 import '../design/theme/app_theme.dart';
+import '../features/sync/application/sync_coordinator.dart';
 import 'router.dart';
 
 /// Root widget. Light/dark themes are defined once; the active mode comes from
@@ -21,6 +22,9 @@ class FinRootApp extends ConsumerWidget {
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
       routerConfig: router,
+      // Keeps the sync coordinator alive for the app's lifetime.
+      builder: (context, child) =>
+          SyncScope(child: child ?? const SizedBox.shrink()),
     );
   }
 }

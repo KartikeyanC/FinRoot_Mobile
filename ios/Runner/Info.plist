@@ -82,5 +82,16 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Background sync (M5, workmanager). Device-unverified — see the M5
+	     report. The identifier must match _uniqueName in background_sync.dart. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>finroot-periodic-sync</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
 </dict>
 </plist>

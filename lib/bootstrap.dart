@@ -11,6 +11,7 @@ import 'core/error/error_mapper.dart';
 import 'core/logging/app_logger.dart';
 import 'core/logging/provider_logger.dart';
 import 'core/supabase/supabase_bootstrap.dart';
+import 'features/sync/application/background_sync.dart';
 
 /// Single async entrypoint used by `main.dart` (and, later, per-flavor mains).
 ///
@@ -37,6 +38,10 @@ Future<void> bootstrap() async {
 
       await initSupabase(config);
       final prefs = await SharedPreferences.getInstance();
+
+      // Fire-and-forget: registers the OS periodic background sync. Never
+      // blocks or fails startup (device config pending — M5 report).
+      unawaited(initBackgroundSync());
 
       runApp(
         ProviderScope(

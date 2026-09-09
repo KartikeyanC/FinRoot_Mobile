@@ -58,13 +58,24 @@ class SyncOutboxDao extends DatabaseAccessor<AppDatabase>
     )..where((t) => t.mutationId.equals(mutationId))).getSingleOrNull();
   }
 
-  Future<int> countPending() async {
+  Future<int> countPending() => _countWithStatus(OutboxStatus.pending);
+  Future<int> countFailed() => _countWithStatus(OutboxStatus.failed);
+
+  Future<int> _countWithStatus(OutboxStatus status) async {
     final rows =
         await (selectOnly(syncOutbox)
               ..addColumns([syncOutbox.id.count()])
-              ..where(syncOutbox.status.equalsValue(OutboxStatus.pending)))
+              ..where(syncOutbox.status.equalsValue(status)))
             .get();
     return rows.first.read(syncOutbox.id.count()) ?? 0;
+  }
+
+  /// Live count of entries not yet confirmed by the server (pending + failed).
+  Stream<int> watchUnsyncedCount() {
+    final q = selectOnly(syncOutbox)
+      ..addColumns([syncOutbox.id.count()])
+      ..where(syncOutbox.status.equalsValue(OutboxStatus.inFlight).not());
+    return q.map((r) => r.read(syncOutbox.id.count()) ?? 0).watchSingle();
   }
 
   /// Mark an entry as being sent now and count the attempt.

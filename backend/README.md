@@ -10,7 +10,7 @@ authored here as a reviewable package and handed to the web repo
 Nothing in this folder is applied automatically. It is not wired into any
 mobile build step.
 
-## M1.5 — idempotent transaction writes (status: awaiting review)
+## M1.5 — idempotent transaction writes (status: awaiting review · rev 2)
 
 | File | Purpose |
 |---|---|

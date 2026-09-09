@@ -73,8 +73,10 @@ dependencies:
   path_provider: ^2.1.6
   path: ^1.9.1
 
+  # --- Background sync (M5) ---
+  workmanager: ^0.10.10            # OS-scheduled background sync (device config pending)
+
   # --- Added in later phases (kept here as the intended dependency map) ---
-  # M5  sync worker:   workmanager
   # M12 notifications: flutter_local_notifications, timezone
   # M13 bill scan:     image_picker / camera, image
   # M14 voice:         speech_to_text, permission_handler
