@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/app_config.dart';
@@ -34,7 +35,10 @@ Future<void> initSupabase(AppConfig config) async {
       localStorage: SecureLocalStorage(),
       pkceAsyncStorage: SecurePkceStorage(),
     ),
-    debug: !config.isProd,
+    // Debug builds only. The Supabase / gotrue debug logs are verbose and can
+    // include request URLs and auth-flow detail — a staging build (a release
+    // build handed to testers) must stay quiet, not just prod.
+    debug: kDebugMode,
   );
 
   AppLog.of('supabase').info('initialised (${config.flavor.name})');

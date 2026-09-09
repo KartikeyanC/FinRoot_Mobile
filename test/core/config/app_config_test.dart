@@ -1,5 +1,21 @@
+import 'dart:convert';
+
 import 'package:finroot_mobile/core/config/app_config.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+String _jwt(Map<String, dynamic> payload) {
+  String seg(Object o) => base64Url
+      .encode(utf8.encode(jsonEncode(o)))
+      .replaceAll('=', '');
+  return '${seg({'alg': 'HS256', 'typ': 'JWT'})}.${seg(payload)}.sig';
+}
+
+AppConfig _cfg(String key) => AppConfig(
+  flavor: AppFlavor.dev,
+  supabaseUrl: 'https://example.supabase.co',
+  supabaseAnonKey: key,
+  authDeepLinkScheme: 'finroot',
+);
 
 void main() {
   test('defaults to dev flavor and unconfigured when no dart-defines', () {
@@ -26,5 +42,31 @@ void main() {
       authDeepLinkScheme: 'finroot',
     );
     expect(bad.assertValid, throwsA(isA<AssertionError>()));
+  });
+
+  group('assertValid — privileged key guard (M18 F-4)', () {
+    test('rejects a legacy service_role JWT (claim is base64-encoded)', () {
+      final cfg = _cfg(_jwt({'role': 'service_role', 'iss': 'supabase'}));
+      // A plain `.contains("service_role")` would have missed this.
+      expect(cfg.supabaseAnonKey.contains('service_role'), isFalse);
+      expect(cfg.assertValid, throwsA(isA<AssertionError>()));
+    });
+
+    test('rejects a new-format sb_secret_ key', () {
+      expect(_cfg('sb_secret_abcdefghijklmnopqrstuvwxyz').assertValid,
+          throwsA(isA<AssertionError>()));
+    });
+
+    test('accepts a legacy anon JWT', () {
+      expect(_cfg(_jwt({'role': 'anon', 'iss': 'supabase'})).assertValid,
+          returnsNormally);
+    });
+
+    test('accepts a new-format sb_publishable_ key', () {
+      expect(
+        _cfg('sb_publishable_abcdefghijklmnopqrstuvwxyz').assertValid,
+        returnsNormally,
+      );
+    });
   });
 }

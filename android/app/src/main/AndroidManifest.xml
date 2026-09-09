@@ -20,7 +20,16 @@
     <application
         android:label="FinRoot"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="false"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
+        <!-- allowBackup=false / dataExtractionRules: the encrypted local
+             database and secure-storage entries must never leave the device
+             via Android auto-backup or device-transfer (M4 §12, brief §38).
+             The keystore key is device-bound and not backed up anyway, so a
+             copied .sqlite would be unreadable — this is defence in depth. -->
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

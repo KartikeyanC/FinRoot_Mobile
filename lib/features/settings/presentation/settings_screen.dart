@@ -135,6 +135,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -156,7 +157,20 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
     if (confirmed ?? false) {
-      await ref.read(signOutControllerProvider).signOut();
+      try {
+        await ref.read(signOutControllerProvider).signOut();
+      } on Object {
+        // signOut() only rethrows if the local cache wipe itself failed — rare,
+        // and the session is already gone. Tell the user plainly.
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Signed out, but clearing local data ran into a problem. '
+              'Reopen the app to finish.',
+            ),
+          ),
+        );
+      }
     }
   }
 }

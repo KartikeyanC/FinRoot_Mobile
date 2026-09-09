@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 /// Build-time configuration. Values arrive via `--dart-define-from-file`
@@ -70,9 +72,30 @@ class AppConfig {
       '--dart-define-from-file=config/<flavor>.json',
     );
     assert(
-      !supabaseAnonKey.contains('service_role'),
-      'A service_role key must never be shipped in the client.',
+      !_isPrivilegedKey(supabaseAnonKey),
+      'A service_role / secret key must never be shipped in the client. '
+      'Use the anon / publishable key.',
     );
+  }
+
+  /// True if [key] is a Supabase **service_role / secret** key rather than the
+  /// publishable (anon) one. Handles both key formats:
+  /// - new: `sb_secret_…` (vs `sb_publishable_…`);
+  /// - legacy JWT: a `"role":"service_role"` claim in the (base64url) payload.
+  ///   A plain `.contains('service_role')` never matches — the claim is encoded.
+  static bool _isPrivilegedKey(String key) {
+    if (key.startsWith('sb_secret_')) return true;
+    final parts = key.split('.');
+    if (parts.length != 3) return false; // not a JWT — can't tell, don't block
+    try {
+      final payload = utf8.decode(
+        base64Url.decode(base64Url.normalize(parts[1])),
+      );
+      final role = (jsonDecode(payload) as Map<String, dynamic>)['role'];
+      return role == 'service_role';
+    } catch (_) {
+      return false;
+    }
   }
 
   @override

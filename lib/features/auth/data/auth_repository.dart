@@ -100,14 +100,20 @@ class AuthRepository {
   }
 
   /// Sign out and wipe every FinRoot secret from the keystore (brief §51).
+  ///
+  /// Leaving must always succeed. gotrue clears the local session and emits
+  /// `signedOut` **before** it calls the server, so an offline failure of the
+  /// server revoke is harmless — the session is already gone locally. We
+  /// swallow it, always purge the keystore, and never throw; the caller then
+  /// wipes the local cache unconditionally.
   Future<void> signOut() async {
     try {
       await _auth.signOut();
-    } catch (error, stack) {
-      // A network failure must not strip the user's ability to leave — clear
-      // local state anyway and surface nothing.
-      _log.warning('signOut server call failed; clearing local state');
-      throw mapError(error, stack);
+    } catch (error) {
+      _log.warning(
+        'signOut server revoke failed (${error.runtimeType}); '
+        'local session already cleared',
+      );
     } finally {
       await purgeSecureStorage();
     }

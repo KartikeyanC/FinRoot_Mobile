@@ -26,8 +26,16 @@ class SignOutController {
     } on Object catch (e) {
       log.warning('flush before sign-out skipped: ${e.runtimeType}');
     }
+    // `AuthRepository.signOut` never throws — it clears the session and purges
+    // the keystore even offline. The local cache wipe then always runs, so a
+    // failed server revoke never leaves a readable database behind.
     await _ref.read(authRepositoryProvider).signOut();
-    await wipeLocalData(_ref);
+    try {
+      await wipeLocalData(_ref);
+    } on Object catch (e) {
+      log.severe('local data wipe failed: ${e.runtimeType}');
+      rethrow;
+    }
     log.info('signed out and wiped local data');
   }
 }

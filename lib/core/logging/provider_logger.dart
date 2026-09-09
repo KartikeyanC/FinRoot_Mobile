@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../error/failure.dart';
 import 'app_logger.dart';
 
 /// Logs provider failures (and, in debug, lifecycle) without ever printing a
@@ -16,9 +17,16 @@ final class ProviderLogger extends ProviderObserver {
     Object error,
     StackTrace stackTrace,
   ) {
+    // Never forward the raw error object — a `PostgrestException` /
+    // `AuthException` toString() carries the server's message / details / hint,
+    // which §12 says must not reach a device log. A mapped `Failure` is safe
+    // (its toString() is `runtimeType: <fixed copy>`); anything else is
+    // reduced to its type. The stack trace (code locations only) is kept.
+    final safe = error is Failure ? error : error.runtimeType;
     _log.warning(
-      'provider "${context.provider.name ?? context.provider.runtimeType}" failed',
-      error,
+      'provider "${context.provider.name ?? context.provider.runtimeType}" '
+      'failed',
+      safe,
       stackTrace,
     );
   }
