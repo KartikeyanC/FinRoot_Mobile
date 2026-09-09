@@ -17,17 +17,17 @@ import 'assign_transactions_sheet.dart';
 import 'tracker_form_sheet.dart';
 import 'widgets/tracker_progress.dart';
 
+/// Full-screen tracker detail — the phone route (`/tracker/:id`) and any deep
+/// link. On a tablet the Trackers tab shows [TrackerDetailView] inline in its
+/// second pane instead (M16).
 class TrackerDetailScreen extends ConsumerWidget {
   const TrackerDetailScreen({super.key, required this.trackerId});
   final String trackerId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final trackerAsync = ref.watch(trackerByIdProvider(trackerId));
     final t = ref.watch(trackerWithSpendProvider(trackerId));
-    final txns = ref.watch(trackerTransactionsProvider(trackerId));
-    final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
-    final tt = Theme.of(context).textTheme;
+    final trackerAsync = ref.watch(trackerByIdProvider(trackerId));
 
     if (t == null) {
       return Scaffold(
@@ -42,6 +42,7 @@ class TrackerDetailScreen extends ConsumerWidget {
       );
     }
 
+    final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
     final status = TrackerStatus.fromWire(t.tracker.status);
 
     return Scaffold(
@@ -49,24 +50,10 @@ class TrackerDetailScreen extends ConsumerWidget {
         title: Text(trackerDisplayLabel(t.tracker.name)),
         actions: [
           if (canWrite)
-            PopupMenuButton<String>(
-              onSelected: (v) => _onAction(context, ref, t, v),
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                if (status != TrackerStatus.completed)
-                  const PopupMenuItem(
-                    value: 'complete',
-                    child: Text('Mark completed'),
-                  ),
-                if (status != TrackerStatus.archived)
-                  const PopupMenuItem(
-                    value: 'archive',
-                    child: Text('Archive'),
-                  ),
-                if (status != TrackerStatus.active)
-                  const PopupMenuItem(value: 'reopen', child: Text('Reopen')),
-                const PopupMenuItem(value: 'delete', child: Text('Delete')),
-              ],
+            TrackerActionsMenu(
+              tracker: t,
+              status: status,
+              onDeleted: () => context.pop(),
             ),
         ],
       ),
@@ -77,23 +64,95 @@ class TrackerDetailScreen extends ConsumerWidget {
               label: const Text('Assign'),
             )
           : null,
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenGutter,
-          AppSpacing.lg,
-          AppSpacing.screenGutter,
-          AppSpacing.huge,
-        ),
-        children: [
+      body: TrackerDetailView(trackerId: trackerId),
+    );
+  }
+}
+
+/// The tracker detail body — progress, dates, tagged transactions. [inPane]
+/// adds a compact header (title + Assign + actions) that the full-screen route
+/// gets from its [AppBar] and FAB instead. [onDeleted] runs after a successful
+/// delete — pop the route, or clear the pane selection.
+class TrackerDetailView extends ConsumerWidget {
+  const TrackerDetailView({
+    super.key,
+    required this.trackerId,
+    this.onDeleted,
+    this.inPane = false,
+  });
+
+  final String trackerId;
+  final VoidCallback? onDeleted;
+  final bool inPane;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(trackerWithSpendProvider(trackerId));
+    final trackerAsync = ref.watch(trackerByIdProvider(trackerId));
+    final txns = ref.watch(trackerTransactionsProvider(trackerId));
+    final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
+    final tt = Theme.of(context).textTheme;
+
+    if (t == null) {
+      return Center(
+        child: trackerAsync.isLoading
+            ? const LoadingView()
+            : const EmptyView(
+                icon: Icons.donut_large_outlined,
+                title: 'Tracker not found',
+                message: 'It may have been deleted.',
+              ),
+      );
+    }
+
+    final status = TrackerStatus.fromWire(t.tracker.status);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenGutter,
+        AppSpacing.lg,
+        AppSpacing.screenGutter,
+        AppSpacing.huge,
+      ),
+      children: [
+        if (inPane)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    trackerDisplayLabel(t.tracker.name),
+                    style: tt.titleLarge,
+                  ),
+                ),
+                if (canWrite) ...[
+                  IconButton(
+                    tooltip: 'Assign transactions',
+                    onPressed: () =>
+                        openAssignTransactions(context, trackerId),
+                    icon: const Icon(Icons.playlist_add),
+                  ),
+                  TrackerActionsMenu(
+                    tracker: t,
+                    status: status,
+                    onDeleted: onDeleted,
+                  ),
+                ],
+              ],
+            ),
+          ),
           AppCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
                   children: [
-                    Icon(trackerTypeIcon(t.tracker.type),
-                        size: 16,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    Icon(
+                      trackerTypeIcon(t.tracker.type),
+                      size: 16,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: AppSpacing.xs),
                     Text(
                       t.tracker.type,
@@ -163,18 +222,15 @@ class TrackerDetailScreen extends ConsumerWidget {
                           if (i > 0) const Divider(height: 1),
                           TransactionTile(
                             list[i],
-                            onTap: () => openTransactionDetail(
-                              context,
-                              list[i].id,
-                            ),
+                            onTap: () =>
+                                openTransactionDetail(context, list[i].id),
                           ),
                         ],
                       ],
                     ),
                   ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -185,15 +241,50 @@ class TrackerDetailScreen extends ConsumerWidget {
         ? 'Started $start · open-ended'
         : 'Started $start · ends ${RelativeTime.dayLabel(end)}';
   }
+}
+
+/// The edit / complete / archive / reopen / delete menu, shared by the
+/// full-screen route (in its AppBar) and the tablet pane header.
+class TrackerActionsMenu extends ConsumerWidget {
+  const TrackerActionsMenu({
+    super.key,
+    required this.tracker,
+    required this.status,
+    required this.onDeleted,
+  });
+
+  final TrackerWithSpend tracker;
+  final TrackerStatus status;
+  final VoidCallback? onDeleted;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PopupMenuButton<String>(
+      onSelected: (v) => _onAction(context, ref, v),
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: 'edit', child: Text('Edit')),
+        if (status != TrackerStatus.completed)
+          const PopupMenuItem(
+            value: 'complete',
+            child: Text('Mark completed'),
+          ),
+        if (status != TrackerStatus.archived)
+          const PopupMenuItem(value: 'archive', child: Text('Archive')),
+        if (status != TrackerStatus.active)
+          const PopupMenuItem(value: 'reopen', child: Text('Reopen')),
+        const PopupMenuItem(value: 'delete', child: Text('Delete')),
+      ],
+    );
+  }
 
   Future<void> _onAction(
     BuildContext context,
     WidgetRef ref,
-    TrackerWithSpend t,
     String action,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(trackerEditorControllerProvider);
+    final t = tracker;
     try {
       switch (action) {
         case 'edit':
@@ -216,7 +307,7 @@ class TrackerDetailScreen extends ConsumerWidget {
           final ok = await _confirmDelete(context, t.tracker.name);
           if (ok != true) return;
           await controller.delete(t.tracker.id);
-          if (context.mounted) context.pop();
+          onDeleted?.call();
           messenger.showSnackBar(
             const SnackBar(
               content: Text(

@@ -8,6 +8,7 @@ library;
 export 'components/amount_text.dart';
 export 'components/app_card.dart';
 export 'components/badges.dart';
+export 'components/content_bounds.dart';
 export 'components/placeholder_screen.dart';
 export 'components/section_header.dart';
 export 'components/state_views.dart';

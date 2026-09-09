@@ -16,4 +16,17 @@ void main() {
     expect(WindowSize.medium.showsRail, isFalse);
     expect(WindowSize.expanded.showsRail, isTrue);
   });
+
+  test('two-pane list/detail only at the expanded breakpoint', () {
+    expect(WindowSize.compact.showsTwoPane, isFalse);
+    expect(WindowSize.medium.showsTwoPane, isFalse);
+    expect(WindowSize.expanded.showsTwoPane, isTrue);
+  });
+
+  test('the rail extends its labels only past the wider threshold', () {
+    expect(AppBreakpoints.railExtendedAt(840), isFalse);
+    expect(AppBreakpoints.railExtendedAt(999), isFalse);
+    expect(AppBreakpoints.railExtendedAt(1000), isTrue);
+    expect(AppBreakpoints.railExtendedAt(1400), isTrue);
+  });
 }

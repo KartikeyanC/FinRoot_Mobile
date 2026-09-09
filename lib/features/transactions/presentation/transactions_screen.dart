@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
+import '../../../navigation/pane_selection.dart';
+import '../../../navigation/two_pane.dart';
 import '../../accounts/application/accounts_providers.dart';
 import '../../sync/application/sync_engine.dart';
 import '../application/transactions_providers.dart';
@@ -40,14 +42,23 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final twoPane = AppBreakpoints.of(context).showsTwoPane;
     final filter = ref.watch(ledgerFilterProvider);
     final ledger = ref.watch(ledgerProvider);
     final t = Theme.of(context).textTheme;
+    final selectedId = twoPane
+        ? ref.watch(selectedTransactionIdProvider)
+        : null;
 
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
+    void openRow(String id) {
+      if (twoPane) {
+        ref.read(selectedTransactionIdProvider.notifier).select(id);
+      } else {
+        openTransactionDetail(context, id);
+      }
+    }
+
+    final list = Column(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -105,11 +116,38 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   error: (e, _) => ErrorView(e),
                   data: (txns) => txns.isEmpty
                       ? _EmptyLedger(filtered: filter.isActive)
-                      : _LedgerList(groups: groupByDay(txns)),
+                      : _LedgerList(
+                          groups: groupByDay(txns),
+                          selectedId: selectedId,
+                          onTapRow: openRow,
+                        ),
                 ),
               ),
             ),
           ],
+        );
+
+    if (!twoPane) {
+      return Scaffold(body: SafeArea(bottom: false, child: list));
+    }
+
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: TwoPane(
+          list: list,
+          detail: selectedId == null
+              ? null
+              : TransactionDetailView(
+                  id: selectedId,
+                  onClose: () => ref
+                      .read(selectedTransactionIdProvider.notifier)
+                      .clear(),
+                ),
+          placeholder: const PaneWaiting(
+            message: 'Pick a transaction to see its full detail here.',
+            icon: Icons.receipt_long_outlined,
+          ),
         ),
       ),
     );
@@ -181,8 +219,15 @@ class _AccountFilterBanner extends ConsumerWidget {
 }
 
 class _LedgerList extends StatelessWidget {
-  const _LedgerList({required this.groups});
+  const _LedgerList({
+    required this.groups,
+    required this.selectedId,
+    required this.onTapRow,
+  });
+
   final List<DayGroup> groups;
+  final String? selectedId;
+  final ValueChanged<String> onTapRow;
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +253,11 @@ class _LedgerList extends StatelessWidget {
                 children: [
                   for (var j = 0; j < group.items.length; j++) ...[
                     if (j > 0) const Divider(height: 1),
-                    _Tile(txn: group.items[j]),
+                    _Tile(
+                      txn: group.items[j],
+                      selected: group.items[j].id == selectedId,
+                      onTap: () => onTapRow(group.items[j].id),
+                    ),
                   ],
                 ],
               ),
@@ -222,15 +271,29 @@ class _LedgerList extends StatelessWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({required this.txn});
+  const _Tile({
+    required this.txn,
+    required this.selected,
+    required this.onTap,
+  });
+
   final TransactionEntity txn;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return TransactionTile(
-      txn,
-      showDay: false,
-      onTap: () => openTransactionDetail(context, txn.id),
+    final row = TransactionTile(txn, showDay: false, onTap: onTap);
+    if (!selected) return row;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.primaryContainer.withValues(alpha: 0.4),
+        borderRadius: AppRadius.card,
+      ),
+      child: row,
     );
   }
 }

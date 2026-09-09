@@ -17,19 +17,47 @@ import '../../workspace/application/workspace_providers.dart';
 import '../application/transactions_providers.dart';
 import '../domain/transaction.dart';
 
-/// Opens the transaction detail as a bottom sheet.
+/// Opens the transaction detail the right way for the window size (M1 audit
+/// §11): a bottom sheet on a phone, a centred dialog on a tablet. The
+/// Transactions tab skips this and shows the detail inline in its second pane
+/// (see [TransactionDetailView]).
 Future<void> openTransactionDetail(BuildContext context, String id) {
+  if (AppBreakpoints.of(context).isExpanded) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          width: 480,
+          child: TransactionDetailView(
+            id: id,
+            onClose: () => Navigator.of(dialogContext).pop(),
+          ),
+        ),
+      ),
+    );
+  }
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _TransactionDetailSheet(id: id),
+    builder: (sheetContext) => TransactionDetailView(
+      id: id,
+      onClose: () => Navigator.of(sheetContext).pop(),
+    ),
   );
 }
 
-class _TransactionDetailSheet extends ConsumerWidget {
-  const _TransactionDetailSheet({required this.id});
+/// The transaction detail body — amount, meta rows, edit / delete. A bottom
+/// sheet and a tablet dialog wrap it (via [openTransactionDetail]); the
+/// Transactions two-pane layout drops it straight into its detail pane.
+/// [onClose] runs after a successful delete — pop the sheet, or clear the
+/// pane selection.
+class TransactionDetailView extends ConsumerWidget {
+  const TransactionDetailView({super.key, required this.id, this.onClose});
+
   final String id;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -39,18 +67,18 @@ class _TransactionDetailSheet extends ConsumerWidget {
     if (txn == null) {
       return const Padding(
         padding: EdgeInsets.all(AppSpacing.xxl),
-        child: Text('This transaction is no longer here.'),
+        child: Center(child: Text('This transaction is no longer here.')),
       );
     }
 
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
     final isTransfer = txn.type == TxnType.transfer;
 
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: AppSpacing.xl,
         right: AppSpacing.xl,
-        top: AppSpacing.sm,
+        top: AppSpacing.lg,
         bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
       ),
       child: Column(
@@ -140,7 +168,6 @@ class _TransactionDetailSheet extends ConsumerWidget {
     TransactionEntity txn,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
-    final sheetNavigator = Navigator.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -163,8 +190,10 @@ class _TransactionDetailSheet extends ConsumerWidget {
     if (ok != true) return;
     try {
       await ref.read(quickAddControllerProvider).deleteTransaction(txn.id);
-      sheetNavigator.pop();
-      messenger.showSnackBar(const SnackBar(content: Text('Transaction deleted')));
+      onClose?.call();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Transaction deleted')),
+      );
     } on Failure catch (f) {
       messenger.showSnackBar(SnackBar(content: Text(f.message)));
     }

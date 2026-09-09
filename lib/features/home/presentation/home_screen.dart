@@ -27,26 +27,28 @@ class HomeScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () =>
               ref.read(syncEngineProvider.notifier).syncNow(force: true),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenGutter,
-              AppSpacing.lg,
-              AppSpacing.screenGutter,
-              AppSpacing.huge,
+          child: ContentBounds(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenGutter,
+                AppSpacing.lg,
+                AppSpacing.screenGutter,
+                AppSpacing.huge,
+              ),
+              children: const [
+                HomeGreeting(),
+                SizedBox(height: AppSpacing.xl),
+                HomeSnapshotCard(),
+                SizedBox(height: AppSpacing.lg),
+                HomeQuickActions(),
+                HomeRecentActivity(),
+                HomeTrackersSection(),
+                SizedBox(height: AppSpacing.xl),
+                HomeUpcomingCard(),
+                SizedBox(height: AppSpacing.md),
+                HomeInsightsCard(),
+              ],
             ),
-            children: const [
-              HomeGreeting(),
-              SizedBox(height: AppSpacing.xl),
-              HomeSnapshotCard(),
-              SizedBox(height: AppSpacing.lg),
-              HomeQuickActions(),
-              HomeRecentActivity(),
-              HomeTrackersSection(),
-              SizedBox(height: AppSpacing.xl),
-              HomeUpcomingCard(),
-              SizedBox(height: AppSpacing.md),
-              HomeInsightsCard(),
-            ],
           ),
         ),
       ),
