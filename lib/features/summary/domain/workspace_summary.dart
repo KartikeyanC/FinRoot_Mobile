@@ -20,6 +20,8 @@ class WorkspaceSummary {
     required this.monthExpense,
     required this.transactionCount,
     required this.fetchedAt,
+    this.monthlySeries = const [],
+    this.categorySpend = const [],
   });
 
   final List<AccountDelta> accountDeltas;
@@ -27,6 +29,13 @@ class WorkspaceSummary {
   final Money monthExpense;
   final int transactionCount;
   final DateTime fetchedAt;
+
+  /// Income / expense per month (INR), oldest first — the full `dashboard_summary`
+  /// window. Used by M15 insights for trend comparisons.
+  final List<MonthPoint> monthlySeries;
+
+  /// Current month's expense by category (INR), largest first.
+  final List<CategorySpendPoint> categorySpend;
 
   Money get monthSavings => monthIncome - monthExpense;
 
@@ -50,11 +59,12 @@ class WorkspaceSummary {
         '${ref.year.toString().padLeft(4, '0')}-'
         '${ref.month.toString().padLeft(2, '0')}';
 
-    var income = Decimal.zero;
-    var expense = Decimal.zero;
+    final incomeByMonth = <String, Decimal>{};
+    final expenseByMonth = <String, Decimal>{};
     for (final row in (raw['monthly'] as List<dynamic>? ?? const [])) {
       final m = row as Map<String, dynamic>;
-      if (m['month'] != currentMonth) continue;
+      final month = m['month'] as String? ?? '';
+      if (month.isEmpty) continue;
       final inInr = Decimal.parse(
         toInr(
           (m['total'] as num?)?.toDouble() ?? 0,
@@ -62,11 +72,47 @@ class WorkspaceSummary {
         ).toString(),
       );
       if (m['type'] == 'income') {
-        income += inInr;
+        incomeByMonth[month] = (incomeByMonth[month] ?? Decimal.zero) + inInr;
       } else if (m['type'] == 'expense') {
-        expense += inInr;
+        expenseByMonth[month] = (expenseByMonth[month] ?? Decimal.zero) + inInr;
       }
     }
+    final months = {...incomeByMonth.keys, ...expenseByMonth.keys}.toList()
+      ..sort();
+    final series = [
+      for (final month in months)
+        MonthPoint(
+          month: month,
+          income: Money(incomeByMonth[month] ?? Decimal.zero),
+          expense: Money(expenseByMonth[month] ?? Decimal.zero),
+        ),
+    ];
+
+    final categoryTotals = <String, ({Decimal total, int count})>{};
+    for (final row in (raw['categories'] as List<dynamic>? ?? const [])) {
+      final c = row as Map<String, dynamic>;
+      final cat = (c['category'] as String?)?.trim();
+      if (cat == null || cat.isEmpty) continue;
+      final inInr = Decimal.parse(
+        toInr(
+          (c['total'] as num?)?.toDouble() ?? 0,
+          c['currency'] as String? ?? 'INR',
+        ).toString(),
+      );
+      final prev = categoryTotals[cat] ?? (total: Decimal.zero, count: 0);
+      categoryTotals[cat] = (
+        total: prev.total + inInr,
+        count: prev.count + ((c['count'] as num?)?.toInt() ?? 0),
+      );
+    }
+    final categories = [
+      for (final e in categoryTotals.entries)
+        CategorySpendPoint(
+          category: e.key,
+          amount: Money(e.value.total),
+          count: e.value.count,
+        ),
+    ]..sort((a, b) => b.amount.amount.compareTo(a.amount.amount));
 
     final deltas = [
       for (final d in (raw['account_deltas'] as List<dynamic>? ?? const []))
@@ -77,10 +123,12 @@ class WorkspaceSummary {
 
     return WorkspaceSummary(
       accountDeltas: deltas,
-      monthIncome: Money(income),
-      monthExpense: Money(expense),
+      monthIncome: Money(incomeByMonth[currentMonth] ?? Decimal.zero),
+      monthExpense: Money(expenseByMonth[currentMonth] ?? Decimal.zero),
       transactionCount: (totals['transactions'] as num?)?.toInt() ?? 0,
       fetchedAt: fetchedAt ?? ref,
+      monthlySeries: series,
+      categorySpend: categories,
     );
   }
 
@@ -93,6 +141,22 @@ class WorkspaceSummary {
     'month_expense': monthExpense.toStorageString(),
     'transaction_count': transactionCount,
     'fetched_at': fetchedAt.toIso8601String(),
+    'monthly_series': [
+      for (final p in monthlySeries)
+        {
+          'month': p.month,
+          'income': p.income.toStorageString(),
+          'expense': p.expense.toStorageString(),
+        },
+    ],
+    'category_spend': [
+      for (final c in categorySpend)
+        {
+          'category': c.category,
+          'amount': c.amount.toStorageString(),
+          'count': c.count,
+        },
+    ],
   };
 
   factory WorkspaceSummary.fromCache(Map<String, dynamic> json) {
@@ -107,6 +171,51 @@ class WorkspaceSummary {
       fetchedAt:
           DateTime.tryParse((json['fetched_at'] as String?) ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
+      monthlySeries: [
+        for (final p in (json['monthly_series'] as List<dynamic>? ?? const []))
+          MonthPoint(
+            month: (p as Map<String, dynamic>)['month'] as String? ?? '',
+            income: Money.parse((p['income'] as String?) ?? '0'),
+            expense: Money.parse((p['expense'] as String?) ?? '0'),
+          ),
+      ],
+      categorySpend: [
+        for (final c in (json['category_spend'] as List<dynamic>? ?? const []))
+          CategorySpendPoint(
+            category: (c as Map<String, dynamic>)['category'] as String? ?? '',
+            amount: Money.parse((c['amount'] as String?) ?? '0'),
+            count: (c['count'] as num?)?.toInt() ?? 0,
+          ),
+      ],
     );
   }
+}
+
+/// One month's INR income / expense from `dashboard_summary.monthly`.
+class MonthPoint {
+  const MonthPoint({
+    required this.month,
+    required this.income,
+    required this.expense,
+  });
+
+  /// `YYYY-MM`.
+  final String month;
+  final Money income;
+  final Money expense;
+
+  Money get savings => income - expense;
+}
+
+/// One category's current-month INR spend from `dashboard_summary.categories`.
+class CategorySpendPoint {
+  const CategorySpendPoint({
+    required this.category,
+    required this.amount,
+    required this.count,
+  });
+
+  final String category;
+  final Money amount;
+  final int count;
 }

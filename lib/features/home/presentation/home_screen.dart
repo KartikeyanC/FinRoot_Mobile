@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../design/design.dart';
 import '../../sync/application/sync_engine.dart';
 import 'widgets/home_greeting.dart';
-import 'widgets/home_placeholders.dart';
+import 'widgets/home_insights_card.dart';
 import 'widgets/home_quick_actions.dart';
 import 'widgets/home_recent_activity.dart';
 import 'widgets/home_snapshot_card.dart';

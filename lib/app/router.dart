@@ -13,6 +13,7 @@ import '../features/bill_scan/presentation/bill_scan_screen.dart';
 import '../features/budget/presentation/budget_screen.dart';
 import '../features/goals/presentation/goals_screen.dart';
 import '../features/home/presentation/home_screen.dart';
+import '../features/insights/presentation/insights_screen.dart';
 import '../features/investments/presentation/investments_screen.dart';
 import '../features/more/presentation/more_screen.dart';
 import '../features/net_worth/presentation/net_worth_screen.dart';
@@ -44,6 +45,7 @@ class _Routes {
   static const reminders = '/reminders';
   static const billScan = '/bill-scan';
   static const voice = '/voice';
+  static const insights = '/insights';
 
   /// "More" entries that have a real screen rather than a milestone placeholder.
   static const realScreens = {
@@ -57,6 +59,7 @@ class _Routes {
     reminders,
     billScan,
     voice,
+    insights,
   };
 }
 
@@ -224,6 +227,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.voice,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const VoiceScreen(),
+      ),
+      GoRoute(
+        path: _Routes.insights,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const InsightsScreen(),
       ),
       // Every remaining "More" entry resolves to a milestone placeholder until
       // its feature phase lands.

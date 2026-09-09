@@ -113,12 +113,7 @@ const kMoreEntries = <MoreEntry>[
     menu: FeatureMenu.billScan,
   ),
   MoreEntry('Voice', Icons.mic_none, '/voice'),
-  MoreEntry(
-    'AI Insights',
-    Icons.auto_awesome_outlined,
-    '/insights',
-    phase: 'M15',
-  ),
+  MoreEntry('Insights', Icons.insights_outlined, '/insights'),
   MoreEntry('Search', Icons.search, '/search', phase: 'M8'),
   MoreEntry('Settings', Icons.settings_outlined, '/settings', phase: 'M3'),
 ];
