@@ -281,8 +281,11 @@ class _ModeSwitcher extends StatelessWidget {
       );
     }
     final toSignUp = mode == _Mode.signIn;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    // Wrap, not Row — the prompt + button don't fit one line on a small phone
+    // or at a large text scale.
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text(
           toSignUp ? 'New to FinRoot?' : 'Already have an account?',

@@ -41,12 +41,25 @@ class TrackerProgress extends StatelessWidget {
       children: [
         Row(
           children: [
-            AmountText.money(t.spent, signed: false),
-            Text(
-              ' of ${t.tracker.budget!.formatShort()}',
-              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            Flexible(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(child: AmountText.money(t.spent, signed: false)),
+                  Flexible(
+                    child: Text(
+                      ' of ${t.tracker.budget!.formatShort()}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: tt.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const Spacer(),
+            const SizedBox(width: AppSpacing.sm),
             Text(
               '${t.utilization}%',
               style: tt.labelMedium?.copyWith(color: barColor),
@@ -61,8 +74,9 @@ class TrackerProgress extends StatelessWidget {
             minHeight: compact ? 5 : 7,
             backgroundColor: scheme.surfaceContainerHighest,
             valueColor: AlwaysStoppedAnimation(barColor),
-            semanticsLabel: 'Spent against budget',
-            semanticsValue: '${t.utilization}%',
+            // The real utilisation goes in the label (it can exceed 100% when
+            // over budget); `semanticsValue` must parse as a 0–100% progress.
+            semanticsLabel: 'Spent ${t.utilization}% of budget',
           ),
         ),
         if (!compact) ...[

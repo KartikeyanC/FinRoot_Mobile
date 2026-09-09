@@ -164,7 +164,7 @@ class _AccountTile extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
-            AmountText.money(balance, signed: false),
+            Flexible(child: AmountText.money(balance, signed: false)),
             if (canWrite)
               PopupMenuButton<String>(
                 onSelected: (value) {

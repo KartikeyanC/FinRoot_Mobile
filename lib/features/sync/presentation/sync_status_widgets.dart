@@ -145,7 +145,14 @@ class SyncStatusChip extends ConsumerWidget {
               child: CircularProgressIndicator(strokeWidth: 2, color: color),
             ),
           const SizedBox(width: AppSpacing.xs),
-          Text(label, style: t?.copyWith(color: color)),
+          Flexible(
+            child: Text(
+              label,
+              style: t?.copyWith(color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
