@@ -26,7 +26,11 @@ class AmountInputField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return TextFormField(
+    // The field carries no visible label by design (amount-first). Give a
+    // screen reader one anyway (WCAG 3.3.2 / 4.1.2).
+    return Semantics(
+      label: 'Amount in $currency',
+      child: TextFormField(
       controller: controller,
       autofocus: autofocus,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -65,6 +69,7 @@ class AmountInputField extends StatelessWidget {
         errorMaxLines: 2,
       ),
       validator: validator,
+      ),
     );
   }
 }

@@ -30,13 +30,21 @@ class TwoPane extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(width: AppBreakpoints.listPaneWidth, child: list),
+        // Traversal (keyboard / switch access) runs the whole list, then the
+        // whole detail — never interleaved (WCAG 2.4.3 Focus Order).
+        FocusTraversalGroup(
+          child: SizedBox(width: AppBreakpoints.listPaneWidth, child: list),
+        ),
         VerticalDivider(width: 1, color: scheme.outlineVariant),
         Expanded(
-          child:
-              detail ??
-              placeholder ??
-              const PaneWaiting(message: 'Select an item to see its details.'),
+          child: FocusTraversalGroup(
+            child:
+                detail ??
+                placeholder ??
+                const PaneWaiting(
+                  message: 'Select an item to see its details.',
+                ),
+          ),
         ),
       ],
     );

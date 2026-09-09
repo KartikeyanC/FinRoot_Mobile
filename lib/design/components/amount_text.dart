@@ -88,11 +88,28 @@ class AmountText extends StatelessWidget {
       AmountSize.hero => AppTypography.moneyHero,
     }.copyWith(color: resolved);
 
+    // A screen reader would otherwise read "minus rupee sign 1,234.50"; give it
+    // the direction as a word and the plain magnitude (WCAG 1.3.1 — the
+    // meaning colour + sign carry must survive without them).
+    final spoken =
+        semanticLabel ??
+        () {
+          final magnitude = MoneyFormat.money(display.abs(), currency: currency);
+          return switch (type) {
+            TxnType.income => 'Income $magnitude',
+            TxnType.expense => 'Expense $magnitude',
+            TxnType.transfer => 'Transfer $magnitude',
+            null => magnitude,
+          };
+        }();
+
     return Text(
       text,
       style: style,
-      semanticsLabel: semanticLabel,
-      maxLines: 1,
+      semanticsLabel: spoken,
+      // Hero figures may wrap rather than clip when text is scaled up — a
+      // truncated balance is worse than two lines (WCAG 1.4.4 / 1.4.10).
+      maxLines: size == AmountSize.hero ? 2 : 1,
       overflow: TextOverflow.ellipsis,
     );
   }

@@ -28,7 +28,10 @@ class SyncStatusBanner extends ConsumerWidget {
         ? scheme.onErrorContainer
         : scheme.onSurface;
 
-    return Material(
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Material(
       color: background,
       child: SafeArea(
         bottom: false,
@@ -64,7 +67,7 @@ class SyncStatusBanner extends ConsumerWidget {
                       ref.read(syncEngineProvider.notifier).retryFailed(),
                   style: TextButton.styleFrom(
                     foregroundColor: foreground,
-                    minimumSize: const Size(0, 36),
+                    minimumSize: const Size(64, 44),
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.md,
                     ),
@@ -75,6 +78,7 @@ class SyncStatusBanner extends ConsumerWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -128,6 +132,7 @@ class SyncStatusChip extends ConsumerWidget {
 
     return Semantics(
       label: 'Sync status: $label',
+      excludeSemantics: true,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

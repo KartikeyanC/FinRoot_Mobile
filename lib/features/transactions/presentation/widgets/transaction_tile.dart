@@ -23,7 +23,8 @@ class TransactionTile extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
 
-    return InkWell(
+    return MergeSemantics(
+      child: InkWell(
       onTap: onTap,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: AppSpacing.minTouchTarget),
@@ -69,6 +70,7 @@ class TransactionTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

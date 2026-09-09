@@ -167,6 +167,7 @@ class _Thumb extends StatelessWidget {
             width: 96,
             height: 96,
             fit: BoxFit.cover,
+            semanticLabel: 'Receipt photo',
             errorBuilder: (_, _, _) => Container(
               width: 96,
               height: 96,
@@ -180,6 +181,7 @@ class _Thumb extends StatelessWidget {
           right: -6,
           child: IconButton(
             icon: const Icon(Icons.cancel, size: 20),
+            tooltip: 'Remove photo',
             style: IconButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.surface,
             ),
@@ -343,6 +345,7 @@ class _ItemCard extends StatelessWidget {
             const SizedBox(width: AppSpacing.sm),
             AmountText.money(row.amount, signed: false),
             IconButton(
+              tooltip: 'Remove item',
               icon: const Icon(Icons.close, size: 20),
               onPressed: onRemove,
             ),
@@ -373,6 +376,7 @@ class _TaxStrip extends StatelessWidget {
                 Expanded(child: Text(rows[i].name, style: tt.bodyMedium)),
                 Text(rows[i].amount.format(), style: tt.bodyMedium),
                 IconButton(
+                  tooltip: 'Remove tax line',
                   icon: const Icon(Icons.close, size: 18),
                   visualDensity: VisualDensity.compact,
                   onPressed: () => onRemove(rows[i].id),

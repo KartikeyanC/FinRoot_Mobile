@@ -16,7 +16,7 @@ class LoadingView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(),
+          CircularProgressIndicator(semanticsLabel: label ?? 'Loading'),
           if (label != null) ...[
             const SizedBox(height: AppSpacing.md),
             Text(label!, style: Theme.of(context).textTheme.bodyMedium),
@@ -92,7 +92,10 @@ class ErrorView extends StatelessWidget {
   Widget build(BuildContext context) {
     final Failure failure = mapError(error, stackTrace);
     final t = Theme.of(context).textTheme;
-    return Center(
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
@@ -119,6 +122,7 @@ class ErrorView extends StatelessWidget {
             ],
           ],
         ),
+      ),
       ),
     );
   }

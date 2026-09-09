@@ -169,6 +169,7 @@ class _GoalFormSheetState extends ConsumerState<_GoalFormSheet> {
                     suffixIcon: _targetDate == null
                         ? null
                         : IconButton(
+                            tooltip: 'Clear target date',
                             icon: const Icon(Icons.close),
                             onPressed: () =>
                                 setState(() => _targetDate = null),

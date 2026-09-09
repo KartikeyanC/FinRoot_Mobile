@@ -307,7 +307,10 @@ class _ErrorBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: scheme.errorContainer,
@@ -325,6 +328,7 @@ class _ErrorBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }

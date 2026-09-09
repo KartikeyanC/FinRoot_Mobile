@@ -147,6 +147,7 @@ class _BottomItem extends StatelessWidget {
       button: true,
       selected: selected,
       label: destination.label,
+      excludeSemantics: true,
       child: InkResponse(
         onTap: onTap,
         radius: 32,

@@ -234,6 +234,7 @@ class _EntryRow extends ConsumerWidget {
               AmountText.money(entry.amount, signed: false),
               if (canWrite)
                 IconButton(
+                  tooltip: 'Delete entry',
                   icon: const Icon(Icons.delete_outline, size: 20),
                   onPressed: () async {
                     final messenger = ScaffoldMessenger.of(context);

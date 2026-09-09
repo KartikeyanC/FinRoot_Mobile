@@ -61,6 +61,8 @@ class TrackerProgress extends StatelessWidget {
             minHeight: compact ? 5 : 7,
             backgroundColor: scheme.surfaceContainerHighest,
             valueColor: AlwaysStoppedAnimation(barColor),
+            semanticsLabel: 'Spent against budget',
+            semanticsValue: '${t.utilization}%',
           ),
         ),
         if (!compact) ...[
