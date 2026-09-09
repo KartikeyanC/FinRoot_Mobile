@@ -1,70 +1,54 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/providers/providers.dart';
 import '../../../design/design.dart';
+import '../../sync/application/sync_engine.dart';
+import 'widgets/home_greeting.dart';
+import 'widgets/home_placeholders.dart';
+import 'widgets/home_quick_actions.dart';
+import 'widgets/home_recent_activity.dart';
+import 'widgets/home_snapshot_card.dart';
+import 'widgets/home_trackers_section.dart';
 
-/// Home — the mobile financial feed. M6 builds the real thing (snapshot, quick
-/// actions, recent activity, trackers, upcoming, insights). M2 only proves the
-/// shell + design system render.
+/// Home — the mobile financial feed (M6). Everything reads from the local
+/// cache, so the feed paints immediately and works offline; pull-to-refresh
+/// forces a sync. It is a feed, not a shrunk web dashboard: a greeting and
+/// trustworthy sync state, one honest snapshot, fast capture, then recent
+/// activity, trackers and what's coming.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(currentUserProvider);
-    final greeting = _greeting();
-
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.screenGutter,
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: () =>
+              ref.read(syncEngineProvider.notifier).syncNow(force: true),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenGutter,
+              AppSpacing.lg,
+              AppSpacing.screenGutter,
+              AppSpacing.huge,
+            ),
+            children: const [
+              HomeGreeting(),
+              SizedBox(height: AppSpacing.xl),
+              HomeSnapshotCard(),
+              SizedBox(height: AppSpacing.lg),
+              HomeQuickActions(),
+              HomeRecentActivity(),
+              HomeTrackersSection(),
+              SizedBox(height: AppSpacing.xl),
+              HomeUpcomingCard(),
+              SizedBox(height: AppSpacing.md),
+              HomeInsightsCard(),
+            ],
           ),
-          children: [
-            const SizedBox(height: AppSpacing.lg),
-            Text(greeting, style: Theme.of(context).textTheme.bodyMedium),
-            Text(
-              user?.email ?? 'Welcome',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Available',
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  const AmountText(0, size: AmountSize.hero, signed: false),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'Balances appear once accounts sync (M8).',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SectionHeader('Recent'),
-            const EmptyView(
-              title: 'No transactions yet',
-              message: 'Tap + to record your first expense.',
-              icon: Icons.receipt_long_outlined,
-            ),
-          ],
         ),
       ),
     );
-  }
-
-  String _greeting() {
-    final h = DateTime.now().hour;
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
   }
 }

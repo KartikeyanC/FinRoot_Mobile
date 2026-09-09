@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../design/tokens/app_breakpoints.dart';
 import '../design/tokens/app_spacing.dart';
+import '../features/sync/presentation/sync_status_widgets.dart';
 import 'destinations.dart';
 import 'quick_add_entry.dart';
 
@@ -41,14 +42,26 @@ class AppShell extends StatelessWidget {
               destinations: destinations,
             ),
             const VerticalDivider(width: 1),
-            Expanded(child: navigationShell),
+            Expanded(
+              child: Column(
+                children: [
+                  const SyncStatusBanner(),
+                  Expanded(child: navigationShell),
+                ],
+              ),
+            ),
           ],
         ),
       );
     }
 
     return Scaffold(
-      body: navigationShell,
+      body: Column(
+        children: [
+          const SyncStatusBanner(),
+          Expanded(child: navigationShell),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'quick-add-fab',
         tooltip: 'Add a transaction',
