@@ -76,14 +76,12 @@ const kMoreEntries = <MoreEntry>[
     Icons.pie_chart_outline,
     '/budget',
     menu: FeatureMenu.budget,
-    phase: 'M10',
   ),
   MoreEntry(
     'Goals',
     Icons.flag_outlined,
     '/goals',
     menu: FeatureMenu.goals,
-    phase: 'M10',
   ),
   MoreEntry(
     'Investments',

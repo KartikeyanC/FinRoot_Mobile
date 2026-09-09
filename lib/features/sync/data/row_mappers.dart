@@ -64,8 +64,8 @@ abstract final class RowMappers {
       tenantId: Value(r['tenant_id'] as String),
       name: Value(r['name'] as String),
       type: Value(r['type'] as String),
-      startDate: Value(_dt(r['start_date'])),
-      endDate: Value(_dtn(r['end_date'])),
+      startDate: Value(_date(r['start_date'])),
+      endDate: Value(_daten(r['end_date'])),
       budget: Value(_decn(r['budget'])),
       description: Value(r['description'] as String?),
       status: Value((r['status'] as String?) ?? 'active'),
@@ -83,7 +83,7 @@ abstract final class RowMappers {
       bucket: Value(r['bucket'] as String),
       allocated: Value(_dec(r['allocated'])),
       period: Value((r['period'] as String?) ?? 'monthly'),
-      periodStart: Value(_dt(r['period_start'])),
+      periodStart: Value(_date(r['period_start'])),
       serverUpdatedAt: Value(_dt(r['updated_at'])),
       syncStatus: const Value(LocalSyncStatus.synced),
       pendingMutationId: const Value(null),
@@ -100,7 +100,7 @@ abstract final class RowMappers {
       targetAmount: Value(_dec(r['target_amount'])),
       currentAmount: Value(_dec(r['current_amount'])),
       currency: Value((r['currency'] as String?) ?? 'INR'),
-      targetDate: Value(_dtn(r['target_date'])),
+      targetDate: Value(_daten(r['target_date'])),
       status: Value((r['status'] as String?) ?? 'active'),
       serverUpdatedAt: Value(_dt(r['updated_at'])),
       syncStatus: const Value(LocalSyncStatus.synced),
@@ -115,4 +115,15 @@ abstract final class RowMappers {
   static DateTime _dt(Object? v) => DateTime.parse(v! as String).toUtc();
   static DateTime? _dtn(Object? v) =>
       v == null ? null : DateTime.parse(v as String).toUtc();
+
+  /// A Postgres `date` column (`period_start`, `start_date`, `end_date`,
+  /// `target_date`) comes back as a bare `YYYY-MM-DD`. `DateTime.parse` reads
+  /// that as *local* midnight, so `.toUtc()` would shift it across a day
+  /// boundary in any non-UTC zone. Pin it to a UTC calendar date instead.
+  static DateTime _date(Object? v) {
+    final p = DateTime.parse(v! as String);
+    return DateTime.utc(p.year, p.month, p.day);
+  }
+
+  static DateTime? _daten(Object? v) => v == null ? null : _date(v);
 }
