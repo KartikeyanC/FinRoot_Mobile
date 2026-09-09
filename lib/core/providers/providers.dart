@@ -41,6 +41,14 @@ final currentUserProvider = Provider<User?>(
   name: 'currentUser',
 );
 
+/// The signed-in user's id, or null. A small seam so writers (M7 Quick Add)
+/// can depend on the id without pulling in the whole [User] — and can be
+/// overridden directly in tests.
+final currentUserIdProvider = Provider<String?>(
+  (ref) => ref.watch(currentUserProvider)?.id,
+  name: 'currentUserId',
+);
+
 final isSignedInProvider = Provider<bool>(
   (ref) => ref.watch(sessionProvider) != null,
   name: 'isSignedIn',

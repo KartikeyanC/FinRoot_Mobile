@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../design/design.dart';
 import '../../../../navigation/quick_add_entry.dart';
+import '../../../quick_add/domain/quick_add_draft.dart';
 
 /// Three fast paths into capture, straight from the feed. Quick Add is the
 /// highest-priority interaction (brief §7); the centre FAB is always there, but
@@ -28,14 +29,14 @@ class HomeQuickActions extends StatelessWidget {
           label: 'Income',
           icon: Icons.north_east_rounded,
           color: finance.income,
-          onTap: () => openQuickAdd(context),
+          onTap: () => openQuickAdd(context, kind: QuickAddKind.income),
         ),
         const SizedBox(width: AppSpacing.md),
         _Action(
           label: 'Transfer',
           icon: Icons.swap_horiz_rounded,
           color: finance.transfer,
-          onTap: () => openQuickAdd(context),
+          onTap: () => openQuickAdd(context, kind: QuickAddKind.transfer),
         ),
       ],
     );
