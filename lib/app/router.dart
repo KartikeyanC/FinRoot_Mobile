@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/providers/providers.dart';
 import '../design/components/placeholder_screen.dart';
+import '../features/accounts/presentation/accounts_screen.dart';
 import '../features/auth/application/password_recovery.dart';
 import '../features/auth/presentation/auth_screen.dart';
 import '../features/auth/presentation/reset_password_screen.dart';
@@ -25,6 +26,10 @@ class _Routes {
   static const resetPassword = '/reset-password';
   static const noWorkspace = '/no-workspace';
   static const settings = '/settings';
+  static const accounts = '/accounts';
+
+  /// "More" entries that have a real screen rather than a milestone placeholder.
+  static const realScreens = {settings, accounts};
 }
 
 /// The app router.
@@ -141,10 +146,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const SettingsScreen(),
       ),
+      GoRoute(
+        path: _Routes.accounts,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const AccountsScreen(),
+      ),
       // Every remaining "More" entry resolves to a milestone placeholder until
       // its feature phase lands.
       for (final e in kMoreEntries)
-        if (e.route != _Routes.settings)
+        if (!_Routes.realScreens.contains(e.route))
           GoRoute(
             path: e.route,
             parentNavigatorKey: _rootKey,

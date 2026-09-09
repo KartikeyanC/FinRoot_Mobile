@@ -70,7 +70,6 @@ const kMoreEntries = <MoreEntry>[
     'Accounts',
     Icons.account_balance_wallet_outlined,
     '/accounts',
-    phase: 'M8',
   ),
   MoreEntry(
     'Budget',

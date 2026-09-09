@@ -88,10 +88,8 @@ void main() {
 
     expect(find.text('7'), findsOneWidget);
     expect(find.text('transactions recorded'), findsOneWidget);
-    expect(
-      find.textContaining('Balances and spending totals'),
-      findsOneWidget,
-    );
+    // No accounts in this scope → no money hero, just the nudge.
+    expect(find.textContaining('Add accounts to see balances'), findsOneWidget);
   });
 
   testWidgets('empty recent activity shows a useful prompt, no "See all"', (

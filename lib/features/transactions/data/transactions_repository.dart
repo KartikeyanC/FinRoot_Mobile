@@ -42,6 +42,59 @@ class TransactionsRepository {
     );
   }
 
+  /// One transaction by id, live. Null once it is gone (a confirmed delete).
+  Stream<TransactionEntity?> watchById(String id) {
+    final query = _db.select(_db.localTransactions)
+      ..where((t) => t.id.equals(id))
+      ..limit(1);
+    return query.watch().map(
+      (rows) => rows.isEmpty ? null : _toEntity(rows.first),
+    );
+  }
+
+  /// The ledger (M8): all cached transactions for [tenantId], newest first,
+  /// optionally narrowed by [type], a text [search] over note + category, and
+  /// an [accountId] (either side of a transfer). Capped at [limit] — the cache
+  /// itself is bounded to ~180 days (M5 `DeltaPuller`).
+  Stream<List<TransactionEntity>> watchLedger(
+    String tenantId, {
+    TxnType? type,
+    String? search,
+    String? accountId,
+    int limit = 300,
+  }) {
+    final q = search?.trim().toLowerCase();
+    final query = _db.select(_db.localTransactions)
+      ..where((t) {
+        var cond =
+            t.tenantId.equals(tenantId) &
+            t.syncStatus.equalsValue(LocalSyncStatus.pendingDelete).not();
+        if (type != null) {
+          cond = cond & t.type.equals(type.wire);
+        }
+        if (accountId != null) {
+          cond = cond &
+              (t.accountId.equals(accountId) |
+                  t.transferToAccountId.equals(accountId));
+        }
+        if (q != null && q.isNotEmpty) {
+          final like = '%$q%';
+          cond = cond &
+              (t.description.lower().like(like) |
+                  t.category.lower().like(like));
+        }
+        return cond;
+      })
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.occurredAt),
+        (t) => OrderingTerm.desc(t.cachedAt),
+      ])
+      ..limit(limit);
+    return query.watch().map(
+      (rows) => rows.map(_toEntity).toList(growable: false),
+    );
+  }
+
   /// How many transactions the cache holds for [tenantId] with an `occurred_at`
   /// on or after [since]. A count of records — not a sum of money. The cache's
   /// 180-day transaction window (M5 `DeltaPuller`) covers any month-to-date or
@@ -70,6 +123,7 @@ class TransactionsRepository {
       description: r.description,
       trackerId: r.trackerId,
       accountId: r.accountId,
+      transferToAccountId: r.transferToAccountId,
       paymentMode: r.paymentMode,
       syncState: r.syncStatus,
     );

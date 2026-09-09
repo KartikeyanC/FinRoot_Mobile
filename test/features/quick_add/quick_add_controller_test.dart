@@ -139,4 +139,65 @@ void main() {
       throwsA(isA<AuthFailure>()),
     );
   });
+
+  test('editing queues an update and keeps the same id', () async {
+    final c = container();
+    final id = await c.read(quickAddControllerProvider).submit(
+      kind: QuickAddKind.expense,
+      amount: Money.parse('10.00'),
+      occurredAt: DateTime.utc(2026, 9, 9),
+      category: 'Other',
+    );
+
+    final same = await c.read(quickAddControllerProvider).submit(
+      kind: QuickAddKind.expense,
+      amount: Money.parse('12.50'),
+      occurredAt: DateTime.utc(2026, 9, 9),
+      category: 'Food & Dining',
+      editingId: id,
+    );
+
+    expect(same, id);
+    final row = await rowById(id);
+    expect(row.syncStatus, LocalSyncStatus.pendingUpdate);
+    expect(row.category, 'Food & Dining');
+    expect(row.amount, Money.parse('12.50').amount);
+
+    final ops = (await db.syncOutboxDao.pendingBatch()).map((e) => e.operation);
+    expect(ops, [
+      OutboxOperation.createTransaction,
+      OutboxOperation.updateTransaction,
+    ]);
+  });
+
+  test('deleteTransaction flips the row to pendingDelete', () async {
+    final c = container();
+    final id = await c.read(quickAddControllerProvider).submit(
+      kind: QuickAddKind.expense,
+      amount: Money.parse('10.00'),
+      occurredAt: DateTime.utc(2026, 9, 9),
+      category: 'Other',
+    );
+
+    await c.read(quickAddControllerProvider).deleteTransaction(id);
+
+    final row = await rowById(id);
+    expect(row.syncStatus, LocalSyncStatus.pendingDelete);
+  });
+
+  test('a viewer cannot delete', () async {
+    final owner = container();
+    final id = await owner.read(quickAddControllerProvider).submit(
+      kind: QuickAddKind.expense,
+      amount: Money.parse('10.00'),
+      occurredAt: DateTime.utc(2026, 9, 9),
+      category: 'Other',
+    );
+
+    final viewer = container(role: WorkspaceRole.viewer);
+    await expectLater(
+      viewer.read(quickAddControllerProvider).deleteTransaction(id),
+      throwsA(isA<PermissionFailure>()),
+    );
+  });
 }

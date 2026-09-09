@@ -15,6 +15,7 @@ class TransactionEntity {
     this.description,
     this.trackerId,
     this.accountId,
+    this.transferToAccountId,
     this.paymentMode,
     this.syncState = LocalSyncStatus.synced,
   });
@@ -26,7 +27,12 @@ class TransactionEntity {
   final DateTime occurredAt;
   final String? description;
   final String? trackerId;
+
+  /// Paying account (any type); for a transfer this is the SOURCE.
   final String? accountId;
+
+  /// Destination account — set only for a transfer.
+  final String? transferToAccountId;
   final String? paymentMode;
 
   /// Where this row stands relative to the server — drives the pending / failed

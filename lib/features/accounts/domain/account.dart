@@ -1,4 +1,5 @@
 import '../../../core/money/money.dart';
+import 'account_draft.dart';
 
 /// An account as the UI needs it. The M4 cache holds a deliberate subset of the
 /// web `accounts` table — enough to name and pick an account, not the full
@@ -26,13 +27,5 @@ class AccountEntity {
   final String? icon;
 
   /// Human label for the type, e.g. `Bank` · `Credit card` · `Cash`.
-  String get typeLabel => switch (type) {
-    'bank' => 'Bank',
-    'debit' => 'Debit card',
-    'credit' => 'Credit card',
-    'wallet' => 'Wallet',
-    'cash' => 'Cash',
-    'investment' => 'Investment',
-    _ => 'Other',
-  };
+  String get typeLabel => accountTypeLabel(type);
 }

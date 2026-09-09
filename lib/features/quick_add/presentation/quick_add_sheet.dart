@@ -8,21 +8,32 @@ import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../accounts/application/accounts_providers.dart';
 import '../../accounts/domain/account.dart';
+import '../../transactions/domain/transaction.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/quick_add_controller.dart';
 import '../domain/quick_add_draft.dart';
 import 'widgets/amount_input_field.dart';
 
-/// Quick Add (brief §7) — amount-first Expense / Income / Transfer capture.
+/// Quick Add (brief §7) — amount-first Expense / Income / Transfer capture, and
+/// (M8) the edit form for an existing transaction.
 ///
 /// Save writes locally only (cache + outbox in one transaction, M5). The sheet
-/// closes immediately; the new row appears on Home with a "Pending" marker and
-/// syncs when it can. Presented as a bottom sheet on a phone, a dialog on a
-/// tablet (see `openQuickAdd`).
+/// closes immediately; a new row shows on Home / the ledger with its "Pending"
+/// marker and syncs when it can.
 class QuickAddSheet extends ConsumerStatefulWidget {
-  const QuickAddSheet({super.key, this.initialKind = QuickAddKind.expense});
+  const QuickAddSheet({
+    super.key,
+    this.initialKind = QuickAddKind.expense,
+    this.editing,
+  });
 
   final QuickAddKind initialKind;
+
+  /// When set, the sheet edits this transaction instead of creating one. The
+  /// kind is then fixed (expense/income/transfer have different shapes).
+  final TransactionEntity? editing;
+
+  bool get isEditing => editing != null;
 
   @override
   ConsumerState<QuickAddSheet> createState() => _QuickAddSheetState();
@@ -33,15 +44,39 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
   final _amount = TextEditingController();
   final _note = TextEditingController();
 
-  late QuickAddKind _kind = widget.initialKind;
+  late QuickAddKind _kind;
   String? _category;
   String? _paymentMode;
+  String? _accountId;
   String? _fromAccountId;
   String? _toAccountId;
-  DateTime _occurredAt = DateTime.now();
+  late DateTime _occurredAt;
 
   bool _busy = false;
   Failure? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.editing;
+    if (e != null) {
+      _kind = QuickAddKind.values.byName(e.type.name);
+      _amount.text = e.amount.amount.toString();
+      _note.text = e.description ?? '';
+      _occurredAt = e.occurredAt.toLocal();
+      _paymentMode = e.paymentMode;
+      _category = _kind == QuickAddKind.transfer ? null : e.category;
+      if (_kind == QuickAddKind.transfer) {
+        _fromAccountId = e.accountId;
+        _toAccountId = e.transferToAccountId;
+      } else {
+        _accountId = e.accountId;
+      }
+    } else {
+      _kind = widget.initialKind;
+      _occurredAt = DateTime.now();
+    }
+  }
 
   @override
   void dispose() {
@@ -54,7 +89,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     if (kind == _kind) return;
     setState(() {
       _kind = kind;
-      _category = null; // category lists differ per kind
+      _category = null;
       _error = null;
     });
   }
@@ -64,13 +99,12 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: _occurredAt,
+      initialDate: _occurredAt.isAfter(now) ? now : _occurredAt,
       firstDate: DateTime(now.year - 5),
       lastDate: now,
     );
     if (picked == null) return;
     setState(() {
-      // keep the current wall-clock time, just move the day
       _occurredAt = DateTime(
         picked.year,
         picked.month,
@@ -81,7 +115,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     });
   }
 
-  Future<void> _submit(List<AccountEntity> accounts) async {
+  Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     setState(() => _error = null);
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -100,12 +134,18 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
             category: _category,
             note: _note.text,
             paymentMode: _paymentMode,
+            accountId: _accountId,
             fromAccountId: _fromAccountId,
             toAccountId: _toAccountId,
+            editingId: widget.editing?.id,
           );
       navigator.pop();
       messenger.showSnackBar(
-        SnackBar(content: Text('${_kind.label} saved')),
+        SnackBar(
+          content: Text(
+            widget.isEditing ? 'Changes saved' : '${_kind.label} saved',
+          ),
+        ),
       );
     } on Failure catch (failure) {
       if (!mounted) return;
@@ -133,35 +173,38 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Add', style: t.titleLarge),
+          Text(
+            widget.isEditing ? 'Edit ${_kind.label.toLowerCase()}' : 'Add',
+            style: t.titleLarge,
+          ),
           const SizedBox(height: AppSpacing.lg),
           if (!canWrite)
             _ViewOnlyNote()
           else ...[
-            SegmentedButton<QuickAddKind>(
-              segments: const [
-                ButtonSegment(
-                  value: QuickAddKind.expense,
-                  label: Text('Expense'),
-                  icon: Icon(Icons.south_west_rounded),
-                ),
-                ButtonSegment(
-                  value: QuickAddKind.income,
-                  label: Text('Income'),
-                  icon: Icon(Icons.north_east_rounded),
-                ),
-                ButtonSegment(
-                  value: QuickAddKind.transfer,
-                  label: Text('Transfer'),
-                  icon: Icon(Icons.swap_horiz_rounded),
-                ),
-              ],
-              selected: {_kind},
-              onSelectionChanged: _busy
-                  ? null
-                  : (s) => _selectKind(s.first),
-            ),
-            const SizedBox(height: AppSpacing.xl),
+            if (!widget.isEditing) ...[
+              SegmentedButton<QuickAddKind>(
+                segments: const [
+                  ButtonSegment(
+                    value: QuickAddKind.expense,
+                    label: Text('Expense'),
+                    icon: Icon(Icons.south_west_rounded),
+                  ),
+                  ButtonSegment(
+                    value: QuickAddKind.income,
+                    label: Text('Income'),
+                    icon: Icon(Icons.north_east_rounded),
+                  ),
+                  ButtonSegment(
+                    value: QuickAddKind.transfer,
+                    label: Text('Transfer'),
+                    icon: Icon(Icons.swap_horiz_rounded),
+                  ),
+                ],
+                selected: {_kind},
+                onSelectionChanged: _busy ? null : (s) => _selectKind(s.first),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+            ],
             Flexible(
               child: SingleChildScrollView(
                 child: Form(
@@ -184,10 +227,13 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
                           note: _note,
                           category: _category,
                           paymentMode: _paymentMode,
+                          accountId: _accountId,
+                          accounts: accounts,
                           occurredAt: _occurredAt,
                           onCategory: (v) => setState(() => _category = v),
                           onPaymentMode: (v) =>
                               setState(() => _paymentMode = v),
+                          onAccount: (v) => setState(() => _accountId = v),
                           onPickDate: _pickDate,
                         ),
                 ),
@@ -199,13 +245,17 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
             ],
             const SizedBox(height: AppSpacing.lg),
             FilledButton(
-              onPressed: _busy ? null : () => _submit(accounts),
+              onPressed: _busy ? null : _submit,
               child: _busy
                   ? const SizedBox.square(
                       dimension: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text('Save ${_kind.label.toLowerCase()}'),
+                  : Text(
+                      widget.isEditing
+                          ? 'Save changes'
+                          : 'Save ${_kind.label.toLowerCase()}',
+                    ),
             ),
           ],
         ],
@@ -223,9 +273,12 @@ class _EntryForm extends StatelessWidget {
     required this.note,
     required this.category,
     required this.paymentMode,
+    required this.accountId,
+    required this.accounts,
     required this.occurredAt,
     required this.onCategory,
     required this.onPaymentMode,
+    required this.onAccount,
     required this.onPickDate,
   });
 
@@ -234,9 +287,12 @@ class _EntryForm extends StatelessWidget {
   final TextEditingController note;
   final String? category;
   final String? paymentMode;
+  final String? accountId;
+  final List<AccountEntity> accounts;
   final DateTime occurredAt;
   final ValueChanged<String?> onCategory;
   final ValueChanged<String?> onPaymentMode;
+  final ValueChanged<String?> onAccount;
   final VoidCallback onPickDate;
 
   @override
@@ -261,8 +317,7 @@ class _EntryForm extends StatelessWidget {
               DropdownMenuItem(value: c, child: Text(c)),
           ],
           onChanged: onCategory,
-          validator: (v) =>
-              QuickAddValidators.category(v, required: true),
+          validator: (v) => QuickAddValidators.category(v, required: true),
         ),
         const SizedBox(height: AppSpacing.md),
         DropdownButtonFormField<String>(
@@ -279,6 +334,31 @@ class _EntryForm extends StatelessWidget {
           ],
           onChanged: onPaymentMode,
         ),
+        if (accounts.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          DropdownButtonFormField<String>(
+            initialValue: accounts.any((a) => a.id == accountId)
+                ? accountId
+                : null,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Account (optional)',
+              prefixIcon: Icon(Icons.account_balance_outlined),
+            ),
+            items: [
+              const DropdownMenuItem<String>(child: Text('Not set')),
+              for (final a in accounts)
+                DropdownMenuItem(
+                  value: a.id,
+                  child: Text(
+                    '${a.name} · ${a.typeLabel}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: onAccount,
+          ),
+        ],
         const SizedBox(height: AppSpacing.md),
         _DateField(occurredAt: occurredAt, onTap: onPickDate),
         const SizedBox(height: AppSpacing.md),
@@ -319,8 +399,7 @@ class _TransferForm extends StatelessWidget {
         child: Text(
           'A transfer moves money between two of your accounts. This '
           'workspace has ${accounts.length == 1 ? 'only one account' : 'no accounts'} '
-          'synced yet — add accounts on the web app (mobile support arrives '
-          'in M8).',
+          'synced yet — add one with the Accounts screen first.',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -342,7 +421,7 @@ class _TransferForm extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.lg),
         DropdownButtonFormField<String>(
-          initialValue: fromId,
+          initialValue: accounts.any((a) => a.id == fromId) ? fromId : null,
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'From',
@@ -354,7 +433,7 @@ class _TransferForm extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         DropdownButtonFormField<String>(
-          initialValue: toId,
+          initialValue: accounts.any((a) => a.id == toId) ? toId : null,
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'To',
@@ -362,10 +441,8 @@ class _TransferForm extends StatelessWidget {
           ),
           items: accounts.map(item).toList(),
           onChanged: onTo,
-          validator: (_) => QuickAddValidators.transferAccounts(
-            fromId: fromId,
-            toId: toId,
-          ),
+          validator: (_) =>
+              QuickAddValidators.transferAccounts(fromId: fromId, toId: toId),
         ),
         const SizedBox(height: AppSpacing.md),
         _DateField(occurredAt: occurredAt, onTap: onPickDate),

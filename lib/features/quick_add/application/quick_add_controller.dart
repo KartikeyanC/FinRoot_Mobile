@@ -22,6 +22,7 @@ class QuickAddController {
 
   final Ref _ref;
 
+  /// Create, or — when [editingId] is set — update. Returns the transaction id.
   Future<String> submit({
     required QuickAddKind kind,
     required Money amount,
@@ -29,20 +30,15 @@ class QuickAddController {
     String? category,
     String? note,
     String? paymentMode,
+    String? accountId,
     String? fromAccountId,
     String? toAccountId,
+    String? editingId,
   }) async {
-    final tenantId = _ref.read(currentTenantIdProvider);
+    final tenantId = _requireTenant();
     final userId = _ref.read(currentUserIdProvider);
-    if (tenantId == null || userId == null) {
-      throw AuthFailure.sessionExpired();
-    }
-    final role = _ref.read(currentRoleProvider);
-    if (role != null && !role.canWrite) {
-      throw const PermissionFailure(
-        message: 'Your role in this workspace is view-only.',
-      );
-    }
+    if (userId == null) throw AuthFailure.sessionExpired();
+    _requireWriter();
 
     final isTransfer = kind == QuickAddKind.transfer;
     final trimmedNote = note?.trim();
@@ -55,23 +51,58 @@ class QuickAddController {
       description: (trimmedNote == null || trimmedNote.isEmpty)
           ? null
           : trimmedNote,
-      accountId: isTransfer ? fromAccountId : null,
+      accountId: isTransfer ? fromAccountId : accountId,
       paymentMode: isTransfer ? null : paymentMode,
       transferToAccountId: isTransfer ? toAccountId : null,
     );
 
-    final String id;
     try {
-      id = await _ref
-          .read(mutationEnqueuerProvider)
-          .create(tenantId, userId, draft);
+      final enqueuer = _ref.read(mutationEnqueuerProvider);
+      if (editingId != null) {
+        await enqueuer.update(tenantId, editingId, draft);
+        return _afterWrite(editingId);
+      }
+      return _afterWrite(await enqueuer.create(tenantId, userId, draft));
     } catch (error, stack) {
+      if (error is Failure) rethrow;
       throw mapError(error, stack);
     }
+  }
 
-    // The row is already safely queued; nudge the engine to push it now.
+  /// Queue a delete for [id] (the cache row is hidden until the server
+  /// confirms, so a failed delete can retry — M5 / `MutationEnqueuer`).
+  Future<void> deleteTransaction(String id) async {
+    final tenantId = _requireTenant();
+    _requireWriter();
+    try {
+      await _ref.read(mutationEnqueuerProvider).delete(tenantId, id);
+    } catch (error, stack) {
+      if (error is Failure) rethrow;
+      throw mapError(error, stack);
+    }
+    _afterWrite(id);
+  }
+
+  String _afterWrite(String id) {
+    // The row is already safely queued; nudge the engine to push it now. The
+    // summary refetches on its own once the sync completes.
     unawaited(_ref.read(syncEngineProvider.notifier).syncNow());
     return id;
+  }
+
+  String _requireTenant() {
+    final tenantId = _ref.read(currentTenantIdProvider);
+    if (tenantId == null) throw AuthFailure.sessionExpired();
+    return tenantId;
+  }
+
+  void _requireWriter() {
+    final role = _ref.read(currentRoleProvider);
+    if (role != null && !role.canWrite) {
+      throw const PermissionFailure(
+        message: 'Your role in this workspace is view-only.',
+      );
+    }
   }
 }
 
