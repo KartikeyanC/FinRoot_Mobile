@@ -1,0 +1,19 @@
+# Android release signing — M20.
+#
+# Copy to android/key.properties (git-ignored) on the release machine and fill
+# in. Never commit the real file or the .jks keystore.
+#
+# Create the upload keystore once:
+#   keytool -genkey -v -keystore finroot-upload.jks -storetype JKS \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias finroot-upload
+#
+# Then enroll in Play App Signing (Google holds the app signing key; this is the
+# UPLOAD key). See docs/RELEASE.md.
+
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=finroot-upload
+# Path is resolved from the android/ directory. Keep the keystore OUTSIDE the
+# repo tree in CI; a local path such as ../../../finroot-upload.jks is fine for
+# a workstation.
+storeFile=../finroot-upload.jks

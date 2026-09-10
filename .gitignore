@@ -49,6 +49,18 @@ app.*.map.json
 /config/*.json
 !/config/*.example.json
 
+# FinRoot — release signing (M20). Never commit keystores or credentials.
+# Commit only android/key.properties.example and ios/ExportOptions.plist.example.
+/android/key.properties
+*.jks
+*.keystore
+/ios/ExportOptions.plist
+!/ios/ExportOptions.plist.example
+*.mobileprovision
+*.p12
+*.p8
+/ios/Runner/GoogleService-Info.plist
+
 # Local tooling
 /.flutter-sdk
 *.log

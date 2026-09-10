@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  iOS App Store export options (M20). Copy to ios/ExportOptions.plist (git-ignored)
+  on the Mac that builds the release and fill in the team + profile.
+
+  Used by:
+    flutter build ipa --release \
+      --dart-define-from-file=config/prod.json \
+      --export-options-plist=ios/ExportOptions.plist
+
+  Xcode 15/16 accepts "app-store-connect"; older toolchains use "app-store".
+  DEVICE-UNVERIFIED — no macOS/iOS toolchain on the build machine (M2 I-1).
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+
+	<key>teamID</key>
+	<string>REPLACE_WITH_10_CHAR_TEAM_ID</string>
+
+	<key>signingStyle</key>
+	<string>manual</string>
+
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.finroot.mobile</key>
+		<string>FinRoot App Store</string>
+	</dict>
+
+	<key>signingCertificate</key>
+	<string>Apple Distribution</string>
+
+	<!-- Upload dSYMs so App Store Connect can symbolicate crash reports. -->
+	<key>uploadSymbols</key>
+	<true/>
+	<key>stripSwiftSymbols</key>
+	<true/>
+
+	<!-- Managed by ITSAppUsesNonExemptEncryption in Info.plist — see
+	     docs/COMPLIANCE.md. Left out here so the Info.plist value wins. -->
+	<key>destination</key>
+	<string>export</string>
+</dict>
+</plist>

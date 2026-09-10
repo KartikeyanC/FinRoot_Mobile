@@ -24,6 +24,14 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- Export compliance (M20, R-M18-3). The app bundles AES-256 local-database
+	     encryption (SQLite3MultipleCiphers, M4) in addition to HTTPS/ATS, so this
+	     is `true` — the honest answer is that non-exempt encryption is present.
+	     The mass-market self-classification filing and the exemption analysis are
+	     in docs/COMPLIANCE.md and REQUIRE LEGAL SIGN-OFF before first submission.
+	     Set to `false` only if counsel confirms an EAR exemption applies. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<true/>
 	<key>CFBundleName</key>
 	<string>finroot_mobile</string>
 	<key>CFBundlePackageType</key>
