@@ -35,6 +35,11 @@ class TrackerProgress extends StatelessWidget {
     final barColor = t.isOverBudget
         ? finance.expense
         : (t.utilization >= 85 ? finance.warning : scheme.primary);
+    // The bar is a fill (brand green); the % label is text, so on-track uses
+    // the contrast-safe brandText instead.
+    final labelColor = barColor == scheme.primary
+        ? finance.brandText
+        : barColor;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -62,7 +67,7 @@ class TrackerProgress extends StatelessWidget {
             const SizedBox(width: AppSpacing.sm),
             Text(
               '${t.utilization}%',
-              style: tt.labelMedium?.copyWith(color: barColor),
+              style: tt.labelMedium?.copyWith(color: labelColor),
             ),
           ],
         ),

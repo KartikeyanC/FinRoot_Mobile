@@ -177,6 +177,12 @@ abstract final class AppTheme {
         clipBehavior: Clip.antiAlias,
       ),
       textSelectionTheme: TextSelectionThemeData(cursorColor: brandText),
+      // Material's default FAB is primaryContainer (a pale mint on light);
+      // FABs are primary actions, so they carry the brand green itself.
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+      ),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: AppRadius.field),
