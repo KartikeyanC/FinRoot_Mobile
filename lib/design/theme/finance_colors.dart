@@ -17,6 +17,7 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
     required this.danger,
     required this.positiveContainer,
     required this.warningContainer,
+    required this.brandText,
   });
 
   final Color income;
@@ -28,6 +29,10 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
   final Color positiveContainer;
   final Color warningContainer;
 
+  /// Brand green for text and icons (not fills): [AppColors.seed] on light,
+  /// [AppColors.brandTextDark] on dark so it clears 4.5:1.
+  final Color brandText;
+
   static const light = FinanceColors(
     income: AppColors.incomeLight,
     expense: AppColors.expenseLight,
@@ -37,6 +42,7 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
     danger: AppColors.dangerLight,
     positiveContainer: AppColors.forest100,
     warningContainer: Color(0xFFF7ECD3),
+    brandText: AppColors.seed,
   );
 
   static const dark = FinanceColors(
@@ -46,8 +52,9 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
     success: AppColors.successDark,
     warning: AppColors.warningDark,
     danger: AppColors.dangerDark,
-    positiveContainer: Color(0xFF163A2B),
+    positiveContainer: Color(0xFF163A31),
     warningContainer: Color(0xFF3A3120),
+    brandText: AppColors.brandTextDark,
   );
 
   @override
@@ -60,6 +67,7 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
     Color? danger,
     Color? positiveContainer,
     Color? warningContainer,
+    Color? brandText,
   }) {
     return FinanceColors(
       income: income ?? this.income,
@@ -70,6 +78,7 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
       danger: danger ?? this.danger,
       positiveContainer: positiveContainer ?? this.positiveContainer,
       warningContainer: warningContainer ?? this.warningContainer,
+      brandText: brandText ?? this.brandText,
     );
   }
 
@@ -93,6 +102,7 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
         other.warningContainer,
         t,
       )!,
+      brandText: Color.lerp(brandText, other.brandText, t)!,
     );
   }
 }

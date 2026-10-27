@@ -180,7 +180,7 @@ class _RecurringCard extends ConsumerWidget {
                     child: Icon(
                       Icons.notifications_active_outlined,
                       size: 16,
-                      color: scheme.primary,
+                      color: context.finance.brandText,
                     ),
                   ),
               ],

@@ -64,7 +64,6 @@ class _TrackerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
 
     return InkWell(
       onTap: () => context.push('/tracker/${t.tracker.id}'),
@@ -78,7 +77,7 @@ class _TrackerRow extends StatelessWidget {
                 Icon(
                   trackerTypeIcon(t.tracker.type),
                   size: 18,
-                  color: scheme.primary,
+                  color: context.finance.brandText,
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(

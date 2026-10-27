@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../design/theme/finance_colors.dart';
 import '../design/tokens/app_breakpoints.dart';
 import '../design/tokens/app_spacing.dart';
 import '../features/sync/presentation/sync_status_widgets.dart';
@@ -142,7 +143,9 @@ class _BottomItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = selected ? scheme.primary : scheme.onSurfaceVariant;
+    final color = selected
+        ? context.finance.brandText
+        : scheme.onSurfaceVariant;
     return Semantics(
       button: true,
       selected: selected,

@@ -313,7 +313,7 @@ class _TrackerRow extends ConsumerWidget {
                     ? 'Assigned'
                     : trackerDisplayLabel(tracker.name),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: tracker == null ? null : scheme.primary,
+                  color: tracker == null ? null : context.finance.brandText,
                 ),
               ),
             ),

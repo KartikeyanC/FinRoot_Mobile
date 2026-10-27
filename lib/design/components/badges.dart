@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/constants.dart';
+import '../theme/finance_colors.dart';
 import '../tokens/app_radius.dart';
 import '../tokens/app_spacing.dart';
 
@@ -35,7 +36,7 @@ class TrackerBadge extends StatelessWidget {
     return _Pill(
       label: trackerDisplayLabel(name),
       background: scheme.primary.withValues(alpha: 0.12),
-      foreground: scheme.primary,
+      foreground: context.finance.brandText,
       icon: Icons.donut_large_rounded,
     );
   }

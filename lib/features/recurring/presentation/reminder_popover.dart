@@ -29,7 +29,9 @@ class ReminderBell extends ConsumerWidget {
             ? Icons.notifications_active
             : Icons.notifications_none,
         size: 20,
-        color: setting.enabled ? scheme.primary : scheme.onSurfaceVariant,
+        color: setting.enabled
+            ? context.finance.brandText
+            : scheme.onSurfaceVariant,
       ),
       onPressed: () => _open(context, ref, setting),
     );

@@ -28,6 +28,10 @@ abstract final class AppTheme {
           seedColor: AppColors.seed,
           brightness: brightness,
         ).copyWith(
+          // fromSeed tones the seed (dark mode gets a pale tint); pin the brand
+          // green itself as the primary action color on both themes.
+          primary: AppColors.seed,
+          onPrimary: Colors.white,
           surface: isLight ? AppColors.surfaceLight : AppColors.surfaceDark,
           onSurface: isLight ? AppColors.inkLight : AppColors.inkDark,
           onSurfaceVariant: isLight
@@ -40,6 +44,8 @@ abstract final class AppTheme {
         );
 
     final canvas = isLight ? AppColors.canvasLight : AppColors.canvasDark;
+    // Green text/icons; see AppColors.brandTextDark.
+    final brandText = isLight ? AppColors.seed : AppColors.brandTextDark;
     final base = ThemeData(brightness: brightness);
 
     return base.copyWith(
@@ -107,6 +113,7 @@ abstract final class AppTheme {
           borderRadius: AppRadius.field,
           borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
+        floatingLabelStyle: TextStyle(color: brandText),
         errorBorder: OutlineInputBorder(
           borderRadius: AppRadius.field,
           borderSide: BorderSide(color: scheme.error),
@@ -126,11 +133,13 @@ abstract final class AppTheme {
           minimumSize: const Size.fromHeight(52),
           shape: const RoundedRectangleBorder(borderRadius: AppRadius.field),
           side: BorderSide(color: scheme.outline),
+          foregroundColor: brandText,
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           minimumSize: const Size(48, 48),
+          foregroundColor: brandText,
           textStyle: base.textTheme.labelLarge,
         ),
       ),
@@ -167,6 +176,7 @@ abstract final class AppTheme {
         shape: const RoundedRectangleBorder(borderRadius: AppRadius.sheet),
         clipBehavior: Clip.antiAlias,
       ),
+      textSelectionTheme: TextSelectionThemeData(cursorColor: brandText),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: AppRadius.field),

@@ -105,7 +105,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.spa_rounded, size: 44, color: scheme.primary),
+                    Icon(Icons.spa_rounded, size: 44, color: context.finance.brandText),
                     const SizedBox(height: AppSpacing.md),
                     Text(
                       _title,
@@ -368,7 +368,7 @@ class _OutcomeScaffold extends StatelessWidget {
                   Icon(
                     icon,
                     size: 48,
-                    color: Theme.of(context).colorScheme.primary,
+                    color: context.finance.brandText,
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   Text(

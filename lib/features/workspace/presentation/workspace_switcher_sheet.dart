@@ -59,7 +59,7 @@ class _WorkspaceSwitcherSheet extends ConsumerWidget {
               trailing: m.tenantId == currentId
                   ? Icon(
                       Icons.check_circle,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: context.finance.brandText,
                     )
                   : null,
               onTap: m.tenantId == currentId

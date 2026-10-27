@@ -8,15 +8,20 @@ import 'package:flutter/material.dart';
 /// per rule" idea (web ADR-0008) applied to color.
 abstract final class AppColors {
   // ---- Brand ----------------------------------------------------------------
-  /// FinRoot forest green. Seeds the Material 3 scheme and is the primary
+  /// FinRoot old brand green (#0D7A5F). Seeds the Material 3 scheme and is the primary
   /// action color on both themes.
-  static const seed = Color(0xFF1E7A52);
+  static const seed = Color(0xFF0D7A5F);
 
-  static const forest900 = Color(0xFF0C2A1E);
-  static const forest700 = Color(0xFF166042);
-  static const forest500 = Color(0xFF1E7A52);
-  static const forest300 = Color(0xFF6FBF97);
-  static const forest100 = Color(0xFFD9F4E5);
+  /// Brand green for TEXT and icons on dark surfaces. [seed] is only
+  /// 3.4–3.8:1 there, so dark mode lifts the same hue/saturation to 40%
+  /// lightness (#13B98F, 5.6:1+). Fills and buttons keep [seed].
+  static const brandTextDark = Color(0xFF13B98F);
+
+  static const forest900 = Color(0xFF0C2A22);
+  static const forest700 = Color(0xFF16604E);
+  static const forest500 = Color(0xFF0D7A5F);
+  static const forest300 = Color(0xFF6FBFAB);
+  static const forest100 = Color(0xFFD9F4ED);
 
   // ---- Neutrals (light) ---------------------------------------------------
   static const canvasLight = Color(0xFFF6F8F5);
@@ -38,8 +43,8 @@ abstract final class AppColors {
   // Direction of money, not "good/bad": income is inflow, expense is outflow,
   // transfer is neither. Never encode meaning in color alone (WCAG 2.2) — the
   // sign and the label always carry it too.
-  static const incomeLight = Color(0xFF1E7A52);
-  static const incomeDark = Color(0xFF5FD0A0);
+  static const incomeLight = Color(0xFF0D7A5F);
+  static const incomeDark = Color(0xFF5FD0B4);
   static const expenseLight = Color(0xFFB4331F);
   static const expenseDark = Color(0xFFF08A78);
   static const transferLight = Color(0xFF4C6B62);
@@ -49,6 +54,6 @@ abstract final class AppColors {
   static const warningDark = Color(0xFFE0B15C);
   static const dangerLight = Color(0xFFB4331F);
   static const dangerDark = Color(0xFFF08A78);
-  static const successLight = Color(0xFF1E7A52);
-  static const successDark = Color(0xFF5FD0A0);
+  static const successLight = Color(0xFF0D7A5F);
+  static const successDark = Color(0xFF5FD0B4);
 }

@@ -191,7 +191,7 @@ class _SectionLabel extends StatelessWidget {
       child: Text(
         text.toUpperCase(),
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
+          color: context.finance.brandText,
           letterSpacing: 0.8,
         ),
       ),

@@ -206,7 +206,7 @@ class _TrackerCard extends StatelessWidget {
                 Icon(
                   trackerTypeIcon(t.tracker.type),
                   size: 18,
-                  color: scheme.primary,
+                  color: context.finance.brandText,
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
