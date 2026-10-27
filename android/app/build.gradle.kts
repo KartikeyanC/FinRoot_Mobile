@@ -34,9 +34,10 @@ android {
 
     defaultConfig {
         applicationId = "com.finroot.mobile"
-        // minSdk 23: required headroom for flutter_secure_storage (StrongBox /
+        // Flutter's own floor (24, Android 7.0); the Flutter tool rewrote the
+        // earlier hard-coded 23. Still covers flutter_secure_storage (StrongBox /
         // EncryptedSharedPreferences), local_auth biometrics, and SQLCipher.
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -68,6 +69,8 @@ android {
             // unverifiable here. proguard-rules.pro carries the keep rules for
             // when a device owner turns shrinking on — see docs/RELEASE.md.
             isMinifyEnabled = false
+            // Resource shrinking needs R8 on; AGP 9 refuses it alone.
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
