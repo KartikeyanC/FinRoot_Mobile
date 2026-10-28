@@ -105,9 +105,8 @@ class AmountInputField extends StatelessWidget {
               field.errorText!,
               textAlign: TextAlign.center,
               maxLines: 2,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.error),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: scheme.error),
             ),
           ],
         ],

@@ -66,23 +66,14 @@ class MoreEntry {
 }
 
 const kMoreEntries = <MoreEntry>[
-  MoreEntry(
-    'Accounts',
-    Icons.account_balance_wallet_outlined,
-    '/accounts',
-  ),
+  MoreEntry('Accounts', Icons.account_balance_wallet_outlined, '/accounts'),
   MoreEntry(
     'Budget',
     Icons.pie_chart_outline,
     '/budget',
     menu: FeatureMenu.budget,
   ),
-  MoreEntry(
-    'Goals',
-    Icons.flag_outlined,
-    '/goals',
-    menu: FeatureMenu.goals,
-  ),
+  MoreEntry('Goals', Icons.flag_outlined, '/goals', menu: FeatureMenu.goals),
   MoreEntry(
     'Investments',
     Icons.trending_up,
@@ -95,11 +86,7 @@ const kMoreEntries = <MoreEntry>[
     '/net-worth',
     menu: FeatureMenu.netWorth,
   ),
-  MoreEntry(
-    'Recurring',
-    Icons.event_repeat_outlined,
-    '/recurring',
-  ),
+  MoreEntry('Recurring', Icons.event_repeat_outlined, '/recurring'),
   MoreEntry(
     'Reminders',
     Icons.notifications_none,
@@ -113,6 +100,7 @@ const kMoreEntries = <MoreEntry>[
     menu: FeatureMenu.billScan,
   ),
   MoreEntry('Voice', Icons.mic_none, '/voice'),
+  MoreEntry('Detected payments', Icons.bolt_outlined, '/detected-payments'),
   MoreEntry('Insights', Icons.insights_outlined, '/insights'),
   MoreEntry('Search', Icons.search, '/search', phase: 'M8'),
   MoreEntry('Settings', Icons.settings_outlined, '/settings', phase: 'M3'),

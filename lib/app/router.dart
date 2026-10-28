@@ -17,6 +17,7 @@ import '../features/insights/presentation/insights_screen.dart';
 import '../features/investments/presentation/investments_screen.dart';
 import '../features/more/presentation/more_screen.dart';
 import '../features/net_worth/presentation/net_worth_screen.dart';
+import '../features/payment_capture/presentation/detected_payments_screen.dart';
 import '../features/recurring/presentation/recurring_screen.dart';
 import '../features/reminders/presentation/reminders_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
@@ -46,6 +47,7 @@ class _Routes {
   static const billScan = '/bill-scan';
   static const voice = '/voice';
   static const insights = '/insights';
+  static const detectedPayments = '/detected-payments';
 
   /// "More" entries that have a real screen rather than a milestone placeholder.
   static const realScreens = {
@@ -60,6 +62,7 @@ class _Routes {
     billScan,
     voice,
     insights,
+    detectedPayments,
   };
 }
 
@@ -227,6 +230,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.voice,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const VoiceScreen(),
+      ),
+      GoRoute(
+        path: _Routes.detectedPayments,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const DetectedPaymentsScreen(),
       ),
       GoRoute(
         path: _Routes.insights,

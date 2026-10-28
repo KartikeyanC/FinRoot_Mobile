@@ -83,6 +83,19 @@
             android:exported="false"
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
 
+        <!-- Payment detection: reads payment / bank app notifications, only
+             after the user turns it on in the app AND grants notification
+             access in system settings. Bound by the system only (permission). -->
+        <service
+            android:name=".PaymentListenerService"
+            android:label="FinRoot payment detection"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

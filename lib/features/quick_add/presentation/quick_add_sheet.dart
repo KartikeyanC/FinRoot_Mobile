@@ -25,9 +25,14 @@ class QuickAddSheet extends ConsumerStatefulWidget {
     super.key,
     this.initialKind = QuickAddKind.expense,
     this.editing,
+    this.prefill,
   });
 
   final QuickAddKind initialKind;
+
+  /// Starting values for a new entry (a detected payment). Ignored when
+  /// [editing].
+  final QuickAddPrefill? prefill;
 
   /// When set, the sheet edits this transaction instead of creating one. The
   /// kind is then fixed (expense/income/transfer have different shapes).
@@ -75,6 +80,13 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     } else {
       _kind = widget.initialKind;
       _occurredAt = DateTime.now();
+      final p = widget.prefill;
+      if (p != null) {
+        _amount.text = p.amount?.amount.toString() ?? '';
+        _note.text = p.note ?? '';
+        _paymentMode = p.paymentMode;
+        _occurredAt = p.occurredAt ?? _occurredAt;
+      }
     }
   }
 
@@ -139,7 +151,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
             toAccountId: _toAccountId,
             editingId: widget.editing?.id,
           );
-      navigator.pop();
+      navigator.pop(true);
       messenger.showSnackBar(
         SnackBar(
           content: Text(
@@ -273,6 +285,23 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
       ),
     );
   }
+}
+
+/// Values to open a new Quick Add entry with.
+class QuickAddPrefill {
+  const QuickAddPrefill({
+    this.amount,
+    this.note,
+    this.paymentMode,
+    this.occurredAt,
+  });
+
+  final Money? amount;
+  final String? note;
+
+  /// One of kPaymentModes.
+  final String? paymentMode;
+  final DateTime? occurredAt;
 }
 
 // ---------------------------------------------------------------------------
@@ -415,16 +444,18 @@ class _TransferForm extends StatelessWidget {
           'A transfer moves money between two of your accounts. This '
           'workspace has ${accounts.length == 1 ? 'only one account' : 'no accounts'} '
           'synced yet — add one with the Accounts screen first.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       );
     }
 
     DropdownMenuItem<String> item(AccountEntity a) => DropdownMenuItem(
       value: a.id,
-      child: Text('${a.name} · ${a.typeLabel}', overflow: TextOverflow.ellipsis),
+      child: Text(
+        '${a.name} · ${a.typeLabel}',
+        overflow: TextOverflow.ellipsis,
+      ),
     );
 
     return Column(
@@ -557,9 +588,8 @@ class _ViewOnlyNote extends StatelessWidget {
             child: Text(
               'Your role in this workspace is view-only. Ask a workspace '
               'owner or admin to record transactions.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
         ],
@@ -588,9 +618,8 @@ class _ErrorNote extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: scheme.onErrorContainer,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: scheme.onErrorContainer),
             ),
           ),
         ],

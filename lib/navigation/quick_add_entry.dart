@@ -7,16 +7,23 @@ import '../features/transactions/domain/transaction.dart';
 
 /// Opens Quick Add the right way for the current window size (M1 audit §11):
 /// a bottom sheet on a phone, a centered dialog on a tablet. [kind] pre-selects
-/// the Expense / Income / Transfer segment; [editing] switches it to edit mode.
-Future<void> openQuickAdd(
+/// the Expense / Income / Transfer segment; [editing] switches it to edit mode;
+/// [prefill] starts a new entry with values filled in. Completes with true
+/// when the user saved.
+Future<bool?> openQuickAdd(
   BuildContext context, {
   QuickAddKind kind = QuickAddKind.expense,
   TransactionEntity? editing,
+  QuickAddPrefill? prefill,
 }) {
-  final sheet = QuickAddSheet(initialKind: kind, editing: editing);
+  final sheet = QuickAddSheet(
+    initialKind: kind,
+    editing: editing,
+    prefill: prefill,
+  );
   final expanded = AppBreakpoints.of(context).isExpanded;
   if (expanded) {
-    return showDialog<void>(
+    return showDialog<bool>(
       context: context,
       builder: (_) => Dialog(
         clipBehavior: Clip.antiAlias,
@@ -24,7 +31,7 @@ Future<void> openQuickAdd(
       ),
     );
   }
-  return showModalBottomSheet<void>(
+  return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,

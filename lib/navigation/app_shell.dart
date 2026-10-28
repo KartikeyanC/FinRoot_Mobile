@@ -281,7 +281,9 @@ class _RailFooter extends ConsumerWidget {
               tooltip: canSwitch
                   ? 'Switch workspace'
                   : (membership?.name ?? 'Workspace'),
-              onPressed: canSwitch ? () => showWorkspaceSwitcher(context) : null,
+              onPressed: canSwitch
+                  ? () => showWorkspaceSwitcher(context)
+                  : null,
               icon: const Icon(Icons.workspaces_outline),
             ),
           const SizedBox(height: AppSpacing.xs),

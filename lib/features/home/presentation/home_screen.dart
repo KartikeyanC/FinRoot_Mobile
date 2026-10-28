@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/design.dart';
+import '../../payment_capture/presentation/detected_payments_banner.dart';
 import '../../sync/application/sync_engine.dart';
 import 'widgets/home_greeting.dart';
 import 'widgets/home_insights_card.dart';
@@ -37,6 +38,7 @@ class HomeScreen extends ConsumerWidget {
               ),
               children: const [
                 HomeGreeting(),
+                DetectedPaymentsBanner(),
                 SizedBox(height: AppSpacing.xl),
                 HomeSnapshotCard(),
                 SizedBox(height: AppSpacing.lg),
