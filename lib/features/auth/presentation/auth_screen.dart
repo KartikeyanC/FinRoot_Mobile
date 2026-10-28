@@ -122,7 +122,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.spa_rounded, size: 44, color: context.finance.brandText),
+                    // The FinRoot mark, the same image as the launcher icon.
+                    Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Image.asset(
+                          'assets/brand/logo.png',
+                          width: 64,
+                          height: 64,
+                          filterQuality: FilterQuality.medium,
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: AppSpacing.md),
                     Text(
                       _title,
