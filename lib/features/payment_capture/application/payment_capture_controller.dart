@@ -58,11 +58,28 @@ class PaymentCaptureController extends AsyncNotifier<PaymentCaptureState> {
 
   Future<void> setEnabled(bool on) async {
     await _gateway.setEnabled(on);
-    if (on && !(await _gateway.status()).hasAccess) {
-      await _gateway.openAccessSettings();
+    if (on) {
+      // One system prompt at a time: Notification access first; the pop-up
+      // permission is asked for from the screen once access is granted.
+      final status = await _gateway.status();
+      if (!status.hasAccess) {
+        await _gateway.openAccessSettings();
+      } else if (status.popupEnabled && !status.canPostNotifications) {
+        await _gateway.requestPopupPermission();
+      }
     }
     await refresh();
   }
+
+  Future<void> setPopupEnabled(bool on) async {
+    await _gateway.setPopupEnabled(on);
+    if (on && !(await _gateway.status()).canPostNotifications) {
+      await _gateway.requestPopupPermission();
+    }
+    await refresh();
+  }
+
+  Future<void> requestPopupPermission() => _gateway.requestPopupPermission();
 
   Future<void> setSmsEnabled(bool on) async {
     await _gateway.setSmsEnabled(on);

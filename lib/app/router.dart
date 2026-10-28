@@ -234,7 +234,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: _Routes.detectedPayments,
         parentNavigatorKey: _rootKey,
-        builder: (_, _) => const DetectedPaymentsScreen(),
+        builder: (_, state) => DetectedPaymentsScreen(
+          addNoticeId: state.uri.queryParameters['add'],
+        ),
       ),
       GoRoute(
         path: _Routes.insights,

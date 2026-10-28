@@ -21,7 +21,10 @@ class FakeGateway implements PaymentCaptureGateway {
   bool enabled;
   bool hasAccess;
   bool sms = false;
+  bool popup = true;
+  bool canPost = false;
   int settingsOpened = 0;
+  int popupPermissionAsked = 0;
   final List<PaymentNotice> notices;
 
   @override
@@ -29,6 +32,8 @@ class FakeGateway implements PaymentCaptureGateway {
     supported: true,
     enabled: enabled,
     smsEnabled: sms,
+    popupEnabled: popup,
+    canPostNotifications: canPost,
     hasAccess: hasAccess,
   );
 
@@ -47,6 +52,18 @@ class FakeGateway implements PaymentCaptureGateway {
   @override
   Future<void> remove(List<String> ids) async =>
       notices.removeWhere((n) => ids.contains(n.id));
+
+  @override
+  Future<void> setPopupEnabled(bool on) async => popup = on;
+
+  @override
+  Future<void> requestPopupPermission() async => popupPermissionAsked++;
+
+  @override
+  Future<String?> takeLaunchNotice() async => null;
+
+  @override
+  Stream<String> get openRequests => const Stream.empty();
 }
 
 PaymentNotice _gpay(String id, String title) => PaymentNotice(
@@ -57,7 +74,15 @@ PaymentNotice _gpay(String id, String title) => PaymentNotice(
   postedAt: DateTime.now().subtract(const Duration(minutes: 5)),
 );
 
-Future<void> _pump(WidgetTester tester, FakeGateway gw) async {
+Future<void> _pump(
+  WidgetTester tester,
+  FakeGateway gw, {
+  String? addNoticeId,
+}) async {
+  // A phone-height screen, so the list below the setup card is built.
+  tester.view.physicalSize = const Size(400, 1400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -72,7 +97,7 @@ Future<void> _pump(WidgetTester tester, FakeGateway gw) async {
       ],
       child: MaterialApp(
         theme: AppTheme.light,
-        home: const DetectedPaymentsScreen(),
+        home: DetectedPaymentsScreen(addNoticeId: addNoticeId),
       ),
     ),
   );
@@ -130,5 +155,37 @@ void main() {
     expect(find.text('1249.5'), findsOneWidget);
     expect(find.text('Paid to Ravi Kumar'), findsWidgets);
     expect(find.text('UPI'), findsOneWidget);
+  });
+
+  testWidgets('pop-up switch shows, and asks for permission when needed', (
+    tester,
+  ) async {
+    final gw = FakeGateway();
+    await _pump(tester, gw);
+    expect(find.text('Pop up when I pay'), findsOneWidget);
+    expect(find.text('Allow FinRoot notifications'), findsOneWidget);
+
+    await tester.tap(find.text('Allow FinRoot notifications'));
+    expect(gw.popupPermissionAsked, 1);
+
+    gw.canPost = true;
+    await tester.tap(find.text('Pop up when I pay'));
+    await tester.pumpAndSettle();
+    expect(gw.popup, isFalse);
+    expect(find.text('Allow FinRoot notifications'), findsNothing);
+  });
+
+  testWidgets('opened from a pop-up: goes straight to Quick Add', (
+    tester,
+  ) async {
+    final gw = FakeGateway(
+      notices: [_gpay('pop1', '₹300 paid to Kumar Stores')],
+    );
+    await _pump(tester, gw, addNoticeId: 'pop1');
+    await tester.pumpAndSettle();
+
+    expect(find.text('300'), findsOneWidget);
+    expect(find.text('Paid to Kumar Stores'), findsWidgets);
+    expect(find.text('Save expense'), findsOneWidget);
   });
 }

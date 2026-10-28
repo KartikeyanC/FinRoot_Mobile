@@ -37,7 +37,10 @@ class PaymentListenerService : NotificationListenerService() {
         val all = "$title $text"
         if (!looksLikePayment(all)) return
 
-        PaymentCaptureStore.add(ctx, pkg, title, text, sbn.postTime)
+        val id = PaymentCaptureStore.add(ctx, pkg, title, text, sbn.postTime) ?: return
+        if (PaymentCaptureStore.isPopupEnabled(ctx)) {
+            PaymentPopup.show(ctx, id, title, text)
+        }
     }
 
     companion object {
@@ -111,6 +114,7 @@ object PaymentCaptureStore {
     private const val PREFS = "finroot_payment_capture"
     private const val KEY_ENABLED = "enabled"
     private const val KEY_SMS = "sms_enabled"
+    private const val KEY_POPUP = "popup_enabled"
     private const val KEY_QUEUE = "queue"
     private const val MAX_ITEMS = 200
     private const val MAX_AGE_MS = 30L * 24 * 60 * 60 * 1000
@@ -121,6 +125,10 @@ object PaymentCaptureStore {
 
     fun isEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_ENABLED, false)
     fun isSmsEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_SMS, false)
+    fun isPopupEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_POPUP, true)
+
+    fun setPopupEnabled(ctx: Context, on: Boolean) =
+        prefs(ctx).edit().putBoolean(KEY_POPUP, on).apply()
 
     fun setEnabled(ctx: Context, on: Boolean) {
         val p = prefs(ctx).edit().putBoolean(KEY_ENABLED, on)
@@ -132,8 +140,9 @@ object PaymentCaptureStore {
     fun setSmsEnabled(ctx: Context, on: Boolean) =
         prefs(ctx).edit().putBoolean(KEY_SMS, on).apply()
 
+    /** Queues a notice; returns its id, or null when it was a repost. */
     @Synchronized
-    fun add(ctx: Context, pkg: String, title: String, text: String, postedAt: Long) {
+    fun add(ctx: Context, pkg: String, title: String, text: String, postedAt: Long): String? {
         val items = read(ctx)
         // Apps re-post (update) the same notification; keep one copy.
         for (i in 0 until items.length()) {
@@ -141,17 +150,19 @@ object PaymentCaptureStore {
             if (o.optString("package") == pkg && o.optString("title") == title &&
                 o.optString("text") == text &&
                 Math.abs(o.optLong("postedAt") - postedAt) < REPOST_WINDOW_MS
-            ) return
+            ) return null
         }
+        val id = "$pkg:$postedAt:${(title + text).hashCode()}"
         items.put(
             JSONObject()
-                .put("id", "$pkg:$postedAt:${(title + text).hashCode()}")
+                .put("id", id)
                 .put("package", pkg)
                 .put("title", title)
                 .put("text", text)
                 .put("postedAt", postedAt),
         )
         write(ctx, items)
+        return id
     }
 
     @Synchronized

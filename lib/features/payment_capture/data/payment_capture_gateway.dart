@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,8 @@ class PaymentCaptureStatus {
     this.supported = false,
     this.enabled = false,
     this.smsEnabled = false,
+    this.popupEnabled = true,
+    this.canPostNotifications = true,
     this.hasAccess = false,
   });
 
@@ -23,6 +26,13 @@ class PaymentCaptureStatus {
   /// Bank SMS alerts are included too.
   final bool smsEnabled;
 
+  /// Pop up a "₹500 paid — add to FinRoot?" notification the moment a
+  /// payment is detected.
+  final bool popupEnabled;
+
+  /// Android 13+ lets FinRoot post notifications at all.
+  final bool canPostNotifications;
+
   /// Android's "Notification access" is granted to FinRoot.
   final bool hasAccess;
 
@@ -34,13 +44,32 @@ abstract interface class PaymentCaptureGateway {
   Future<PaymentCaptureStatus> status();
   Future<void> setEnabled(bool on);
   Future<void> setSmsEnabled(bool on);
+  Future<void> setPopupEnabled(bool on);
+
+  /// Asks Android 13+ for permission to post the pop-up.
+  Future<void> requestPopupPermission();
   Future<void> openAccessSettings();
   Future<List<PaymentNotice>> pending();
   Future<void> remove(List<String> noticeIds);
+
+  /// The notice whose pop-up launched FinRoot, once (then null).
+  Future<String?> takeLaunchNotice();
+
+  /// Notices whose pop-up was tapped while FinRoot was already running.
+  Stream<String> get openRequests;
 }
 
 class MethodChannelPaymentCaptureGateway implements PaymentCaptureGateway {
+  MethodChannelPaymentCaptureGateway() {
+    if (_supported) {
+      _channel.setMethodCallHandler((call) async {
+        if (call.method == 'openNotice') _opens.add(call.arguments as String);
+      });
+    }
+  }
+
   static const _channel = MethodChannel('finroot/payment_capture');
+  final _opens = StreamController<String>.broadcast();
 
   bool get _supported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -53,6 +82,8 @@ class MethodChannelPaymentCaptureGateway implements PaymentCaptureGateway {
       supported: true,
       enabled: m['enabled'] == true,
       smsEnabled: m['smsEnabled'] == true,
+      popupEnabled: m['popupEnabled'] != false,
+      canPostNotifications: m['canPostNotifications'] != false,
       hasAccess: m['hasAccess'] == true,
     );
   }
@@ -63,6 +94,21 @@ class MethodChannelPaymentCaptureGateway implements PaymentCaptureGateway {
   @override
   Future<void> setSmsEnabled(bool on) =>
       _channel.invokeMethod('setSmsEnabled', on);
+
+  @override
+  Future<void> setPopupEnabled(bool on) =>
+      _channel.invokeMethod('setPopupEnabled', on);
+
+  @override
+  Future<void> requestPopupPermission() =>
+      _channel.invokeMethod('requestPopupPermission');
+
+  @override
+  Future<String?> takeLaunchNotice() async =>
+      _supported ? _channel.invokeMethod<String>('takeLaunchNotice') : null;
+
+  @override
+  Stream<String> get openRequests => _opens.stream;
 
   @override
   Future<void> openAccessSettings() =>

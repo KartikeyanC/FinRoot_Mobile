@@ -15,7 +15,11 @@ import '../domain/detected_payment.dart';
 /// Payments FinRoot noticed in your UPI / bank app notifications, waiting for
 /// one tap to add (or ignore). Nothing reaches the ledger without that tap.
 class DetectedPaymentsScreen extends ConsumerStatefulWidget {
-  const DetectedPaymentsScreen({super.key});
+  const DetectedPaymentsScreen({super.key, this.addNoticeId});
+
+  /// Opened from a payment pop-up: go straight to Quick Add for the payment
+  /// this notice belongs to.
+  final String? addNoticeId;
 
   @override
   ConsumerState<DetectedPaymentsScreen> createState() =>
@@ -34,6 +38,23 @@ class _DetectedPaymentsScreenState
   void initState() {
     super.initState();
     _lifecycle;
+    if (widget.addNoticeId case final id?) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openNotice(id));
+    }
+  }
+
+  Future<void> _openNotice(String noticeId) async {
+    // The pop-up's notice arrived after the list was last loaded.
+    await ref.read(paymentCaptureProvider.notifier).refresh();
+    if (!mounted) return;
+    final payment = ref
+        .read(paymentCaptureProvider)
+        .value
+        ?.payments
+        .where((p) => p.noticeIds.contains(noticeId))
+        .firstOrNull;
+    // Null when it was already added or ignored — the list is shown as is.
+    if (payment != null) await addDetectedPayment(context, ref, payment);
   }
 
   @override
@@ -161,6 +182,30 @@ class _SetupCard extends ConsumerWidget {
                 ],
               ),
             ),
+          if (status.enabled) ...[
+            SwitchListTile(
+              value: status.popupEnabled,
+              onChanged: notifier.setPopupEnabled,
+              title: const Text('Pop up when I pay'),
+              subtitle: const Text(
+                'Shows "₹500 paid — add to FinRoot?" right away. Tap it to '
+                'add the payment.',
+              ),
+            ),
+            if (status.popupEnabled && !status.canPostNotifications)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  0,
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                ),
+                child: OutlinedButton(
+                  onPressed: notifier.requestPopupPermission,
+                  child: const Text('Allow FinRoot notifications'),
+                ),
+              ),
+          ],
           if (status.enabled)
             SwitchListTile(
               value: status.smsEnabled,
@@ -201,32 +246,36 @@ class _SetupCard extends ConsumerWidget {
   }
 }
 
+/// Opens Quick Add filled in from [p]; once saved, it leaves the queue.
+Future<void> addDetectedPayment(
+  BuildContext context,
+  WidgetRef ref,
+  DetectedPayment p,
+) async {
+  final saved = await openQuickAdd(
+    context,
+    kind: p.isPaid ? QuickAddKind.expense : QuickAddKind.income,
+    prefill: QuickAddPrefill(
+      amount: p.amount,
+      // The note is what identifies the payment later (and is searchable).
+      note: [
+        if (p.counterparty != null) p.headline,
+        if (p.reference != null) 'Ref ${p.reference}',
+      ].join(' · '),
+      paymentMode: p.paymentMode,
+      occurredAt: p.occurredAt,
+    ),
+  );
+  if (saved == true) {
+    await ref.read(paymentCaptureProvider.notifier).resolve(p);
+  }
+}
+
 class _PaymentCard extends ConsumerWidget {
   const _PaymentCard({required this.payment, required this.alreadyRecorded});
 
   final DetectedPayment payment;
   final bool alreadyRecorded;
-
-  Future<void> _add(BuildContext context, WidgetRef ref) async {
-    final p = payment;
-    final saved = await openQuickAdd(
-      context,
-      kind: p.isPaid ? QuickAddKind.expense : QuickAddKind.income,
-      prefill: QuickAddPrefill(
-        amount: p.amount,
-        // The note is what identifies the payment later (and is searchable).
-        note: [
-          if (p.counterparty != null) p.headline,
-          if (p.reference != null) 'Ref ${p.reference}',
-        ].join(' · '),
-        paymentMode: p.paymentMode,
-        occurredAt: p.occurredAt,
-      ),
-    );
-    if (saved == true) {
-      await ref.read(paymentCaptureProvider.notifier).resolve(p);
-    }
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -309,7 +358,7 @@ class _PaymentCard extends ConsumerWidget {
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: FilledButton(
-                  onPressed: () => _add(context, ref),
+                  onPressed: () => addDetectedPayment(context, ref, p),
                   child: Text(p.isPaid ? 'Add expense' : 'Add income'),
                 ),
               ),
