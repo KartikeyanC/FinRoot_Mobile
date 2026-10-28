@@ -182,6 +182,9 @@ abstract final class AppTheme {
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: scheme.primary,
         foregroundColor: scheme.onPrimary,
+        // Stadium = a circle on the square "+" buttons (it also fills the
+        // bottom bar's circular notch) and pill ends on "+ Tracker"-style ones.
+        shape: const StadiumBorder(),
       ),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,

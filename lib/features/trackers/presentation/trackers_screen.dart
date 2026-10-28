@@ -54,6 +54,17 @@ class TrackersScreen extends ConsumerWidget {
       }
     }
 
+    // Swipe order matches the chip row. With several statuses ticked, the
+    // swipe starts from the first one and narrows to a single status.
+    const order = [
+      TrackerStatus.active,
+      TrackerStatus.completed,
+      TrackerStatus.archived,
+    ];
+    final swipeIndex = order
+        .indexWhere((s) => statuses.contains(s.name))
+        .clamp(0, order.length - 1);
+
     final listPane = Column(
       children: [
         Padding(
@@ -81,32 +92,39 @@ class TrackersScreen extends ConsumerWidget {
         ),
         const Divider(height: 1),
         Expanded(
-          child: RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(trackerSpendRowsProvider);
-              await ref
-                  .read(syncEngineProvider.notifier)
-                  .syncNow(force: true);
-            },
-            child: list.when(
-              loading: () => const LoadingView(),
-              error: (e, _) => ErrorView(e),
-              data: (trackers) => trackers.isEmpty
-                  ? _EmptyTrackers(canWrite: canWrite)
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.screenGutter,
-                        AppSpacing.sm,
-                        AppSpacing.screenGutter,
-                        AppSpacing.huge,
+          child: SwipeTabs(
+            index: swipeIndex,
+            count: order.length,
+            onChanged: (i) => ref
+                .read(trackerStatusFilterProvider.notifier)
+                .only({order[i].name}),
+            child: RefreshIndicator(
+              onRefresh: () async {
+                ref.invalidate(trackerSpendRowsProvider);
+                await ref
+                    .read(syncEngineProvider.notifier)
+                    .syncNow(force: true);
+              },
+              child: list.when(
+                loading: () => const LoadingView(),
+                error: (e, _) => ErrorView(e),
+                data: (trackers) => trackers.isEmpty
+                    ? _EmptyTrackers(canWrite: canWrite)
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.screenGutter,
+                          AppSpacing.sm,
+                          AppSpacing.screenGutter,
+                          AppSpacing.huge,
+                        ),
+                        itemCount: trackers.length,
+                        itemBuilder: (_, i) => _TrackerCard(
+                          trackers[i],
+                          selected: trackers[i].tracker.id == selectedId,
+                          onTap: () => openTracker(trackers[i].tracker.id),
+                        ),
                       ),
-                      itemCount: trackers.length,
-                      itemBuilder: (_, i) => _TrackerCard(
-                        trackers[i],
-                        selected: trackers[i].tracker.id == selectedId,
-                        onTap: () => openTracker(trackers[i].tracker.id),
-                      ),
-                    ),
+              ),
             ),
           ),
         ),
@@ -162,10 +180,13 @@ class _StatusChips extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget chip(TrackerStatus s) => Padding(
       padding: const EdgeInsets.only(right: AppSpacing.sm),
-      child: FilterChip(
-        label: Text(s.label),
+      child: RevealWhenSelected(
         selected: selected.contains(s.name),
-        onSelected: (_) => onToggle(s.name),
+        child: FilterChip(
+          label: Text(s.label),
+          selected: selected.contains(s.name),
+          onSelected: (_) => onToggle(s.name),
+        ),
       ),
     );
     return SingleChildScrollView(
@@ -195,9 +216,7 @@ class _TrackerCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
         onTap: onTap,
-        color: selected
-            ? scheme.primaryContainer.withValues(alpha: 0.4)
-            : null,
+        color: selected ? scheme.primaryContainer.withValues(alpha: 0.4) : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

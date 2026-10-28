@@ -12,6 +12,7 @@ export 'components/content_bounds.dart';
 export 'components/placeholder_screen.dart';
 export 'components/section_header.dart';
 export 'components/state_views.dart';
+export 'components/swipe_tabs.dart';
 export 'theme/app_theme.dart';
 export 'theme/finance_colors.dart';
 export 'tokens/app_breakpoints.dart';

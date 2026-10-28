@@ -59,74 +59,79 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     }
 
     final list = Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenGutter,
-                AppSpacing.md,
-                AppSpacing.screenGutter,
-                AppSpacing.sm,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Transactions', style: t.headlineSmall),
-                  const SizedBox(height: AppSpacing.md),
-                  TextField(
-                    controller: _search,
-                    onChanged: (v) =>
-                        ref.read(ledgerFilterProvider.notifier).setSearch(v),
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: 'Search notes and categories',
-                      prefixIcon: const Icon(Icons.search),
-                      isDense: true,
-                      suffixIcon: _search.text.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: 'Clear search',
-                              icon: const Icon(Icons.close),
-                              onPressed: () {
-                                _search.clear();
-                                ref
-                                    .read(ledgerFilterProvider.notifier)
-                                    .setSearch('');
-                              },
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  _TypeChips(
-                    selected: filter.type,
-                    onSelected: (type) =>
-                        ref.read(ledgerFilterProvider.notifier).setType(type),
-                  ),
-                  if (filter.accountId != null)
-                    _AccountFilterBanner(accountId: filter.accountId!),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () => ref
-                    .read(syncEngineProvider.notifier)
-                    .syncNow(force: true),
-                child: ledger.when(
-                  loading: () => const LoadingView(),
-                  error: (e, _) => ErrorView(e),
-                  data: (txns) => txns.isEmpty
-                      ? _EmptyLedger(filtered: filter.isActive)
-                      : _LedgerList(
-                          groups: groupByDay(txns),
-                          selectedId: selectedId,
-                          onTapRow: openRow,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenGutter,
+            AppSpacing.md,
+            AppSpacing.screenGutter,
+            AppSpacing.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Transactions', style: t.headlineSmall),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _search,
+                onChanged: (v) =>
+                    ref.read(ledgerFilterProvider.notifier).setSearch(v),
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: 'Search notes and categories',
+                  prefixIcon: const Icon(Icons.search),
+                  isDense: true,
+                  suffixIcon: _search.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            _search.clear();
+                            ref
+                                .read(ledgerFilterProvider.notifier)
+                                .setSearch('');
+                          },
                         ),
                 ),
               ),
+              const SizedBox(height: AppSpacing.sm),
+              _TypeChips(
+                selected: filter.type,
+                onSelected: (type) =>
+                    ref.read(ledgerFilterProvider.notifier).setType(type),
+              ),
+              if (filter.accountId != null)
+                _AccountFilterBanner(accountId: filter.accountId!),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: SwipeTabs(
+            index: _typeOrder.indexOf(filter.type),
+            count: _typeOrder.length,
+            onChanged: (i) =>
+                ref.read(ledgerFilterProvider.notifier).setType(_typeOrder[i]),
+            child: RefreshIndicator(
+              onRefresh: () =>
+                  ref.read(syncEngineProvider.notifier).syncNow(force: true),
+              child: ledger.when(
+                loading: () => const LoadingView(),
+                error: (e, _) => ErrorView(e),
+                data: (txns) => txns.isEmpty
+                    ? _EmptyLedger(filtered: filter.isActive)
+                    : _LedgerList(
+                        groups: groupByDay(txns),
+                        selectedId: selectedId,
+                        onTapRow: openRow,
+                      ),
+              ),
             ),
-          ],
-        );
+          ),
+        ),
+      ],
+    );
 
     if (!twoPane) {
       return Scaffold(body: SafeArea(bottom: false, child: list));
@@ -141,9 +146,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               ? null
               : TransactionDetailView(
                   id: selectedId,
-                  onClose: () => ref
-                      .read(selectedTransactionIdProvider.notifier)
-                      .clear(),
+                  onClose: () =>
+                      ref.read(selectedTransactionIdProvider.notifier).clear(),
                 ),
           placeholder: const PaneWaiting(
             message: 'Pick a transaction to see its full detail here.',
@@ -155,6 +159,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 }
 
+/// Chip order, which is also the swipe order (null = All).
+const _typeOrder = <TxnType?>[
+  null,
+  TxnType.income,
+  TxnType.expense,
+  TxnType.transfer,
+];
+
 class _TypeChips extends StatelessWidget {
   const _TypeChips({required this.selected, required this.onSelected});
   final TxnType? selected;
@@ -164,10 +176,13 @@ class _TypeChips extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget chip(String label, TxnType? value) => Padding(
       padding: const EdgeInsets.only(right: AppSpacing.sm),
-      child: ChoiceChip(
-        label: Text(label),
+      child: RevealWhenSelected(
         selected: selected == value,
-        onSelected: (_) => onSelected(value),
+        child: ChoiceChip(
+          label: Text(label),
+          selected: selected == value,
+          onSelected: (_) => onSelected(value),
+        ),
       ),
     );
 
@@ -247,9 +262,7 @@ class _LedgerList extends StatelessWidget {
           children: [
             DayGroupHeader(day: group.day),
             AppCard(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: Column(
                 children: [
                   for (var j = 0; j < group.items.length; j++) ...[
@@ -272,11 +285,7 @@ class _LedgerList extends StatelessWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({
-    required this.txn,
-    required this.selected,
-    required this.onTap,
-  });
+  const _Tile({required this.txn, required this.selected, required this.onTap});
 
   final TransactionEntity txn;
   final bool selected;
@@ -289,9 +298,8 @@ class _Tile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
       decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.primaryContainer.withValues(alpha: 0.4),
+        color: Theme.of(context).colorScheme.primaryContainer
+            .withValues(alpha: 0.4),
         borderRadius: AppRadius.card,
       ),
       child: row,
