@@ -1,4 +1,4 @@
-package com.finroot.finroot_mobile
+package com.finroot.mobile
 
 import io.flutter.embedding.android.FlutterActivity
 

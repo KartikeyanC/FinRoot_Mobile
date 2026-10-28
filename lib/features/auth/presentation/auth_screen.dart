@@ -65,6 +65,23 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
+    // The three modes (and the outcome messages) share one route, so the
+    // system Back would close the app from "Create account". Anywhere but the
+    // plain sign-in form, Back returns to sign-in instead.
+    final atSignIn =
+        _mode == _Mode.signIn &&
+        state is! AuthAwaitingConfirmation &&
+        state is! AuthResetEmailSent;
+    return PopScope(
+      canPop: atSignIn,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && state is! AuthBusy) _switchTo(_Mode.signIn);
+      },
+      child: _content(context, state),
+    );
+  }
+
+  Widget _content(BuildContext context, AuthActionState state) {
     final busy = state is AuthBusy;
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
