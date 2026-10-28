@@ -52,6 +52,27 @@ class AuthRepository {
     }
   }
 
+  /// Google sign-in through Supabase's own Google provider — the same one
+  /// the website uses, so nothing extra is set up in Google Cloud. The
+  /// person's browser opens on Google's page (Google refuses its page inside
+  /// an app's web view), and Supabase sends the result to
+  /// `finroot://auth-callback`, which supabase_flutter turns into a session
+  /// (PKCE). Returns false when no browser could be opened.
+  Future<bool> signInWithGoogle() async {
+    try {
+      final launched = await _auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: _redirect,
+        authScreenLaunchMode: LaunchMode.externalApplication,
+      );
+      _log.info('google sign-in launched: $launched');
+      return launched;
+    } catch (error, stack) {
+      _log.warning('google sign-in could not start');
+      throw mapError(error, stack);
+    }
+  }
+
   Future<SignUpOutcome> signUp({
     required String name,
     required String email,

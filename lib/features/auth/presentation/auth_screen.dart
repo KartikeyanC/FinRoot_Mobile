@@ -258,6 +258,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             )
                           : Text(_cta),
                     ),
+                    if (_mode != _Mode.forgot) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      _OrDivider(),
+                      const SizedBox(height: AppSpacing.md),
+                      OutlinedButton.icon(
+                        onPressed: busy
+                            ? null
+                            : () => ref
+                                  .read(authControllerProvider.notifier)
+                                  .signInWithGoogle(),
+                        icon: const _GoogleMark(),
+                        label: const Text('Continue with Google'),
+                      ),
+                    ],
                     const SizedBox(height: AppSpacing.md),
                     _ModeSwitcher(mode: _mode, busy: busy, onSwitch: _switchTo),
                   ],
@@ -287,6 +301,83 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     _Mode.signUp => 'Create account',
     _Mode.forgot => 'Send reset link',
   };
+}
+
+/// "— or continue with —", as on the website's sign-in card.
+class _OrDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(child: Divider(color: scheme.outlineVariant)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Text(
+            'OR CONTINUE WITH',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: scheme.outlineVariant)),
+      ],
+    );
+  }
+}
+
+/// Google's four-colour "G", drawn — no asset, no extra package.
+class _GoogleMark extends StatelessWidget {
+  const _GoogleMark();
+
+  @override
+  Widget build(BuildContext context) =>
+      const CustomPaint(size: Size(18, 18), painter: _GoogleMarkPainter());
+}
+
+class _GoogleMarkPainter extends CustomPainter {
+  const _GoogleMarkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = size.width / 2;
+    final c = Offset(r, r);
+    final stroke = size.width * 0.22;
+    final rect = Rect.fromCircle(center: c, radius: r - stroke / 2);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+    // Arcs, clockwise from the 3 o'clock gap: red, yellow, green, blue.
+    const colours = [
+      Color(0xFFEA4335),
+      Color(0xFFFBBC05),
+      Color(0xFF34A853),
+      Color(0xFF4285F4),
+    ];
+    const starts = [-0.35, 0.95, 2.1, 3.6]; // radians, roughly
+    const sweeps = [1.3, 1.15, 1.5, 1.6];
+    for (var i = 0; i < 4; i++) {
+      canvas.drawArc(
+        rect,
+        starts[i] + 3.14159 * 0.5 + 2.3,
+        sweeps[i],
+        false,
+        paint..color = colours[i],
+      );
+    }
+    // The blue bar into the centre.
+    canvas.drawLine(
+      Offset(r, r),
+      Offset(size.width - stroke / 2, r),
+      paint
+        ..color = colours[3]
+        ..strokeCap = StrokeCap.butt,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GoogleMarkPainter old) => false;
 }
 
 class _ModeSwitcher extends StatelessWidget {

@@ -64,6 +64,26 @@ class AuthController extends Notifier<AuthActionState> {
     });
   }
 
+  /// Opens Google in the browser. The session arrives later through the
+  /// deep link, so the form is idle again as soon as the browser is open;
+  /// the router takes over when the session appears.
+  Future<void> signInWithGoogle() async {
+    await _run(() async {
+      _intent.mark();
+      try {
+        final launched = await _repo.signInWithGoogle();
+        if (!launched) {
+          throw const AuthFailure(
+            'Could not open a browser for Google sign-in.',
+          );
+        }
+      } catch (_) {
+        _intent.clear();
+        rethrow;
+      }
+    });
+  }
+
   Future<void> signUp({
     required String name,
     required String email,
