@@ -45,6 +45,30 @@ void main() {
     expect(find.byType(FilledButton), findsOneWidget);
   });
 
+  testWidgets('on a 360dp phone labels fit one line and ₹ hugs the amount', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(_host());
+    await tester.pump();
+
+    // A wrapped label ("Transfe / r") would be two lines tall.
+    final lineHeight = tester.getSize(find.text('Income')).height;
+    for (final label in ['Expense', 'Transfer']) {
+      expect(tester.getSize(find.text(label)).height, lineHeight);
+    }
+
+    // The symbol sits beside the figure, and the pair is centred.
+    final symbol = tester.getRect(find.text('₹'));
+    final field = tester.getRect(find.byType(TextField).first);
+    expect(field.left - symbol.right, lessThanOrEqualTo(AppSpacing.sm + 1));
+    expect((symbol.left + field.right) / 2, closeTo(180, 2));
+
+    expect(find.text('Add expense'), findsOneWidget);
+  });
+
   testWidgets('an empty amount fails validation and nothing is submitted', (
     tester,
   ) async {

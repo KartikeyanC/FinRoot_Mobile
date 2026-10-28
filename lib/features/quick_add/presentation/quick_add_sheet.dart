@@ -174,7 +174,9 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            widget.isEditing ? 'Edit ${_kind.label.toLowerCase()}' : 'Add',
+            widget.isEditing
+                ? 'Edit ${_kind.label.toLowerCase()}'
+                : 'Add ${_kind.label.toLowerCase()}',
             style: t.titleLarge,
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -183,20 +185,29 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
           else ...[
             if (!widget.isEditing) ...[
               SegmentedButton<QuickAddKind>(
+                // Three icon + label segments must fit a 360dp phone: the
+                // filled segment already shows the choice, so drop the extra
+                // check mark, and tighten the side padding.
+                showSelectedIcon: false,
+                style: SegmentedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                  ),
+                ),
                 segments: const [
                   ButtonSegment(
                     value: QuickAddKind.expense,
-                    label: Text('Expense'),
+                    label: _SegmentLabel('Expense'),
                     icon: Icon(Icons.south_west_rounded),
                   ),
                   ButtonSegment(
                     value: QuickAddKind.income,
-                    label: Text('Income'),
+                    label: _SegmentLabel('Income'),
                     icon: Icon(Icons.north_east_rounded),
                   ),
                   ButtonSegment(
                     value: QuickAddKind.transfer,
-                    label: Text('Transfer'),
+                    label: _SegmentLabel('Transfer'),
                     icon: Icon(Icons.swap_horiz_rounded),
                   ),
                 ],
@@ -304,13 +315,15 @@ class _EntryForm extends StatelessWidget {
           controller: amount,
           validator: QuickAddValidators.amount,
         ),
-        const SizedBox(height: AppSpacing.lg),
+        const SizedBox(height: AppSpacing.xxl),
         DropdownButtonFormField<String>(
           initialValue: category,
           isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Category',
-            prefixIcon: Icon(Icons.sell_outlined),
+          style: _valueStyle(context),
+          decoration: _fieldDecoration(
+            'Category',
+            Icons.sell_outlined,
+            hint: 'Choose a category',
           ),
           items: [
             for (final c in kind.categories)
@@ -319,13 +332,14 @@ class _EntryForm extends StatelessWidget {
           onChanged: onCategory,
           validator: (v) => QuickAddValidators.category(v, required: true),
         ),
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.lg),
         DropdownButtonFormField<String>(
           initialValue: paymentMode,
           isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Payment mode (optional)',
-            prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+          style: _valueStyle(context),
+          decoration: _fieldDecoration(
+            'Payment mode (optional)',
+            Icons.account_balance_wallet_outlined,
           ),
           items: [
             const DropdownMenuItem<String>(child: Text('Not set')),
@@ -335,15 +349,16 @@ class _EntryForm extends StatelessWidget {
           onChanged: onPaymentMode,
         ),
         if (accounts.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.lg),
           DropdownButtonFormField<String>(
             initialValue: accounts.any((a) => a.id == accountId)
                 ? accountId
                 : null,
             isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Account (optional)',
-              prefixIcon: Icon(Icons.account_balance_outlined),
+            style: _valueStyle(context),
+            decoration: _fieldDecoration(
+              'Account (optional)',
+              Icons.account_balance_outlined,
             ),
             items: [
               const DropdownMenuItem<String>(child: Text('Not set')),
@@ -359,9 +374,9 @@ class _EntryForm extends StatelessWidget {
             onChanged: onAccount,
           ),
         ],
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.lg),
         _DateField(occurredAt: occurredAt, onTap: onPickDate),
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.lg),
         _NoteField(controller: note),
       ],
     );
@@ -419,38 +434,72 @@ class _TransferForm extends StatelessWidget {
           controller: amount,
           validator: QuickAddValidators.amount,
         ),
-        const SizedBox(height: AppSpacing.lg),
+        const SizedBox(height: AppSpacing.xxl),
         DropdownButtonFormField<String>(
           initialValue: accounts.any((a) => a.id == fromId) ? fromId : null,
           isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'From',
-            prefixIcon: Icon(Icons.logout_rounded),
+          style: _valueStyle(context),
+          decoration: _fieldDecoration(
+            'From',
+            Icons.logout_rounded,
+            hint: 'Choose an account',
           ),
           items: accounts.map(item).toList(),
           onChanged: onFrom,
           validator: (_) => fromId == null ? 'Choose an account' : null,
         ),
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.lg),
         DropdownButtonFormField<String>(
           initialValue: accounts.any((a) => a.id == toId) ? toId : null,
           isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'To',
-            prefixIcon: Icon(Icons.login_rounded),
+          style: _valueStyle(context),
+          decoration: _fieldDecoration(
+            'To',
+            Icons.login_rounded,
+            hint: 'Choose an account',
           ),
           items: accounts.map(item).toList(),
           onChanged: onTo,
           validator: (_) =>
               QuickAddValidators.transferAccounts(fromId: fromId, toId: toId),
         ),
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.lg),
         _DateField(occurredAt: occurredAt, onTap: onPickDate),
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.lg),
         _NoteField(controller: note),
       ],
     );
   }
+}
+
+/// Every field in the sheet keeps its label on the border, filled or not, so
+/// the labels line up down the form instead of some sitting inside the box
+/// (empty) and some on the border (with a value).
+InputDecoration _fieldDecoration(String label, IconData icon, {String? hint}) =>
+    InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Icon(icon),
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+    );
+
+/// One value style for every field — dropdowns default to the heavier
+/// titleMedium, the date and note to bodyLarge, which also left the date box
+/// shorter than the rest.
+TextStyle? _valueStyle(BuildContext context) =>
+    Theme.of(context).textTheme.bodyLarge;
+
+/// A segment label that stays on one line, scaling down rather than wrapping
+/// ("Transfe / r") on a narrow phone or with large system text.
+class _SegmentLabel extends StatelessWidget {
+  const _SegmentLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    child: Text(text, maxLines: 1, softWrap: false),
+  );
 }
 
 class _DateField extends StatelessWidget {
@@ -464,11 +513,11 @@ class _DateField extends StatelessWidget {
       onTap: onTap,
       borderRadius: AppRadius.field,
       child: InputDecorator(
-        decoration: const InputDecoration(
-          labelText: 'Date',
-          prefixIcon: Icon(Icons.event_outlined),
+        decoration: _fieldDecoration('Date', Icons.event_outlined),
+        child: Text(
+          RelativeTime.dayLabel(occurredAt),
+          style: _valueStyle(context),
         ),
-        child: Text(RelativeTime.dayLabel(occurredAt)),
       ),
     );
   }
@@ -484,11 +533,11 @@ class _NoteField extends StatelessWidget {
       controller: controller,
       maxLength: 400,
       textCapitalization: TextCapitalization.sentences,
-      decoration: const InputDecoration(
-        labelText: 'Note (optional)',
-        prefixIcon: Icon(Icons.notes_rounded),
-        counterText: '',
-      ),
+      decoration: _fieldDecoration(
+        'Note (optional)',
+        Icons.notes_rounded,
+        hint: 'Add a note',
+      ).copyWith(counterText: ''),
       validator: QuickAddValidators.note,
     );
   }
