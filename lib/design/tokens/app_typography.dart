@@ -13,11 +13,20 @@ abstract final class AppTypography {
   /// Headings and numbers (web `font-display`).
   static const String displayFamily = 'SpaceGrotesk';
 
+  /// Heading letter-spacing as a fraction of font size (-0.025em).
+  static const double headingTracking = -0.025;
+
   /// Applied on top of the Material 3 baseline text theme.
   static TextTheme applyTo(TextTheme base) {
     final body = base.apply(fontFamily: fontFamily);
+    // Headings are bold with tight tracking (restyle spec: -0.025em).
     TextStyle? display(TextStyle? s, FontWeight w, [double? height]) =>
-        s?.copyWith(fontFamily: displayFamily, fontWeight: w, height: height);
+        s?.copyWith(
+          fontFamily: displayFamily,
+          fontWeight: w,
+          height: height,
+          letterSpacing: (s.fontSize ?? 14) * headingTracking,
+        );
     return body.copyWith(
       displayLarge: display(body.displayLarge, FontWeight.w700),
       displayMedium: display(body.displayMedium, FontWeight.w700),

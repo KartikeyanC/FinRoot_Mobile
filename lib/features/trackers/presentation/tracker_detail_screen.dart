@@ -336,6 +336,7 @@ class TrackerActionsMenu extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
+            style: AppButtonStyles.destructive,
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Delete'),
           ),

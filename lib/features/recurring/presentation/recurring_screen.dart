@@ -191,6 +191,7 @@ class _RecurringCard extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: FilledButton.tonalIcon(
+                      style: AppButtonStyles.noGradient,
                       onPressed: () => _mark(context, ref),
                       icon: const Icon(Icons.check_circle_outline, size: 18),
                       label: Text(

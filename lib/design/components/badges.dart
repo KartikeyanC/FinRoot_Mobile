@@ -32,16 +32,18 @@ class TrackerBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return _Pill(
       label: trackerDisplayLabel(name),
-      background: scheme.primary.withValues(alpha: 0.12),
+      // Accent tint with primary-text green (5.06:1).
+      background: context.finance.positiveContainer,
       foreground: context.finance.brandText,
       icon: Icons.donut_large_rounded,
     );
   }
 }
 
+/// Restyle spec "Badge / pill": fully round, 2x10 padding, 12sp semibold,
+/// a pastel tint with its matching darker text.
 class _Pill extends StatelessWidget {
   const _Pill({
     required this.label,
@@ -55,13 +57,15 @@ class _Pill extends StatelessWidget {
   final Color foreground;
   final IconData? icon;
 
+  static const _padding = EdgeInsets.symmetric(
+    horizontal: 10,
+    vertical: AppSpacing.xxs,
+  );
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xxs,
-      ),
+      padding: _padding,
       decoration: BoxDecoration(
         color: background,
         borderRadius: AppRadius.chip,
@@ -75,8 +79,11 @@ class _Pill extends StatelessWidget {
           ],
           Text(
             label,
-            style: Theme.of(context).textTheme.labelSmall
-                ?.copyWith(color: foreground, fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: foreground,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

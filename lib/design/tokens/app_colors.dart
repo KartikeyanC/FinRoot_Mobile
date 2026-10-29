@@ -7,9 +7,9 @@ import 'package:flutter/material.dart';
 /// widgets consume. Keeping the palette in one file is the "one implementation
 /// per rule" idea (web ADR-0008) applied to color.
 ///
-/// The neutrals are the web dashboard's own tokens (`src/index.css` there):
-/// dark = the default "Obsidian" theme, light = its light theme. HSL values
-/// are noted next to each so the two stay easy to compare.
+/// Light neutrals follow the restyle spec (`design-system/RESTYLE-SPEC.md`,
+/// "NineFlow look, FinRoot green"); dark = the web's default "Obsidian"
+/// theme, whose surfaces the restyle keeps (HSL noted next to each).
 abstract final class AppColors {
   // ---- Brand ----------------------------------------------------------------
   /// FinRoot green (#0D7A5F, web `--primary` 165 81% 26.5%). Seeds the
@@ -27,13 +27,25 @@ abstract final class AppColors {
   /// Web `--chart-6` (190 70% 50%): the far end of the net-worth gradient.
   static const gradientEnd = Color(0xFF26B5D9);
 
-  // ---- Neutrals (light) — web light theme ---------------------------------
-  static const canvasLight = Color(0xFFF4F7FA); // --background 210 40% 97%
-  static const surfaceLight = Color(0xFFFFFFFF); // --card
-  static const surfaceMutedLight = Color(0xFFE7ECF3); // --muted 214 32% 93%
-  static const inkLight = Color(0xFF0F1729); // --foreground 222 47% 11%
-  static const inkMutedLight = Color(0xFF5A687C); // --muted-foreground 215 16% 42%
-  static const outlineLight = Color(0xFFDDE2E9); // --border 215 20% 89%
+  /// The one action gradient (restyle spec "brand-a → brand-b"), painted left
+  /// to right on the primary button and the active tab. White text on it
+  /// clears 4.66:1. Dark themes use the same pair.
+  static const brandA = Color(0xFF0E8466);
+  static const brandB = Color(0xFF0A5E48);
+
+  // ---- Neutrals (light) — restyle spec "Crisp Light" -----------------------
+  static const canvasLight = Color(0xFFF5F7F4); // page
+  static const surfaceLight = Color(0xFFFFFFFF); // card
+  static const surfaceMutedLight = Color(0xFFEEF2EE); // subtle
+  static const inkLight = Color(0xFF111A15); // ink
+  static const inkMutedLight = Color(0xFF56625B); // muted text, 5.6:1 on subtle
+  static const inkFaintLight = Color(0xFF626D66); // faint text, 4.76:1 on subtle
+  static const outlineLight = Color(0xFFE3E8E3); // line — every 1px border
+  static const inputBorderLight = Color(0xFFD5DDD6); // inputs, selects
+
+  /// Accent tint: active nav item, selection, empty-state icon tile.
+  /// [brandTextLight] on it is 5.06:1.
+  static const accentTintLight = Color(0xFFE3F3EC);
 
   // ---- Neutrals (dark) — web "Obsidian" -----------------------------------
   static const canvasDark = Color(0xFF08090D); // --background 222 24% 4%
@@ -42,6 +54,8 @@ abstract final class AppColors {
   static const inkDark = Color(0xFFE7EBEF); // --foreground 210 20% 92%
   static const inkMutedDark = Color(0xFF818D9C); // --muted-foreground 215 12% 56%
   static const outlineDark = Color(0xFF23272F); // --border 220 14% 16%
+  static const inkFaintDark = Color(0xFF818D9C); // same as muted on dark
+  static const accentTintDark = Color(0xFF163A31); // selection / active nav
 
   // ---- Semantic finance (theme-aware pairs) ------------------------------
   // Direction of money, not "good/bad": income is inflow, expense is outflow,
@@ -58,10 +72,14 @@ abstract final class AppColors {
 
   static const warningLight = Color(0xFF9A6700);
   static const warningDark = Color(0xFFE0B15C);
-  static const dangerLight = Color(0xFFE11D48);
+  static const dangerLight = Color(0xFFDB2424); // spec danger
   static const dangerDark = Color(0xFFF43F5E);
   static const successLight = Color(0xFF047857);
   static const successDark = Color(0xFF10B981);
+
+  /// Fill of a destructive (confirm-delete) button on every theme: white text
+  /// on it is 5:1, which the brighter dark-mode [dangerDark] would miss.
+  static const dangerFill = Color(0xFFDB2424);
 
   /// The web's chart decks (`src/lib/chartColors.ts`), first eight.
   static const chartLight = [

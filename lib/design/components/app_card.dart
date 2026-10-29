@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_radius.dart';
+import '../tokens/app_shadows.dart';
 import '../tokens/app_spacing.dart';
 
-/// Flat, rounded surface card. No elevation — it reads against the tinted
-/// canvas. Optional [onTap] gives it an ink response with a 48dp min height.
+/// Rounded surface card (restyle spec "Card"): card fill, 1px line border,
+/// 20dp radius and the warm, low [AppShadows.soft] shadow (black on dark).
+/// Optional [onTap] gives it an ink response with a 48dp min height.
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
@@ -21,23 +23,33 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final content = Padding(padding: padding, child: child);
-    return Material(
-      color: color ?? scheme.surface,
-      borderRadius: AppRadius.card,
-      clipBehavior: Clip.antiAlias,
-      child: onTap == null
-          ? content
-          : InkWell(
-              onTap: onTap,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minHeight: AppSpacing.minTouchTarget,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.card,
+        boxShadow: AppShadows.soft(theme.brightness),
+      ),
+      child: Material(
+        color: color ?? scheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.card,
+          side: BorderSide(color: scheme.outline),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: onTap == null
+            ? content
+            : InkWell(
+                onTap: onTap,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    minHeight: AppSpacing.minTouchTarget,
+                  ),
+                  child: content,
                 ),
-                child: content,
               ),
-            ),
+      ),
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/error/error_mapper.dart';
 import '../../core/error/failure.dart';
 import '../tokens/app_spacing.dart';
+import 'button_styles.dart';
 
 /// Centered, quiet loading state. Prefer skeletons for content lists (M2 ships
 /// the primitive; screens choose).
@@ -115,6 +116,7 @@ class ErrorView extends StatelessWidget {
             if (onRetry != null && failure.isRetryable) ...[
               const SizedBox(height: AppSpacing.lg),
               FilledButton.tonalIcon(
+                style: AppButtonStyles.noGradient,
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Try again'),

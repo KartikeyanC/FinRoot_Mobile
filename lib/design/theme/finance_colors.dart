@@ -40,7 +40,7 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
     success: AppColors.successLight,
     warning: AppColors.warningLight,
     danger: AppColors.dangerLight,
-    positiveContainer: Color(0xFFE0F5EE), // web light --accent 160 50% 92%
+    positiveContainer: AppColors.accentTintLight,
     warningContainer: Color(0xFFF7ECD3),
     brandText: AppColors.brandTextLight,
   );
@@ -52,7 +52,7 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
     success: AppColors.successDark,
     warning: AppColors.warningDark,
     danger: AppColors.dangerDark,
-    positiveContainer: Color(0xFF163A31),
+    positiveContainer: AppColors.accentTintDark,
     warningContainer: Color(0xFF3A3120),
     brandText: AppColors.brandTextDark,
   );
