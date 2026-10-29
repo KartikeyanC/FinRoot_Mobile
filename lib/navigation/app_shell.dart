@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../design/theme/finance_colors.dart';
+import '../design/components/gradient_fab.dart';
 import '../design/tokens/app_breakpoints.dart';
+import '../design/tokens/app_palette.dart';
 import '../design/tokens/app_spacing.dart';
 import '../features/payment_capture/presentation/payment_popup_opener.dart';
 import '../features/price_alerts/presentation/price_alert_watcher.dart';
@@ -13,11 +14,14 @@ import '../features/workspace/application/workspace_providers.dart';
 import '../features/workspace/domain/membership.dart';
 import '../features/workspace/presentation/workspace_switcher_sheet.dart';
 import 'destinations.dart';
+import 'more_sheet.dart';
 import 'quick_add_entry.dart';
 
 /// The adaptive app shell (M1 audit §11, §14, §15).
 ///
-/// - compact / medium → bottom `NavigationBar` + a centered Quick Add button.
+/// - compact / medium → NineFlow's phone layout: a bottom tab bar (the main
+///   tabs + "More", which opens a sheet) and a floating gradient "+" for
+///   Quick Add, bottom right.
 /// - expanded (tablet) → `NavigationRail` + Quick Add as the rail's leading
 ///   action; content gets the rest of the width for future split views.
 ///
@@ -36,12 +40,11 @@ class AppShell extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      LiveDataRefresher(
-        child: PriceAlertWatcher(
-          child: PaymentPopupOpener(child: _layout(context)),
-        ),
-      );
+  Widget build(BuildContext context) => LiveDataRefresher(
+    child: PriceAlertWatcher(
+      child: PaymentPopupOpener(child: _layout(context)),
+    ),
+  );
 
   Widget _layout(BuildContext context) {
     final size = AppBreakpoints.of(context);
@@ -81,16 +84,16 @@ class AppShell extends StatelessWidget {
           Expanded(child: navigationShell),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'quick-add-fab',
+      floatingActionButton: GradientFab(
         tooltip: 'Add a transaction',
         onPressed: () => openQuickAdd(context),
-        child: const Icon(Icons.add_rounded, size: 28),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _BottomBar(
         currentIndex: navigationShell.currentIndex,
-        onSelected: _goBranch,
+        onSelected: (i) => destinations[i] == AppDestination.more
+            ? showMoreSheet(context)
+            : _goBranch(i),
         destinations: destinations,
       ),
     );
@@ -110,30 +113,32 @@ class _BottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    // 4 destinations split 2 + 2 around the docked Quick Add button.
-    final left = destinations.take(2).toList();
-    final right = destinations.skip(2).toList();
-
-    Widget item(AppDestination d) => _BottomItem(
-      destination: d,
-      selected: destinations.indexOf(d) == currentIndex,
-      onTap: () => onSelected(destinations.indexOf(d)),
-    );
-
-    return BottomAppBar(
-      height: 68,
-      padding: EdgeInsets.zero,
-      color: scheme.surface,
-      surfaceTintColor: Colors.transparent,
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8,
-      child: Row(
-        children: [
-          ...left.map((d) => Expanded(child: item(d))),
-          const SizedBox(width: 64), // notch gap
-          ...right.map((d) => Expanded(child: item(d))),
-        ],
+    final palette = context.palette;
+    // Card-coloured bar with a 1px top line; one equal slot per destination
+    // (at most 4 tabs + More, per NineFlow).
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.card,
+        border: Border(top: BorderSide(color: palette.line)),
+      ),
+      child: BottomAppBar(
+        height: 64,
+        padding: EdgeInsets.zero,
+        elevation: 0,
+        color: palette.card,
+        surfaceTintColor: Colors.transparent,
+        child: Row(
+          children: [
+            for (var i = 0; i < destinations.length; i++)
+              Expanded(
+                child: _BottomItem(
+                  destination: destinations[i],
+                  selected: i == currentIndex,
+                  onTap: () => onSelected(i),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -152,10 +157,10 @@ class _BottomItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = selected
-        ? context.finance.brandText
-        : scheme.onSurfaceVariant;
+    final palette = context.palette;
+    // Active: icon in a 28x40 accent-tint pill, label in accent text.
+    // Inactive: faint. Labels are 10sp semibold (micro).
+    final color = selected ? palette.accentText : palette.faint;
     return Semantics(
       button: true,
       selected: selected,
@@ -171,19 +176,30 @@ class _BottomItem extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                selected ? destination.selectedIcon : destination.icon,
-                color: color,
-                size: 24,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: const Cubic(0.2, 0.7, 0.2, 1),
+                width: 40,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: selected ? palette.tint : Colors.transparent,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  selected ? destination.selectedIcon : destination.icon,
+                  color: color,
+                  size: 20,
+                ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: AppSpacing.xxs),
               Text(
                 destination.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: color,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],

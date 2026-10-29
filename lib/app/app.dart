@@ -7,8 +7,9 @@ import '../features/notifications/application/notification_coordinator.dart';
 import '../features/sync/application/sync_coordinator.dart';
 import 'router.dart';
 
-/// Root widget. Light/dark themes are defined once; the active mode comes from
-/// [themeModeProvider] (Settings → Appearance), defaulting to the system.
+/// Root widget. The theme is a mode ([themeModeProvider], light by default)
+/// times a colour theme ([colorThemeProvider], FinRoot by default), both
+/// chosen in Settings → Appearance.
 class FinRootApp extends ConsumerWidget {
   const FinRootApp({super.key});
 
@@ -16,11 +17,12 @@ class FinRootApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final colorTheme = ref.watch(colorThemeProvider);
     return MaterialApp.router(
       title: 'FinRoot',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.build(Brightness.light, colorTheme),
+      darkTheme: AppTheme.build(Brightness.dark, colorTheme),
       themeMode: themeMode,
       routerConfig: router,
       // Keeps the sync + notification coordinators alive for the app's lifetime.

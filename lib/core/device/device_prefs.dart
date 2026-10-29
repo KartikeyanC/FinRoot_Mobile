@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../design/tokens/app_palette.dart';
+
 /// Device-local key/value preferences.
 ///
 /// This is NOT the synced store (that is Drift, from M4) and NOT the secret
@@ -15,18 +17,32 @@ class DevicePrefs {
   final SharedPreferences _prefs;
 
   static const _kThemeMode = 'finroot.theme_mode';
+  static const _kColorTheme = 'finroot.color_theme';
   static const _kTenantId = 'finroot.tenant.current';
 
+  /// Appearance follows NineFlow's model: a [ThemeMode] plus an
+  /// [AppColorTheme], stored separately.
+  ///
+  /// Migration from the single "theme_mode" setting: its stored value
+  /// ('light' / 'dark' / 'system') keeps meaning the mode, and a device with
+  /// no colour theme stored gets FinRoot — so an old choice becomes
+  /// FinRoot + that mode with nothing rewritten. Nothing stored → light, the
+  /// NineFlow default.
   ThemeMode get themeMode => switch (_prefs.getString(_kThemeMode)) {
     'light' => ThemeMode.light,
     'dark' => ThemeMode.dark,
     'system' => ThemeMode.system,
-    // The web dashboard opens in its dark "Obsidian" theme; so does the app.
-    _ => ThemeMode.dark,
+    _ => ThemeMode.light,
   };
 
   Future<void> setThemeMode(ThemeMode mode) =>
       _prefs.setString(_kThemeMode, mode.name);
+
+  AppColorTheme get colorTheme =>
+      AppColorTheme.fromName(_prefs.getString(_kColorTheme));
+
+  Future<void> setColorTheme(AppColorTheme theme) =>
+      _prefs.setString(_kColorTheme, theme.name);
 
   /// The workspace the user last chose. Reconciled against real memberships by
   /// [currentTenantIdProvider] — a stored id for a workspace that was left or
@@ -69,5 +85,23 @@ class ThemeModeController extends Notifier<ThemeMode> {
   Future<void> set(ThemeMode mode) async {
     await ref.read(devicePrefsProvider).setThemeMode(mode);
     state = mode;
+  }
+}
+
+/// The active [AppColorTheme] (FinRoot, Ocean, Forest, Berry, Graphite).
+/// Seeded from [DevicePrefs]; [ColorThemeController.set] writes through.
+final colorThemeProvider =
+    NotifierProvider<ColorThemeController, AppColorTheme>(
+      ColorThemeController.new,
+      name: 'colorTheme',
+    );
+
+class ColorThemeController extends Notifier<AppColorTheme> {
+  @override
+  AppColorTheme build() => ref.watch(devicePrefsProvider).colorTheme;
+
+  Future<void> set(AppColorTheme theme) async {
+    await ref.read(devicePrefsProvider).setColorTheme(theme);
+    state = theme;
   }
 }

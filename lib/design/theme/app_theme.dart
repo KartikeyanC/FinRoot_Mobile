@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../components/button_styles.dart';
-import '../tokens/app_colors.dart';
+import '../tokens/app_palette.dart';
 import '../tokens/app_radius.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
@@ -9,11 +9,14 @@ import 'finance_colors.dart';
 
 /// The FinRoot Mobile design system, expressed as two [ThemeData]s.
 ///
-/// Rules encoded here (restyle spec "NineFlow look, FinRoot green"):
+/// Rules encoded here (NineFlow's design system, FinRoot green; tokens in
+/// `design-system/finroot-nineflow-tokens.css`). Every value comes from an
+/// [AppPalette] (colour theme × mode), installed as a theme extension next to
+/// [FinanceColors].
 /// - Material 3 throughout (`useMaterial3: true`).
-/// - Soft light surfaces: white cards with a hairline border and a warm, low
-///   shadow on a #F5F7F4 page. Dark keeps its surfaces, takes the same shapes
-///   and black shadows.
+/// - Warm surfaces: white cards with a hairline border and a warm, low shadow
+///   on a cream page (#FAF7F0); dark uses NineFlow's dark surfaces and black
+///   shadows.
 /// - Corners from [AppRadius]: 12 inputs, 20 cards/dialogs, 24 sheet tops,
 ///   fully round buttons, chips, tabs and segmented controls.
 /// - One gradient, on the primary [FilledButton] and the active tab
@@ -23,62 +26,54 @@ import 'finance_colors.dart';
 /// - Financial hierarchy survives dark mode — semantic colors are redefined,
 ///   not inverted (brief §33), via the [FinanceColors] extension.
 abstract final class AppTheme {
-  static ThemeData get light => _build(Brightness.light);
-  static ThemeData get dark => _build(Brightness.dark);
+  /// FinRoot colour theme, light / dark mode.
+  static ThemeData get light => build(Brightness.light);
+  static ThemeData get dark => build(Brightness.dark);
 
-  static ThemeData _build(Brightness brightness) {
-    final isLight = brightness == Brightness.light;
+  /// The theme for a mode × colour theme (NineFlow's model).
+  static ThemeData build(
+    Brightness brightness, [
+    AppColorTheme colorTheme = AppColorTheme.finroot,
+  ]) => _build(colorTheme.palette(brightness));
+
+  static ThemeData _build(AppPalette p) {
+    final brightness = p.brightness;
+    final isLight = !p.isDark;
+    final finance = FinanceColors.forPalette(p);
 
     final scheme =
         ColorScheme.fromSeed(
-          seedColor: AppColors.seed,
+          seedColor: p.accent,
           brightness: brightness,
         ).copyWith(
-          // fromSeed tones the seed (dark mode gets a pale tint); pin the brand
-          // green itself as the primary action color on both themes.
-          primary: AppColors.seed,
-          onPrimary: Colors.white,
-          surface: isLight ? AppColors.surfaceLight : AppColors.surfaceDark,
-          onSurface: isLight ? AppColors.inkLight : AppColors.inkDark,
-          onSurfaceVariant: isLight
-              ? AppColors.inkMutedLight
-              : AppColors.inkMutedDark,
-          outline: isLight ? AppColors.outlineLight : AppColors.outlineDark,
-          outlineVariant: isLight
-              ? AppColors.surfaceMutedLight
-              : AppColors.surfaceMutedDark,
-          error: isLight ? AppColors.dangerLight : AppColors.dangerDark,
-          // Selection / active-nav fill = the accent tint, green text on it.
-          secondaryContainer: isLight
-              ? AppColors.accentTintLight
-              : AppColors.accentTintDark,
-          onSecondaryContainer: isLight
-              ? AppColors.brandTextLight
-              : AppColors.brandTextDark,
-          // Light: menus and popovers are card-white, quiet fills are subtle.
-          // Dark keeps the seeded containers.
-          surfaceContainerLowest: isLight ? AppColors.surfaceLight : null,
-          surfaceContainerLow: isLight ? AppColors.surfaceLight : null,
-          surfaceContainer: isLight ? AppColors.surfaceLight : null,
-          surfaceContainerHigh: isLight ? AppColors.surfaceMutedLight : null,
-          surfaceContainerHighest: isLight
-              ? AppColors.surfaceMutedLight
-              : null,
+          primary: p.accent,
+          onPrimary: p.onAccent,
+          primaryContainer: p.tint,
+          onPrimaryContainer: p.accentText,
+          secondaryContainer: p.tint,
+          onSecondaryContainer: p.accentText,
+          surface: p.card,
+          onSurface: p.ink,
+          onSurfaceVariant: p.muted,
+          outline: p.line,
+          outlineVariant: p.subtle,
+          error: finance.danger,
+          onError: isLight ? Colors.white : const Color(0xFF111111),
+          surfaceContainerLowest: p.card,
+          surfaceContainerLow: p.card,
+          surfaceContainer: p.card,
+          surfaceContainerHigh: p.subtle,
+          surfaceContainerHighest: p.subtle,
+          shadow: p.shadow,
         );
 
-    final canvas = isLight ? AppColors.canvasLight : AppColors.canvasDark;
-    // Green text/icons; see AppColors.brandTextDark.
-    final brandText = isLight ? AppColors.brandTextLight : AppColors.brandTextDark;
-    final faint = isLight ? AppColors.inkFaintLight : AppColors.inkFaintDark;
-    final inputBorder = isLight
-        ? AppColors.inputBorderLight
-        : AppColors.outlineDark;
-    final accentTint = isLight
-        ? AppColors.accentTintLight
-        : AppColors.accentTintDark;
-    // Shadow tint: warm ink on light, black on dark (same alphas).
-    final shadowTint = isLight ? AppColors.inkLight : Colors.black;
-    final scrim = AppColors.inkLight.withValues(alpha: 0.3);
+    final canvas = p.page;
+    final brandText = p.accentText;
+    final faint = p.faint;
+    final inputBorder = p.line;
+    final accentTint = p.tint;
+    final shadowTint = p.shadow;
+    final scrim = const Color(0xFF111111).withValues(alpha: 0.3);
     OutlineInputBorder field(Color color, [double width = 1]) =>
         OutlineInputBorder(
           borderRadius: AppRadius.field,
@@ -94,7 +89,7 @@ abstract final class AppTheme {
       canvasColor: canvas,
       splashFactory: InkSparkle.splashFactory,
       textTheme: text.apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface),
-      extensions: [isLight ? FinanceColors.light : FinanceColors.dark],
+      extensions: [finance, p],
       appBarTheme: AppBarTheme(
         backgroundColor: canvas,
         surfaceTintColor: Colors.transparent,
@@ -117,13 +112,9 @@ abstract final class AppTheme {
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: scheme.outlineVariant,
+        color: p.line,
         thickness: 1,
         space: 1,
-      ),
-      listTileTheme: const ListTileThemeData(
-        minVerticalPadding: AppSpacing.md,
-        contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       ),
       chipTheme: ChipThemeData(
         shape: const StadiumBorder(),
@@ -151,7 +142,7 @@ abstract final class AppTheme {
         border: field(inputBorder),
         enabledBorder: field(inputBorder),
         disabledBorder: field(scheme.outline),
-        // Spec: primary border at 60% plus a 2px primary glow at 20%.
+        // Spec: accent border at 60% plus a 2px accent glow at 20%.
         // OutlineInputBorder can't paint an outer glow, so a 2px border at
         // 60% stands in for the pair.
         focusedBorder: field(scheme.primary.withValues(alpha: 0.6), 2),
@@ -192,8 +183,7 @@ abstract final class AppTheme {
           textStyle: text.labelLarge,
         ),
       ),
-      // Track = subtle, fully round; the active segment is solid primary with
-      // white text. (SegmentedButton drops ButtonStyle.backgroundBuilder, so
+      // Track = subtle, fully round; the active segment is solid accent. (SegmentedButton drops ButtonStyle.backgroundBuilder, so
       // the gradient can't reach it.)
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
@@ -208,12 +198,12 @@ abstract final class AppTheme {
             (states) => states.contains(WidgetState.disabled)
                 ? scheme.onSurface.withValues(alpha: 0.38)
                 : states.contains(WidgetState.selected)
-                ? Colors.white
+                ? scheme.onPrimary
                 : scheme.onSurfaceVariant,
           ),
           iconColor: WidgetStateProperty.resolveWith(
             (states) => states.contains(WidgetState.selected)
-                ? Colors.white
+                ? scheme.onPrimary
                 : scheme.onSurfaceVariant,
           ),
           textStyle: WidgetStatePropertyAll(text.labelLarge),
@@ -221,9 +211,9 @@ abstract final class AppTheme {
       ),
       // Active tab = a gradient pill inset 4dp in its slot; no underline.
       tabBarTheme: TabBarThemeData(
-        indicator: const _PillIndicator(
-          gradient: AppButtonStyles.brandGradient,
-          inset: EdgeInsets.all(AppSpacing.xs),
+        indicator: _PillIndicator(
+          gradient: p.gradient,
+          inset: const EdgeInsets.all(AppSpacing.xs),
         ),
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
@@ -241,6 +231,13 @@ abstract final class AppTheme {
         shadowColor: shadowTint.withValues(alpha: 0.22),
         shape: const RoundedRectangleBorder(borderRadius: AppRadius.dialog),
         barrierColor: scrim,
+        insetPadding: const EdgeInsets.all(AppSpacing.xxl),
+        actionsPadding: const EdgeInsets.fromLTRB(
+          AppSpacing.xxl,
+          0,
+          AppSpacing.xxl,
+          AppSpacing.xxl,
+        ),
       ),
       popupMenuTheme: PopupMenuThemeData(
         color: scheme.surface,
@@ -254,7 +251,7 @@ abstract final class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
-        backgroundColor: scheme.surface,
+        backgroundColor: p.card,
         surfaceTintColor: Colors.transparent,
         indicatorColor: accentTint,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
@@ -282,17 +279,36 @@ abstract final class AppTheme {
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
         showDragHandle: true,
-        dragHandleColor: scheme.outline,
+        dragHandleColor: p.line,
+        dragHandleSize: const Size(40, 4),
         modalBarrierColor: scrim,
         shape: const RoundedRectangleBorder(borderRadius: AppRadius.sheet),
         clipBehavior: Clip.antiAlias,
       ),
       textSelectionTheme: TextSelectionThemeData(cursorColor: brandText),
+      switchTheme: SwitchThemeData(
+        trackOutlineColor: WidgetStatePropertyAll(p.line),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: p.accent,
+        linearTrackColor: p.subtle,
+        circularTrackColor: p.subtle,
+      ),
+      listTileTheme: ListTileThemeData(
+        minVerticalPadding: AppSpacing.md,
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        iconColor: p.muted,
+        selectedColor: p.accentText,
+        selectedTileColor: p.tint,
+      ),
       // Material's default FAB is primaryContainer (a pale mint on light);
       // FABs are primary actions, so they carry the brand green itself.
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: scheme.primary,
         foregroundColor: scheme.onPrimary,
+        // shadow-lift approximated with elevation in the palette tint.
+        elevation: 6,
+        highlightElevation: 8,
         // Stadium = a circle on the square "+" buttons (it also fills the
         // bottom bar's circular notch) and pill ends on "+ Tracker"-style ones.
         shape: const StadiumBorder(),

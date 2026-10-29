@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../tokens/app_palette.dart';
 import '../tokens/app_radius.dart';
 import '../tokens/app_shadows.dart';
 import '../tokens/app_spacing.dart';
 
 /// Rounded surface card (restyle spec "Card"): card fill, 1px line border,
-/// 20dp radius and the warm, low [AppShadows.soft] shadow (black on dark).
+/// 20dp radius and the warm, low [AppShadows.soft] shadow in the palette's
+/// shadow tint (black on dark).
 /// Optional [onTap] gives it an ink response with a 48dp min height.
 class AppCard extends StatelessWidget {
   const AppCard({
@@ -23,19 +25,18 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final palette = context.palette;
     final content = Padding(padding: padding, child: child);
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: AppRadius.card,
-        boxShadow: AppShadows.soft(theme.brightness),
+        boxShadow: AppShadows.soft(palette.shadow),
       ),
       child: Material(
-        color: color ?? scheme.surface,
+        color: color ?? palette.card,
         shape: RoundedRectangleBorder(
           borderRadius: AppRadius.card,
-          side: BorderSide(color: scheme.outline),
+          side: BorderSide(color: palette.line),
         ),
         clipBehavior: Clip.antiAlias,
         child: onTap == null

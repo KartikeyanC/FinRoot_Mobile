@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_colors.dart';
+import '../tokens/app_palette.dart';
 
 /// Theme-aware semantic colors that Material's [ColorScheme] does not cover:
 /// the direction of money and the status tones. Consumed via
@@ -29,33 +30,30 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
   final Color positiveContainer;
   final Color warningContainer;
 
-  /// Brand green for text and icons (not fills): [AppColors.seed] on light,
-  /// [AppColors.brandTextDark] on dark so it clears 4.5:1.
+  /// Accent for text and icons (not fills) — the palette's `accentText`,
+  /// 4.5:1+ on card, page and tint.
   final Color brandText;
 
-  static const light = FinanceColors(
-    income: AppColors.incomeLight,
-    expense: AppColors.expenseLight,
-    transfer: AppColors.transferLight,
-    success: AppColors.successLight,
-    warning: AppColors.warningLight,
-    danger: AppColors.dangerLight,
-    positiveContainer: AppColors.accentTintLight,
-    warningContainer: Color(0xFFF7ECD3),
-    brandText: AppColors.brandTextLight,
-  );
+  /// Semantic colours for a palette. Money direction and status use the
+  /// shared pastel `*Fg` tones (readable on every theme's card, page and
+  /// tint); the accent tint and accent text follow the colour theme.
+  factory FinanceColors.forPalette(AppPalette p) {
+    final light = !p.isDark;
+    return FinanceColors(
+      income: light ? AppColors.mintFgLight : AppColors.mintFgDark,
+      expense: light ? AppColors.coralFgLight : AppColors.coralFgDark,
+      transfer: light ? AppColors.skyFgLight : AppColors.skyFgDark,
+      success: light ? AppColors.mintFgLight : AppColors.mintFgDark,
+      warning: light ? AppColors.butterFgLight : AppColors.butterFgDark,
+      danger: light ? AppColors.coralFgLight : AppColors.coralFgDark,
+      positiveContainer: p.tint,
+      warningContainer: light ? AppColors.butterLight : AppColors.butterDark,
+      brandText: p.accentText,
+    );
+  }
 
-  static const dark = FinanceColors(
-    income: AppColors.incomeDark,
-    expense: AppColors.expenseDark,
-    transfer: AppColors.transferDark,
-    success: AppColors.successDark,
-    warning: AppColors.warningDark,
-    danger: AppColors.dangerDark,
-    positiveContainer: AppColors.accentTintDark,
-    warningContainer: Color(0xFF3A3120),
-    brandText: AppColors.brandTextDark,
-  );
+  static final light = FinanceColors.forPalette(AppPalette.finrootLight);
+  static final dark = FinanceColors.forPalette(AppPalette.finrootDark);
 
   @override
   FinanceColors copyWith({

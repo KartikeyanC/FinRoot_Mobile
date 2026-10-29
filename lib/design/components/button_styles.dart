@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_colors.dart';
+import '../tokens/app_palette.dart';
 
 /// Button styling the [ButtonStyle] color properties can't express.
 ///
-/// The primary action wears the one brand gradient (restyle spec: #0E8466 →
-/// #0A5E48, left to right). [AppTheme] installs [gradientBackground] as the
-/// `filledButtonTheme`'s background layer, so every plain [FilledButton] /
-/// [FilledButton.icon] gets it with no call-site change. The two filled
-/// variants that must NOT be green-gradient opt out:
+/// The primary action wears the colour theme's one gradient (`brand-a` →
+/// `brand-b`, left to right; FinRoot: #0E8466 → #0A5E48). [AppTheme] installs
+/// [gradientBackground] as the `filledButtonTheme`'s background layer, so every
+/// plain [FilledButton] / [FilledButton.icon] gets it with no call-site
+/// change. The two filled variants that must NOT wear it opt out:
 /// - tonal buttons: `style: AppButtonStyles.noGradient`
 /// - confirm-delete buttons: `style: AppButtonStyles.destructive`
 abstract final class AppButtonStyles {
-  /// Left-to-right brand gradient.
-  static const LinearGradient brandGradient = LinearGradient(
-    colors: [AppColors.brandA, AppColors.brandB],
-  );
+  /// The active colour theme's gradient.
+  static LinearGradient gradientOf(BuildContext context) =>
+      context.palette.gradient;
 
-  /// [ButtonStyle.backgroundBuilder] that paints [brandGradient] behind the
+  /// [ButtonStyle.backgroundBuilder] that paints the theme gradient behind the
   /// label. It is drawn as an [Ink] on the button's own [Material], so ink
   /// splashes still show on top and the button's shape clips it. A disabled
   /// button falls back to the theme's flat disabled fill.
@@ -27,9 +27,17 @@ abstract final class AppButtonStyles {
     Widget? child,
   ) {
     if (states.contains(WidgetState.disabled)) return _plain(child);
+    // Label and icon are white on every gradient (the scheme's onPrimary is
+    // dark on dark-mode accents, which suits solid accent fills only).
     return Ink(
-      decoration: const BoxDecoration(gradient: brandGradient),
-      child: child,
+      decoration: BoxDecoration(gradient: gradientOf(context)),
+      child: IconTheme.merge(
+        data: const IconThemeData(color: Colors.white),
+        child: DefaultTextStyle.merge(
+          style: const TextStyle(color: Colors.white),
+          child: _plain(child),
+        ),
+      ),
     );
   }
 
@@ -46,7 +54,7 @@ abstract final class AppButtonStyles {
     backgroundBuilder: _plainBackground,
   );
 
-  /// Solid danger fill with white text — only for confirming a delete.
+  /// Solid danger (#D7373D) with white text — only for confirming a delete.
   static final ButtonStyle destructive = FilledButton.styleFrom(
     backgroundColor: AppColors.dangerFill,
     foregroundColor: Colors.white,

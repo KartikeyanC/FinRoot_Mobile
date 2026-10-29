@@ -1,38 +1,41 @@
 import 'package:flutter/widgets.dart';
 
-/// Warm, low shadows — restyle spec "Shadow". Light themes tint them with the
-/// ink (#111A15); dark themes use black at the same alphas.
+/// NineFlow's warm, low shadows. [tint] is the palette's `shadow` colour:
+/// rgb(60,50,30) on FinRoot light (each theme has its own), black on dark —
+/// the alphas are the same in both modes.
 abstract final class AppShadows {
-  static Color _tint(Brightness b, double alpha) =>
-      (b == Brightness.light
-              ? const Color(0xFF111A15)
-              : const Color(0xFF000000))
-          .withValues(alpha: alpha);
-
-  /// Resting cards.
-  static List<BoxShadow> soft(Brightness b) => [
-    BoxShadow(color: _tint(b, 0.04), offset: const Offset(0, 1), blurRadius: 2),
+  /// Resting cards: 0 1 2 /.04, 0 4 16 /.05.
+  static List<BoxShadow> soft(Color tint) => [
     BoxShadow(
-      color: _tint(b, 0.05),
+      color: tint.withValues(alpha: 0.04),
+      offset: const Offset(0, 1),
+      blurRadius: 2,
+    ),
+    BoxShadow(
+      color: tint.withValues(alpha: 0.05),
       offset: const Offset(0, 4),
       blurRadius: 16,
     ),
   ];
 
-  /// Menus, popovers, floating buttons, pressed/hovered cards.
-  static List<BoxShadow> lift(Brightness b) => [
-    BoxShadow(color: _tint(b, 0.05), offset: const Offset(0, 2), blurRadius: 4),
+  /// Menus, popovers, floating buttons: 0 2 4 /.05, 0 12 28 /.10.
+  static List<BoxShadow> lift(Color tint) => [
     BoxShadow(
-      color: _tint(b, 0.10),
+      color: tint.withValues(alpha: 0.05),
+      offset: const Offset(0, 2),
+      blurRadius: 4,
+    ),
+    BoxShadow(
+      color: tint.withValues(alpha: 0.10),
       offset: const Offset(0, 12),
       blurRadius: 28,
     ),
   ];
 
-  /// Dialogs.
-  static List<BoxShadow> modal(Brightness b) => [
+  /// Dialogs: 0 24 64 /.22.
+  static List<BoxShadow> modal(Color tint) => [
     BoxShadow(
-      color: _tint(b, 0.22),
+      color: tint.withValues(alpha: 0.22),
       offset: const Offset(0, 24),
       blurRadius: 64,
     ),

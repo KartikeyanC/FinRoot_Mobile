@@ -1,4 +1,5 @@
 import 'package:finroot_mobile/design/design.dart';
+import 'package:finroot_mobile/features/menus/application/menu_providers.dart';
 import 'package:finroot_mobile/features/sync/application/sync_status.dart';
 import 'package:finroot_mobile/features/workspace/application/workspace_providers.dart';
 import 'package:finroot_mobile/features/workspace/domain/membership.dart';
@@ -55,25 +56,42 @@ GoRouter _router() => GoRouter(
   ],
 );
 
-Widget _host({
-  List<Membership> memberships = const [],
-}) {
+Widget _host({List<Membership> memberships = const []}) {
   return ProviderScope(
     overrides: [
       syncStatusProvider.overrideWithValue(SyncStatusView.empty),
+      effectiveMenusProvider.overrideWith((ref) async => const <String>{}),
       membershipsProvider.overrideWith(() => _Memberships(memberships)),
       currentMembershipProvider.overrideWithValue(
         memberships.isEmpty ? null : memberships.first,
       ),
     ],
-    child: MaterialApp.router(
-      theme: AppTheme.light,
-      routerConfig: _router(),
-    ),
+    child: MaterialApp.router(theme: AppTheme.light, routerConfig: _router()),
   );
 }
 
 void main() {
+  testWidgets('phone: More opens a sheet of feature tiles, not a tab', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Add a transaction'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('More'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(find.text('Accounts'), findsOneWidget);
+    expect(find.text('HOME'), findsOneWidget); // still on the Home tab
+    expect(find.text('MORE'), findsNothing);
+  });
+
   testWidgets('compact width uses the bottom bar, no rail', (tester) async {
     tester.view.physicalSize = const Size(420, 900);
     tester.view.devicePixelRatio = 1.0;

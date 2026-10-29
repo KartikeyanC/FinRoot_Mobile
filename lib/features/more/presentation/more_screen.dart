@@ -44,7 +44,7 @@ class MoreScreen extends ConsumerWidget {
       if (twoPane) {
         ref.read(selectedMoreRouteProvider.notifier).select(e.route);
       } else if (locked) {
-        _showLocked(context, e);
+        showLockedMoreEntry(context, e);
       } else {
         context.push(e.route);
       }
@@ -178,7 +178,7 @@ class _MoreTile extends ConsumerWidget {
   }
 }
 
-void _showLocked(BuildContext context, MoreEntry entry) {
+void showLockedMoreEntry(BuildContext context, MoreEntry entry) {
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,

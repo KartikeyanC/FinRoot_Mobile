@@ -60,10 +60,6 @@ class SettingsScreen extends ConsumerWidget {
             child: const Column(
               children: [
                 RadioListTile<ThemeMode>(
-                  value: ThemeMode.system,
-                  title: Text('Follow system'),
-                ),
-                RadioListTile<ThemeMode>(
                   value: ThemeMode.light,
                   title: Text('Light'),
                 ),
@@ -71,9 +67,14 @@ class SettingsScreen extends ConsumerWidget {
                   value: ThemeMode.dark,
                   title: Text('Dark'),
                 ),
+                RadioListTile<ThemeMode>(
+                  value: ThemeMode.system,
+                  title: Text('Follow system'),
+                ),
               ],
             ),
           ),
+          const _ColorThemePicker(),
 
           const Divider(height: 1),
           const _SectionLabel('Account'),
@@ -190,9 +191,126 @@ class _SectionLabel extends StatelessWidget {
       ),
       child: Text(
         text.toUpperCase(),
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: context.finance.brandText,
-          letterSpacing: 0.8,
+        style: Theme.of(context).textTheme.labelMedium
+            ?.copyWith(color: context.finance.brandText, letterSpacing: 0.8),
+      ),
+    );
+  }
+}
+
+/// Colour theme: five swatches (NineFlow's themes), each showing its gradient
+/// in the current mode. Independent of light / dark above.
+class _ColorThemePicker extends ConsumerWidget {
+  const _ColorThemePicker();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(colorThemeProvider);
+    final brightness = Theme.of(context).brightness;
+    final palette = context.palette;
+    final t = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        AppSpacing.lg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Colour theme',
+            style: t.bodyMedium?.copyWith(color: palette.muted),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Wrap(
+            spacing: AppSpacing.md,
+            runSpacing: AppSpacing.md,
+            children: [
+              for (final theme in AppColorTheme.values)
+                _Swatch(
+                  theme: theme,
+                  colors: theme.palette(brightness),
+                  selected: theme == current,
+                  onTap: () => ref.read(colorThemeProvider.notifier).set(theme),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Swatch extends StatelessWidget {
+  const _Swatch({
+    required this.theme,
+    required this.colors,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppColorTheme theme;
+  final AppPalette colors;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${theme.label} colour theme',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.tile,
+        child: SizedBox(
+          width: 56,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+            child: Column(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: selected ? palette.accent : palette.line,
+                      width: 2,
+                    ),
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: colors.gradient,
+                    ),
+                    child: selected
+                        ? const Icon(
+                            Icons.check_rounded,
+                            size: 18,
+                            color: Colors.white,
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  theme.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: selected ? palette.accentText : palette.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
