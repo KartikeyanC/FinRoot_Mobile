@@ -56,6 +56,33 @@ void main() {
     },
   );
 
+  test('an unreadable row is skipped; the rest apply and the cursor moves', () async {
+    gateway.rows[SyncEntity.transaction]!.addAll([
+      serverTxn(id: 'a', tenant: 't1', updatedAt: DateTime.utc(2026, 9, 8, 10)),
+      // A row this app cannot read (no type) — used to fail the whole sync,
+      // every time, because the cursor never moved past it.
+      serverTxn(id: 'bad', tenant: 't1', updatedAt: DateTime.utc(2026, 9, 8, 11))
+        ..['type'] = null,
+      serverTxn(id: 'c', tenant: 't1', updatedAt: DateTime.utc(2026, 9, 8, 12)),
+    ]);
+
+    await puller.run('t1');
+
+    expect(await cachedTxnCount(), 2);
+    final state = await db.syncStateDao.forEntity('transaction', 't1');
+    expect(state!.cursor, DateTime.utc(2026, 9, 8, 12));
+  });
+
+  test('a missing category reads as Other instead of failing', () async {
+    gateway.rows[SyncEntity.transaction]!.add(
+      serverTxn(id: 'n', tenant: 't1', updatedAt: DateTime.utc(2026, 9, 8, 10))
+        ..['category'] = null,
+    );
+    await puller.run('t1');
+    final row = await (db.select(db.localTransactions)..where((t) => t.id.equals('n'))).getSingle();
+    expect(row.category, 'Other');
+  });
+
   test('a row with a pending local edit is not overwritten', () async {
     await db
         .into(db.localTransactions)

@@ -27,7 +27,7 @@ abstract final class RowMappers {
       type: Value(r['type'] as String),
       amount: Value(_dec(r['amount'])),
       currency: Value((r['currency'] as String?) ?? 'INR'),
-      category: Value(r['category'] as String),
+      category: Value((r['category'] as String?) ?? 'Other'),
       description: Value(r['description'] as String?),
       occurredAt: Value(_dt(r['occurred_at'])),
       accountId: Value(r['account_id'] as String?),
@@ -46,8 +46,8 @@ abstract final class RowMappers {
     return LocalAccountsCompanion(
       id: Value(r['id'] as String),
       tenantId: Value(r['tenant_id'] as String),
-      name: Value(r['name'] as String),
-      type: Value(r['type'] as String),
+      name: Value((r['name'] as String?) ?? 'Account'),
+      type: Value((r['type'] as String?) ?? 'other'),
       openingBalance: Value(_decn(r['opening_balance'])),
       color: Value(r['color'] as String?),
       icon: Value(r['icon'] as String?),
@@ -62,8 +62,8 @@ abstract final class RowMappers {
     return LocalTrackersCompanion(
       id: Value(r['id'] as String),
       tenantId: Value(r['tenant_id'] as String),
-      name: Value(r['name'] as String),
-      type: Value(r['type'] as String),
+      name: Value((r['name'] as String?) ?? 'Tracker'),
+      type: Value((r['type'] as String?) ?? 'Other'),
       startDate: Value(_date(r['start_date'])),
       endDate: Value(_daten(r['end_date'])),
       budget: Value(_decn(r['budget'])),
@@ -80,7 +80,7 @@ abstract final class RowMappers {
     return LocalBudgetsCompanion(
       id: Value(r['id'] as String),
       tenantId: Value(r['tenant_id'] as String),
-      bucket: Value(r['bucket'] as String),
+      bucket: Value((r['bucket'] as String?) ?? 'Needs'),
       allocated: Value(_dec(r['allocated'])),
       period: Value((r['period'] as String?) ?? 'monthly'),
       periodStart: Value(_date(r['period_start'])),
@@ -95,7 +95,7 @@ abstract final class RowMappers {
     return LocalGoalsCompanion(
       id: Value(r['id'] as String),
       tenantId: Value(r['tenant_id'] as String),
-      title: Value(r['title'] as String),
+      title: Value((r['title'] as String?) ?? 'Goal'),
       category: Value(r['category'] as String?),
       targetAmount: Value(_dec(r['target_amount'])),
       currentAmount: Value(_dec(r['current_amount'])),

@@ -43,19 +43,30 @@ class DeltaPuller {
     final windowStart = DateTime.now().toUtc().subtract(transactionWindow);
     var applied = 0;
     var pruned = 0;
+    Object? firstError;
+    StackTrace? firstStack;
     for (final entity in SyncEntity.values) {
-      final r = await _pullEntity(
-        entity,
-        tenantId,
-        full: full,
-        windowStart: windowStart,
-      );
-      applied += r.rowsApplied;
-      pruned += r.pruned;
+      // One table failing (a server error, a schema mismatch) must not stop
+      // the others from refreshing; the first error is still reported.
+      try {
+        final r = await _pullEntity(
+          entity,
+          tenantId,
+          full: full,
+          windowStart: windowStart,
+        );
+        applied += r.rowsApplied;
+        pruned += r.pruned;
+      } catch (error, stack) {
+        _log.warning('pull ${entity.key} failed: ${error.runtimeType}');
+        firstError ??= error;
+        firstStack ??= stack;
+      }
     }
     _log.info(
       'pull ${full ? "full" : "delta"}: $applied applied, $pruned pruned',
     );
+    if (firstError != null) Error.throwWithStackTrace(firstError, firstStack!);
     return PullRunResult(rowsApplied: applied, pruned: pruned);
   }
 
@@ -70,6 +81,7 @@ class DeltaPuller {
     DateTime? maxUpdated = cursor;
     var applied = 0;
     var pages = 0;
+    var skippedRows = 0;
 
     while (pages < maxPages) {
       final page = await _gateway.fetchSince(
@@ -85,9 +97,20 @@ class DeltaPuller {
 
       await _db.transaction(() async {
         for (final row in page.rows) {
-          final u = RowMappers.updatedAt(row);
-          if (maxUpdated == null || u.isAfter(maxUpdated!)) maxUpdated = u;
-          await _applyRow(entity, row);
+          // A row this app can't read (a null the web allows, a value it
+          // doesn't know) is skipped, not fatal: failing here rolled back the
+          // page and kept the cursor still, so every later sync failed on the
+          // same row and the red banner never cleared.
+          try {
+            final u = RowMappers.updatedAt(row);
+            if (maxUpdated == null || u.isAfter(maxUpdated!)) maxUpdated = u;
+            await _applyRow(entity, row);
+          } catch (error) {
+            skippedRows++;
+            _log.warning(
+              'skipped unreadable ${entity.key} row ${row['id']}: ${error.runtimeType}',
+            );
+          }
         }
       });
 
@@ -95,6 +118,10 @@ class DeltaPuller {
       cursor = maxUpdated;
       pages++;
       if (!page.hasMore) break;
+    }
+
+    if (skippedRows > 0) {
+      _log.warning('${entity.key}: $skippedRows unreadable rows skipped');
     }
 
     var pruned = 0;

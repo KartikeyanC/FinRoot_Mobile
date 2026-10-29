@@ -85,7 +85,13 @@ class SyncStatusBanner extends ConsumerWidget {
 
   String _problemText(SyncStatusView view) {
     final n = view.failedCount;
-    if (n <= 0) return 'The last sync didn\'t finish.';
+    // Say why, so the person can report it (it was a bare "didn't finish").
+    final why = view.lastError?.trim();
+    if (n <= 0) {
+      return why == null || why.isEmpty
+          ? 'The last sync didn\'t finish.'
+          : 'The last sync didn\'t finish: $why';
+    }
     return n == 1
         ? '1 change didn\'t sync.'
         : '$n changes didn\'t sync.';
