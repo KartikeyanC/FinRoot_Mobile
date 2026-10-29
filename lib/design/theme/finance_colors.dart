@@ -40,9 +40,9 @@ class FinanceColors extends ThemeExtension<FinanceColors> {
     success: AppColors.successLight,
     warning: AppColors.warningLight,
     danger: AppColors.dangerLight,
-    positiveContainer: AppColors.forest100,
+    positiveContainer: Color(0xFFE0F5EE), // web light --accent 160 50% 92%
     warningContainer: Color(0xFFF7ECD3),
-    brandText: AppColors.seed,
+    brandText: AppColors.brandTextLight,
   );
 
   static const dark = FinanceColors(

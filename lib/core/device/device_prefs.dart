@@ -20,7 +20,9 @@ class DevicePrefs {
   ThemeMode get themeMode => switch (_prefs.getString(_kThemeMode)) {
     'light' => ThemeMode.light,
     'dark' => ThemeMode.dark,
-    _ => ThemeMode.system,
+    'system' => ThemeMode.system,
+    // The web dashboard opens in its dark "Obsidian" theme; so does the app.
+    _ => ThemeMode.dark,
   };
 
   Future<void> setThemeMode(ThemeMode mode) =>

@@ -45,16 +45,16 @@ abstract final class AppTheme {
 
     final canvas = isLight ? AppColors.canvasLight : AppColors.canvasDark;
     // Green text/icons; see AppColors.brandTextDark.
-    final brandText = isLight ? AppColors.seed : AppColors.brandTextDark;
-    final base = ThemeData(brightness: brightness);
+    final brandText = isLight ? AppColors.brandTextLight : AppColors.brandTextDark;
+    final base = ThemeData(brightness: brightness, fontFamily: AppTypography.fontFamily);
+    final text = AppTypography.applyTo(base.textTheme);
 
     return base.copyWith(
       colorScheme: scheme,
       scaffoldBackgroundColor: canvas,
       canvasColor: canvas,
       splashFactory: InkSparkle.splashFactory,
-      textTheme: AppTypography.applyTo(base.textTheme)
-          .apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface),
+      textTheme: text.apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface),
       extensions: [isLight ? FinanceColors.light : FinanceColors.dark],
       appBarTheme: AppBarTheme(
         backgroundColor: canvas,
@@ -62,17 +62,18 @@ abstract final class AppTheme {
         foregroundColor: scheme.onSurface,
         centerTitle: false,
         scrolledUnderElevation: 0,
-        titleTextStyle: base.textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: scheme.onSurface,
-        ),
+        titleTextStyle: text.titleLarge?.copyWith(color: scheme.onSurface),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
         margin: EdgeInsets.zero,
         color: scheme.surface,
         surfaceTintColor: Colors.transparent,
-        shape: const RoundedRectangleBorder(borderRadius: AppRadius.card),
+        // The web's `glass-card`: a hairline border, no shadow.
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.card,
+          side: BorderSide(color: scheme.outline),
+        ),
       ),
       dividerTheme: DividerThemeData(
         color: scheme.outlineVariant,
@@ -88,7 +89,7 @@ abstract final class AppTheme {
         side: BorderSide(color: scheme.outline),
         backgroundColor: scheme.surface,
         selectedColor: scheme.secondaryContainer,
-        labelStyle: base.textTheme.labelLarge,
+        labelStyle: text.labelLarge,
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
           vertical: AppSpacing.sm,
@@ -123,8 +124,9 @@ abstract final class AppTheme {
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(52),
           shape: const RoundedRectangleBorder(borderRadius: AppRadius.field),
-          textStyle: base.textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w700,
+          textStyle: text.labelLarge?.copyWith(
+            fontFamily: AppTypography.displayFamily,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
@@ -140,17 +142,17 @@ abstract final class AppTheme {
         style: TextButton.styleFrom(
           minimumSize: const Size(48, 48),
           foregroundColor: brandText,
-          textStyle: base.textTheme.labelLarge,
+          textStyle: text.labelLarge,
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: scheme.secondaryContainer,
+        indicatorColor: scheme.primary.withValues(alpha: 0.16),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         labelTextStyle: WidgetStateProperty.resolveWith(
-          (states) => base.textTheme.labelMedium?.copyWith(
+          (states) => text.labelMedium?.copyWith(
             fontWeight: states.contains(WidgetState.selected)
                 ? FontWeight.w700
                 : FontWeight.w500,
@@ -161,11 +163,11 @@ abstract final class AppTheme {
         backgroundColor: scheme.surface,
         indicatorColor: scheme.secondaryContainer,
         labelType: NavigationRailLabelType.all,
-        selectedLabelTextStyle: base.textTheme.labelMedium?.copyWith(
+        selectedLabelTextStyle: text.labelMedium?.copyWith(
           fontWeight: FontWeight.w700,
           color: scheme.onSurface,
         ),
-        unselectedLabelTextStyle: base.textTheme.labelMedium?.copyWith(
+        unselectedLabelTextStyle: text.labelMedium?.copyWith(
           color: scheme.onSurfaceVariant,
         ),
       ),

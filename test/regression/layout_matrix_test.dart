@@ -8,10 +8,13 @@ import 'package:finroot_mobile/features/accounts/application/accounts_providers.
 import 'package:finroot_mobile/features/accounts/domain/account.dart';
 import 'package:finroot_mobile/features/accounts/presentation/accounts_screen.dart';
 import 'package:finroot_mobile/features/auth/presentation/auth_screen.dart';
+import 'package:finroot_mobile/features/debts/debts.dart';
+import 'package:finroot_mobile/features/goals/application/goals_providers.dart';
 import 'package:finroot_mobile/features/home/application/home_providers.dart';
 import 'package:finroot_mobile/features/home/presentation/home_screen.dart';
 import 'package:finroot_mobile/features/insights/application/insights_providers.dart';
 import 'package:finroot_mobile/features/insights/domain/insight.dart';
+import 'package:finroot_mobile/features/investments/application/investments_providers.dart';
 import 'package:finroot_mobile/features/menus/application/menu_providers.dart';
 import 'package:finroot_mobile/features/more/presentation/more_screen.dart';
 import 'package:finroot_mobile/features/profile/profile_providers.dart';
@@ -142,17 +145,36 @@ final _common = [
       ),
     ]),
   ),
+  // Big numbers and long names, so the dashboard cards are stress-tested.
   workspaceSummaryProvider.overrideWithValue(
     AsyncValue.data(
       WorkspaceSummary(
         accountDeltas: const [],
-        monthIncome: Money.zero(),
-        monthExpense: Money.zero(),
+        monthIncome: Money.parse('98765432.10'),
+        monthExpense: Money.parse('12345678.90'),
         transactionCount: 0,
         fetchedAt: DateTime(2026, 9, 9),
+        monthlySeries: [
+          for (var m = 4; m <= 9; m++)
+            MonthPoint(
+              month: '2026-0$m',
+              income: Money.parse('${m}00000'),
+              expense: Money.parse('${m}50000'),
+            ),
+        ],
+        categorySpend: [
+          CategorySpendPoint(category: 'Food & Dining', amount: Money.parse('45000'), count: 3),
+          CategorySpendPoint(category: 'Personal Care and Wellbeing', amount: Money.parse('9000'), count: 1),
+        ],
+        categoryIncome: [
+          CategorySpendPoint(category: 'Salary', amount: Money.parse('98765432.10'), count: 1),
+        ],
       ),
     ),
   ),
+  debtsProvider.overrideWith((ref) async => const <Debt>[]),
+  investmentsProvider.overrideWith((ref) async => const []),
+  goalsProvider.overrideWith((ref) => Stream.value(const [])),
 ];
 
 Future<void> _pump(

@@ -4,10 +4,17 @@ import 'package:finroot_mobile/core/providers/providers.dart';
 import 'package:finroot_mobile/data/local/sync_enums.dart';
 import 'package:finroot_mobile/design/design.dart';
 import 'package:finroot_mobile/domain/constants.dart';
+import 'package:finroot_mobile/features/debts/debts.dart';
+import 'package:finroot_mobile/features/goals/application/goals_providers.dart';
 import 'package:finroot_mobile/features/home/application/home_providers.dart';
 import 'package:finroot_mobile/features/home/presentation/home_screen.dart';
+import 'package:finroot_mobile/features/investments/application/investments_providers.dart';
 import 'package:finroot_mobile/features/menus/application/menu_providers.dart';
 import 'package:finroot_mobile/features/profile/profile_providers.dart';
+import 'package:finroot_mobile/features/recurring/application/recurring_providers.dart';
+import 'package:finroot_mobile/features/recurring/domain/recurring_item.dart';
+import 'package:finroot_mobile/features/summary/application/summary_providers.dart';
+import 'package:finroot_mobile/features/summary/domain/workspace_summary.dart';
 import 'package:finroot_mobile/features/sync/application/sync_status.dart';
 import 'package:finroot_mobile/features/trackers/application/trackers_providers.dart';
 import 'package:finroot_mobile/features/trackers/domain/tracker.dart';
@@ -43,9 +50,17 @@ Widget _host({
   int count = 0,
   List<TrackerEntity> trackers = const [],
   MenuStatus trackerMenu = MenuStatus.available,
+  WorkspaceSummary? summary,
 }) {
   return ProviderScope(
     overrides: [
+      workspaceSummaryProvider.overrideWithValue(
+        AsyncValue.data(summary ?? WorkspaceSummary.empty()),
+      ),
+      debtsProvider.overrideWith((ref) async => const <Debt>[]),
+      investmentsProvider.overrideWith((ref) async => const []),
+      goalsProvider.overrideWith((ref) => Stream.value(const [])),
+      recurringItemsProvider.overrideWith((ref) async => const <RecurringItem>[]),
       currentUserProvider.overrideWithValue(null),
       profileProvider.overrideWith(
         (ref) async => const Profile(id: 'u1', displayName: 'Priya Kumar'),
@@ -76,24 +91,63 @@ Widget _host({
 }
 
 void main() {
-  testWidgets('greets by first name and shows the workspace', (tester) async {
+  // The web-style dashboard is tall; give the test a long phone so the
+  // sections below it are built too.
+  setUp(() {
+    final view = TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
+    view.physicalSize = const Size(1080, 12000);
+    view.devicePixelRatio = 2.625;
+  });
+  tearDown(() => TestWidgetsFlutterBinding.instance.platformDispatcher.views.first.reset());
+
+  testWidgets('greets by first name, like the web dashboard', (tester) async {
     await tester.pumpWidget(_host());
     await tester.pump();
 
-    expect(find.text('Priya'), findsOneWidget);
-    expect(find.text('Kumar Household'), findsOneWidget);
+    expect(find.textContaining(', Priya'), findsOneWidget);
+    expect(find.text('DASHBOARD'), findsOneWidget);
+    expect(find.text('Add'), findsOneWidget);
   });
 
-  testWidgets('snapshot shows the recorded count, not a money figure', (
-    tester,
-  ) async {
-    await tester.pumpWidget(_host(count: 7));
+  testWidgets('the web dashboard cards are all there, in order', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        summary: WorkspaceSummary(
+          accountDeltas: const [],
+          monthIncome: Money.parse('100000'),
+          monthExpense: Money.parse('60000'),
+          transactionCount: 9,
+          fetchedAt: DateTime(2026, 10, 29),
+          monthlySeries: [
+            MonthPoint(month: '2026-09', income: Money.parse('80000'), expense: Money.parse('50000')),
+            MonthPoint(month: '2026-10', income: Money.parse('100000'), expense: Money.parse('60000')),
+          ],
+          categorySpend: [
+            CategorySpendPoint(category: 'Rent', amount: Money.parse('40000'), count: 1),
+            CategorySpendPoint(category: 'Food & Dining', amount: Money.parse('20000'), count: 6),
+          ],
+          categoryIncome: [
+            CategorySpendPoint(category: 'Salary', amount: Money.parse('100000'), count: 1),
+          ],
+        ),
+      ),
+    );
     await tester.pump();
 
-    expect(find.text('7'), findsOneWidget);
-    expect(find.text('transactions recorded'), findsOneWidget);
-    // No accounts in this scope → no money hero, just the nudge.
-    expect(find.textContaining('Add accounts to see balances'), findsOneWidget);
+    for (final t in ['NET WORTH', 'FINANCIAL HEALTH', 'CASH FLOW', 'NET SPENDING']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(
+      tester.getTopLeft(find.text('NET WORTH')).dy,
+      lessThan(tester.getTopLeft(find.text('CASH FLOW')).dy),
+    );
+    // Income month-on-month: 80k to 100k is +25.0%.
+    expect(find.text('+25.0%'), findsOneWidget);
+    // Salary is income: it shows under cash flow In, not in the spending donut.
+    expect(find.text('Salary'), findsOneWidget);
+    expect(find.text('67%'), findsOneWidget, reason: 'Rent is 40k of 60k spent');
+    // Savings rate 40% in the metrics strip.
+    expect(find.text('40%'), findsOneWidget);
   });
 
   testWidgets('empty recent activity shows a useful prompt, no "See all"', (

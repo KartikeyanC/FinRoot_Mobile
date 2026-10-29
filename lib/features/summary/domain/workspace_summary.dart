@@ -22,6 +22,7 @@ class WorkspaceSummary {
     required this.fetchedAt,
     this.monthlySeries = const [],
     this.categorySpend = const [],
+    this.categoryIncome = const [],
   });
 
   final List<AccountDelta> accountDeltas;
@@ -36,6 +37,10 @@ class WorkspaceSummary {
 
   /// Current month's expense by category (INR), largest first.
   final List<CategorySpendPoint> categorySpend;
+
+  /// Current month's income by category (INR), largest first — the web's
+  /// cash-flow "In" rows.
+  final List<CategorySpendPoint> categoryIncome;
 
   Money get monthSavings => monthIncome - monthExpense;
 
@@ -88,31 +93,42 @@ class WorkspaceSummary {
         ),
     ];
 
+    // Rows carry a type; income and expense are rolled separately, as the web
+    // does (`useDashboardSummary` roll()). Mixing them listed salary as spend.
     final categoryTotals = <String, ({Decimal total, int count})>{};
+    final incomeTotals = <String, ({Decimal total, int count})>{};
     for (final row in (raw['categories'] as List<dynamic>? ?? const [])) {
       final c = row as Map<String, dynamic>;
       final cat = (c['category'] as String?)?.trim();
       if (cat == null || cat.isEmpty) continue;
+      final bucket = switch (c['type']) {
+        'income' => incomeTotals,
+        'expense' || null => categoryTotals,
+        _ => null,
+      };
+      if (bucket == null) continue;
       final inInr = Decimal.parse(
         toInr(
           (c['total'] as num?)?.toDouble() ?? 0,
           c['currency'] as String? ?? 'INR',
         ).toString(),
       );
-      final prev = categoryTotals[cat] ?? (total: Decimal.zero, count: 0);
-      categoryTotals[cat] = (
+      final prev = bucket[cat] ?? (total: Decimal.zero, count: 0);
+      bucket[cat] = (
         total: prev.total + inInr,
         count: prev.count + ((c['count'] as num?)?.toInt() ?? 0),
       );
     }
-    final categories = [
-      for (final e in categoryTotals.entries)
-        CategorySpendPoint(
-          category: e.key,
-          amount: Money(e.value.total),
-          count: e.value.count,
-        ),
+    List<CategorySpendPoint> ranked(Map<String, ({Decimal total, int count})> m) => [
+      for (final e in m.entries)
+        if (e.value.total > Decimal.zero)
+          CategorySpendPoint(
+            category: e.key,
+            amount: Money(e.value.total),
+            count: e.value.count,
+          ),
     ]..sort((a, b) => b.amount.amount.compareTo(a.amount.amount));
+    final categories = ranked(categoryTotals);
 
     final deltas = [
       for (final d in (raw['account_deltas'] as List<dynamic>? ?? const []))
@@ -129,6 +145,7 @@ class WorkspaceSummary {
       fetchedAt: fetchedAt ?? ref,
       monthlySeries: series,
       categorySpend: categories,
+      categoryIncome: ranked(incomeTotals),
     );
   }
 
@@ -149,14 +166,8 @@ class WorkspaceSummary {
           'expense': p.expense.toStorageString(),
         },
     ],
-    'category_spend': [
-      for (final c in categorySpend)
-        {
-          'category': c.category,
-          'amount': c.amount.toStorageString(),
-          'count': c.count,
-        },
-    ],
+    'category_spend': [for (final c in categorySpend) c.toJson()],
+    'category_income': [for (final c in categoryIncome) c.toJson()],
   };
 
   factory WorkspaceSummary.fromCache(Map<String, dynamic> json) {
@@ -181,11 +192,11 @@ class WorkspaceSummary {
       ],
       categorySpend: [
         for (final c in (json['category_spend'] as List<dynamic>? ?? const []))
-          CategorySpendPoint(
-            category: (c as Map<String, dynamic>)['category'] as String? ?? '',
-            amount: Money.parse((c['amount'] as String?) ?? '0'),
-            count: (c['count'] as num?)?.toInt() ?? 0,
-          ),
+          CategorySpendPoint.fromJson(c as Map<String, dynamic>),
+      ],
+      categoryIncome: [
+        for (final c in (json['category_income'] as List<dynamic>? ?? const []))
+          CategorySpendPoint.fromJson(c as Map<String, dynamic>),
       ],
     );
   }
@@ -218,4 +229,16 @@ class CategorySpendPoint {
   final String category;
   final Money amount;
   final int count;
+
+  factory CategorySpendPoint.fromJson(Map<String, dynamic> c) => CategorySpendPoint(
+    category: c['category'] as String? ?? '',
+    amount: Money.parse((c['amount'] as String?) ?? '0'),
+    count: (c['count'] as num?)?.toInt() ?? 0,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'category': category,
+    'amount': amount.toStorageString(),
+    'count': count,
+  };
 }
