@@ -9,6 +9,7 @@ import '../features/accounts/presentation/accounts_screen.dart';
 import '../features/auth/application/password_recovery.dart';
 import '../features/auth/presentation/auth_screen.dart';
 import '../features/auth/presentation/reset_password_screen.dart';
+import '../features/backup/backup_screen.dart';
 import '../features/bill_scan/presentation/bill_scan_screen.dart';
 import '../features/budget/presentation/budget_screen.dart';
 import '../features/calendar/calendar_screen.dart';
@@ -60,6 +61,7 @@ class _Routes {
   static const subscriptions = '/subscriptions';
   static const insurance = '/insurance';
   static const calendar = '/calendar';
+  static const backup = '/backup';
 
   /// "More" entries that have a real screen rather than a milestone placeholder.
   static const realScreens = {
@@ -80,6 +82,7 @@ class _Routes {
     subscriptions,
     insurance,
     calendar,
+    backup,
   };
 }
 
@@ -292,6 +295,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.calendar,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const CalendarScreen(),
+      ),
+      GoRoute(
+        path: _Routes.backup,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const BackupScreen(),
       ),
       GoRoute(
         path: _Routes.detectedPayments,

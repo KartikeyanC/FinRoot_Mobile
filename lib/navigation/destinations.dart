@@ -112,5 +112,6 @@ const kMoreEntries = <MoreEntry>[
   MoreEntry('Detected payments', Icons.bolt_outlined, '/detected-payments'),
   MoreEntry('Insights', Icons.insights_outlined, '/insights'),
   MoreEntry('Search', Icons.search, '/search'),
+  MoreEntry('Sync & backup', Icons.add_to_drive, '/backup'),
   MoreEntry('Settings', Icons.settings_outlined, '/settings', phase: 'M3'),
 ];

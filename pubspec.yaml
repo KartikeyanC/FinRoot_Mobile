@@ -96,6 +96,8 @@ dependencies:
   # no NLU model. speech_to_text manages its own mic permission. Device-
   # unverified (no Android SDK).
   speech_to_text: ^7.4.0
+  google_sign_in: ^7.2.0
+  http: ^1.6.0
 
   # --- Added in later phases (kept here as the intended dependency map) ---
   # M15 AI insights:   (shared Edge Function, likely)

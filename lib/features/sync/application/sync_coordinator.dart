@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/logging/app_logger.dart';
 import '../../../core/providers/providers.dart';
+import '../../backup/drive_backup.dart';
 import '../../workspace/application/workspace_providers.dart';
 import 'sync_engine.dart';
 
@@ -118,6 +119,13 @@ class SyncScope extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(syncCoordinatorProvider);
+    // After a sync succeeds (so we are online and signed in), take the daily
+    // Google Drive backup if it is switched on and due. Silent; never prompts.
+    ref.listen(syncEngineProvider.select((s) => s.lastSyncedAt), (_, next) {
+      if (next != null) {
+        unawaited(ref.read(driveBackupProvider.notifier).autoBackupIfDue());
+      }
+    });
     return child;
   }
 }
