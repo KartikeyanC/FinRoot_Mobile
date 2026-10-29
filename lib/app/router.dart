@@ -18,6 +18,7 @@ import '../features/investments/presentation/investments_screen.dart';
 import '../features/more/presentation/more_screen.dart';
 import '../features/net_worth/presentation/net_worth_screen.dart';
 import '../features/payment_capture/presentation/detected_payments_screen.dart';
+import '../features/price_alerts/presentation/price_alerts_screen.dart';
 import '../features/recurring/presentation/recurring_screen.dart';
 import '../features/reminders/presentation/reminders_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
@@ -205,6 +206,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.investments,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const InvestmentsScreen(),
+      ),
+      GoRoute(
+        path: priceAlertsPath,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const PriceAlertsScreen(),
       ),
       GoRoute(
         path: _Routes.netWorth,

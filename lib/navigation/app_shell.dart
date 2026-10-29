@@ -7,6 +7,7 @@ import '../design/tokens/app_breakpoints.dart';
 import '../design/tokens/app_spacing.dart';
 import '../features/payment_capture/presentation/payment_popup_opener.dart';
 import '../features/price_alerts/presentation/price_alert_watcher.dart';
+import '../features/sync/presentation/live_data_refresher.dart';
 import '../features/sync/presentation/sync_status_widgets.dart';
 import '../features/workspace/application/workspace_providers.dart';
 import '../features/workspace/domain/membership.dart';
@@ -36,7 +37,11 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      PriceAlertWatcher(child: PaymentPopupOpener(child: _layout(context)));
+      LiveDataRefresher(
+        child: PriceAlertWatcher(
+          child: PaymentPopupOpener(child: _layout(context)),
+        ),
+      );
 
   Widget _layout(BuildContext context) {
     final size = AppBreakpoints.of(context);

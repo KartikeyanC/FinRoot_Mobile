@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/logging/app_logger.dart';
 import '../../../core/providers/providers.dart';
 import '../../../domain/constants.dart';
 import '../../menus/application/menu_providers.dart';
+import '../../notifications/data/notification_service.dart';
 import '../application/price_alerts_providers.dart';
+import 'price_alerts_screen.dart';
 
 /// Checks price alerts every minute while the app is in the foreground, on
 /// whichever screen is open. Wraps the app shell; renders [child] unchanged.
@@ -28,6 +31,7 @@ class _PriceAlertWatcherState extends ConsumerState<PriceAlertWatcher>
   final _log = AppLog.of('price-alerts');
   Timer? _timer;
   Timer? _kick;
+  StreamSubscription<String>? _taps;
   bool _running = false;
 
   @override
@@ -35,6 +39,20 @@ class _PriceAlertWatcherState extends ConsumerState<PriceAlertWatcher>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _start();
+    // A tapped price-alert notification opens the Price alerts screen —
+    // while the app runs, and when the tap is what launched it.
+    final notifications = ref.read(notificationServiceProvider);
+    _taps = notifications.taps.listen(_onTap);
+    unawaited(() async {
+      await notifications.init();
+      final launched = await notifications.launchPayload();
+      if (launched != null) _onTap(launched);
+    }());
+  }
+
+  void _onTap(String payload) {
+    if (payload != priceAlertsPayload || !mounted) return;
+    GoRouter.of(context).push(priceAlertsPath);
   }
 
   @override
@@ -42,6 +60,7 @@ class _PriceAlertWatcherState extends ConsumerState<PriceAlertWatcher>
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _kick?.cancel();
+    _taps?.cancel();
     super.dispose();
   }
 

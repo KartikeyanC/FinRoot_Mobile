@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../design/design.dart';
@@ -49,9 +50,7 @@ class InvestmentsScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'Price alerts',
             icon: const Icon(Icons.notifications_active_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const PriceAlertsScreen()),
-            ),
+            onPressed: () => context.push(priceAlertsPath),
           ),
         ],
       ),
@@ -312,10 +311,11 @@ class _LivePriceTickerState extends ConsumerState<_LivePriceTicker> {
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(
-      livePriceRefresh,
-      (_) => ref.invalidate(holdingPricesProvider),
-    );
+    // Holdings too, so one added on the laptop appears here within a minute.
+    _timer = Timer.periodic(livePriceRefresh, (_) {
+      ref.invalidate(investmentsProvider);
+      ref.invalidate(holdingPricesProvider);
+    });
   }
 
   @override

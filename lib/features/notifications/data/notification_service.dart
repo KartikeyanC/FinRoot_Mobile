@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -25,7 +27,19 @@ abstract interface class NotificationService {
 
   /// Post a notification right now (a price alert that just fired). Separate
   /// channel and ids from the schedule, so [reconcile] never cancels it.
-  Future<void> showNow({required int id, required String title, required String body});
+  /// [payload] comes back through [taps] when the person taps it.
+  Future<void> showNow({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  });
+
+  /// Payloads of notifications the person tapped while the app was running.
+  Stream<String> get taps;
+
+  /// The payload of the notification that launched the app from closed, if any.
+  Future<String?> launchPayload();
 }
 
 /// Real implementation over `flutter_local_notifications`.
@@ -43,6 +57,26 @@ class LocalNotificationService implements NotificationService {
   final FlutterLocalNotificationsPlugin _plugin;
   final _log = AppLog.of('notifications');
   bool _ready = false;
+
+  // Static: the plugin has one tap callback per process, whichever instance
+  // initialised it.
+  static final _taps = StreamController<String>.broadcast();
+
+  @override
+  Stream<String> get taps => _taps.stream;
+
+  @override
+  Future<String?> launchPayload() async {
+    try {
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details?.didNotificationLaunchApp ?? false) {
+        return details!.notificationResponse?.payload;
+      }
+    } catch (error, stack) {
+      _log.warning('launch details unavailable', error, stack);
+    }
+    return null;
+  }
 
   static const _channelId = 'finroot_schedule';
   static const _channelName = 'Upcoming payments & reminders';
@@ -65,7 +99,13 @@ class LocalNotificationService implements NotificationService {
           requestSoundPermission: false,
         ),
       );
-      await _plugin.initialize(settings: settings);
+      await _plugin.initialize(
+        settings: settings,
+        onDidReceiveNotificationResponse: (response) {
+          final payload = response.payload;
+          if (payload != null && payload.isNotEmpty) _taps.add(payload);
+        },
+      );
       _ready = true;
     } catch (error, stack) {
       _log.warning('init failed (device-unverified)', error, stack);
@@ -135,6 +175,7 @@ class LocalNotificationService implements NotificationService {
     required int id,
     required String title,
     required String body,
+    String? payload,
   }) async {
     await init();
     if (!_ready) return;
@@ -154,6 +195,7 @@ class LocalNotificationService implements NotificationService {
           iOS: DarwinNotificationDetails(),
           macOS: DarwinNotificationDetails(),
         ),
+        payload: payload,
       );
     } catch (error, stack) {
       _log.warning('showNow failed', error, stack);

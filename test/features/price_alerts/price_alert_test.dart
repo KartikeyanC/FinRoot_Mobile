@@ -3,6 +3,7 @@ import 'package:finroot_mobile/features/investments/domain/live_price.dart';
 import 'package:finroot_mobile/features/notifications/data/notification_service.dart';
 import 'package:finroot_mobile/features/notifications/domain/planned_notification.dart';
 import 'package:finroot_mobile/features/price_alerts/application/price_alerts_providers.dart';
+import 'package:finroot_mobile/features/price_alerts/data/notified_alerts_store.dart';
 import 'package:finroot_mobile/features/price_alerts/data/price_alerts_gateway.dart';
 import 'package:finroot_mobile/features/price_alerts/domain/price_alert.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,12 +54,29 @@ class _FakePrices implements LivePriceGateway {
   }
 }
 
+class _FakeNotified implements NotifiedAlertsStore {
+  final keys = <String>{};
+  @override
+  Set<String> load() => {...keys};
+  @override
+  Future<void> add(Iterable<String> k) async => keys.addAll(k);
+}
+
 class _FakeNotifications implements NotificationService {
-  final shown = <({int id, String title, String body})>[];
+  final shown = <({int id, String title, String body, String? payload})>[];
 
   @override
-  Future<void> showNow({required int id, required String title, required String body}) async =>
-      shown.add((id: id, title: title, body: body));
+  Future<void> showNow({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  }) async => shown.add((id: id, title: title, body: body, payload: payload));
+
+  @override
+  Stream<String> get taps => const Stream.empty();
+  @override
+  Future<String?> launchPayload() async => null;
 
   @override
   Future<void> init() async {}
@@ -156,10 +174,16 @@ void main() {
     test('prices active alerts, records the trigger and notifies once', () async {
       final alerts = _FakeAlerts([
         _itc(),
-        _itc(id: 'done', triggeredAt: _now, triggeredPrice: 250),
+        // Fired two days ago: shown in the list, never pushed now.
+        _itc(
+          id: 'done',
+          triggeredAt: _now.subtract(const Duration(days: 2)),
+          triggeredPrice: 250,
+        ),
       ]);
       final prices = _FakePrices({'yahoo:ITC.NS': 259.5});
       final notes = _FakeNotifications();
+      final notified = _FakeNotified();
 
       final fired = await runPriceAlertCheck(
         tenantId: 't1',
@@ -167,6 +191,7 @@ void main() {
         alerts: alerts,
         prices: prices,
         notifications: notes,
+        notified: notified,
         now: _now,
       );
 
@@ -176,6 +201,7 @@ void main() {
       expect(alerts.stored.firstWhere((a) => a.id == 'a1').triggeredPrice, 259.5);
       expect(notes.shown.single.title, 'Price alert: ITC Limited');
       expect(notes.shown.single.id, notificationIdFor('a1'));
+      expect(notes.shown.single.payload, priceAlertsPayload);
 
       // The next run finds nothing left to fire.
       final again = await runPriceAlertCheck(
@@ -184,6 +210,7 @@ void main() {
         alerts: alerts,
         prices: prices,
         notifications: notes,
+        notified: notified,
         now: _now,
       );
       expect(again, isEmpty);
@@ -192,12 +219,19 @@ void main() {
 
     test('does not ask for prices when nothing is being watched', () async {
       final prices = _FakePrices(const {});
+      final notified = _FakeNotified();
       final fired = await runPriceAlertCheck(
         tenantId: 't1',
         userId: null,
-        alerts: _FakeAlerts([_itc(triggeredAt: _now, triggeredPrice: 1)]),
+        alerts: _FakeAlerts([
+          _itc(
+            triggeredAt: _now.subtract(const Duration(days: 2)),
+            triggeredPrice: 1,
+          ),
+        ]),
         prices: prices,
         notifications: _FakeNotifications(),
+        notified: notified,
       );
       expect(fired, isEmpty);
       expect(prices.asked, isEmpty);
@@ -206,15 +240,61 @@ void main() {
     test('writes nothing while the price has not reached the target', () async {
       final alerts = _FakeAlerts([_itc()]);
       final notes = _FakeNotifications();
+      final notified = _FakeNotified();
       await runPriceAlertCheck(
         tenantId: 't1',
         userId: 'u1',
         alerts: alerts,
         prices: _FakePrices({'yahoo:ITC.NS': 270}),
         notifications: notes,
+        notified: notified,
       );
       expect(alerts.saves, isEmpty);
       expect(notes.shown, isEmpty);
+    });
+  });
+
+  group('the phone announces triggers from any device', () {
+    test('an alert the laptop fired first is still announced here, once', () async {
+      // The Windows app spotted the price and recorded the trigger.
+      final alerts = _FakeAlerts([
+        _itc(triggeredAt: _now.subtract(const Duration(minutes: 3)), triggeredPrice: 258),
+      ]);
+      final notes = _FakeNotifications();
+      final notified = _FakeNotified();
+      final prices = _FakePrices(const {});
+
+      Future<List<PriceAlert>> run() => runPriceAlertCheck(
+        tenantId: 't1',
+        userId: 'u1',
+        alerts: alerts,
+        prices: prices,
+        notifications: notes,
+        notified: notified,
+        now: _now,
+      );
+
+      expect((await run()).map((a) => a.id), ['a1']);
+      expect(notes.shown.single.body, 'ITC.NS is at ₹258, at or below your ₹260 buy price.');
+      expect(alerts.saves, isEmpty, reason: 'nothing to record — it was already triggered');
+      expect(prices.asked, isEmpty, reason: 'nothing left to watch');
+
+      expect(await run(), isEmpty);
+      expect(notes.shown, hasLength(1));
+    });
+
+    test('a re-armed alert that fires again is announced again', () {
+      final first = _itc(triggeredAt: _now.subtract(const Duration(hours: 2)), triggeredPrice: 259);
+      final again = _itc(triggeredAt: _now, triggeredPrice: 255);
+      final seen = {notifiedKey(first)};
+      expect(alertsToNotify([again], seen, _now).map((a) => a.id), ['a1']);
+      expect(alertsToNotify([first], seen, _now), isEmpty);
+    });
+
+    test('triggers older than a day are not pushed', () {
+      final old = _itc(triggeredAt: _now.subtract(const Duration(hours: 25)), triggeredPrice: 250);
+      final watching = _itc(id: 'w');
+      expect(alertsToNotify([old, watching], const {}, _now), isEmpty);
     });
   });
 

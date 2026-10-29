@@ -7,6 +7,7 @@ import '../../investments/data/live_price_gateway.dart';
 import '../../investments/domain/live_price.dart';
 import '../../notifications/data/notification_service.dart';
 import '../../workspace/application/workspace_providers.dart';
+import '../data/notified_alerts_store.dart';
 import '../data/price_alerts_gateway.dart';
 import '../domain/price_alert.dart';
 
@@ -88,54 +89,72 @@ final priceAlertsControllerProvider = Provider<PriceAlertsController>(
   name: 'priceAlertsController',
 );
 
-/// One check: price the active alerts, mark the ones that were hit as
-/// triggered (merged into the server's latest list), and post a phone
-/// notification for each. Used by the in-app timer and by the background
-/// task, so both behave the same. Returns the alerts that fired.
+/// One check, used by the in-app timer and the background task alike:
+///
+/// 1. price the alerts still watching and mark the ones that were hit as
+///    triggered (merged into the server's latest list);
+/// 2. post a phone notification for every recent trigger this phone has not
+///    announced yet — including triggers the web dashboard or the Windows
+///    app recorded first, so the phone always tells its owner.
+///
+/// Returns the alerts announced on this phone.
 Future<List<PriceAlert>> runPriceAlertCheck({
   required String tenantId,
   required String? userId,
   required PriceAlertsGateway alerts,
   required LivePriceGateway prices,
   required NotificationService notifications,
+  required NotifiedAlertsStore notified,
   DateTime? now,
 }) async {
   final log = AppLog.of('price-alerts');
-  final current = await alerts.load(tenantId);
-  final symbols = activeSymbols(current);
-  if (symbols.isEmpty) return const [];
+  final at = (now ?? DateTime.now()).toUtc();
+  var list = await alerts.load(tenantId);
 
-  final quoted = await prices.fetch([
-    for (final s in symbols) LiveWant(LiveProvider.yahoo, s),
-  ]);
-  final round = evaluateAlerts(current, quoted, (now ?? DateTime.now()).toUtc());
-  if (round.fired.isEmpty) return const [];
-
-  // Merge by id into a fresh read, and only where the alert is still
-  // watching — another device may have fired (or deleted) it meanwhile.
-  final firedById = {for (final a in round.fired) a.id: a};
-  final latest = await alerts.load(tenantId);
-  final reallyFired = <PriceAlert>[];
-  final merged = [
-    for (final a in latest)
-      if (a.isActive && firedById.containsKey(a.id))
-        () {
-          reallyFired.add(firedById[a.id]!);
-          return firedById[a.id]!;
-        }()
-      else
-        a,
-  ];
-  if (reallyFired.isEmpty) return const [];
-  await alerts.save(tenantId, userId, merged);
-
-  for (final a in reallyFired) {
-    final m = firedMessage(a);
-    await notifications.showNow(id: notificationIdFor(a.id), title: m.title, body: m.body);
+  final symbols = activeSymbols(list);
+  if (symbols.isNotEmpty) {
+    final quoted = await prices.fetch([
+      for (final s in symbols) LiveWant(LiveProvider.yahoo, s),
+    ]);
+    final round = evaluateAlerts(list, quoted, at);
+    if (round.fired.isNotEmpty) {
+      // Merge by id into a fresh read, only where the alert is still
+      // watching — another device may have fired (or deleted) it meanwhile.
+      final firedById = {for (final a in round.fired) a.id: a};
+      final latest = await alerts.load(tenantId);
+      var changed = false;
+      list = [
+        for (final a in latest)
+          if (a.isActive && firedById.containsKey(a.id))
+            () {
+              changed = true;
+              return firedById[a.id]!;
+            }()
+          else
+            a,
+      ];
+      if (changed) await alerts.save(tenantId, userId, list);
+    }
   }
-  log.info('${reallyFired.length} price alert(s) fired');
-  return reallyFired;
+
+  final due = alertsToNotify(list, notified.load(), at);
+  if (due.isEmpty) return const [];
+  for (final a in due) {
+    final m = firedMessage(a);
+    await notifications.showNow(
+      id: notificationIdFor(a.id),
+      title: m.title,
+      body: m.body,
+      payload: priceAlertsPayload,
+    );
+  }
+  await notified.add(due.map(notifiedKey));
+  log.info('${due.length} price alert notification(s) posted');
+  return due;
 }
+
+/// Notification payload that opens the Price alerts screen when tapped.
+const priceAlertsPayload = 'price-alerts';
 
 /// A stable id per alert, kept clear of the schedule's ids (those are small).
 int notificationIdFor(String alertId) =>
@@ -152,9 +171,10 @@ final priceAlertCheckProvider = Provider<Future<List<PriceAlert>> Function()>((r
       alerts: ref.read(priceAlertsGatewayProvider),
       prices: ref.read(livePriceGatewayProvider),
       notifications: ref.read(notificationServiceProvider),
+      notified: ref.read(notifiedAlertsStoreProvider),
     );
     ref.invalidate(alertPricesProvider);
-    if (fired.isNotEmpty) ref.invalidate(priceAlertsProvider);
+    ref.invalidate(priceAlertsProvider);
     return fired;
   };
 }, name: 'priceAlertCheck');

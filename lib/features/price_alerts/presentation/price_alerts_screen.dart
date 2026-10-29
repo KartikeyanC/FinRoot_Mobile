@@ -12,6 +12,9 @@ import '../../workspace/application/workspace_providers.dart';
 import '../application/price_alerts_providers.dart';
 import '../domain/price_alert.dart';
 
+/// Route of the Price alerts screen (also what a tapped alert notification opens).
+const priceAlertsPath = '/price-alerts';
+
 /// Price alerts: decide the price you would buy at, and get a notification
 /// when the stock reaches it. The same list as the web dashboard.
 class PriceAlertsScreen extends ConsumerStatefulWidget {
@@ -27,11 +30,12 @@ class _PriceAlertsScreenState extends ConsumerState<PriceAlertsScreen> {
   @override
   void initState() {
     super.initState();
-    // Keep the shown prices fresh while this screen is open.
-    _timer = Timer.periodic(
-      const Duration(seconds: 60),
-      (_) => ref.invalidate(alertPricesProvider),
-    );
+    // Keep the list and prices fresh while this screen is open: alerts
+    // added, fired or deleted on the laptop show up within a minute.
+    _timer = Timer.periodic(const Duration(seconds: 60), (_) {
+      ref.invalidate(priceAlertsProvider);
+      ref.invalidate(alertPricesProvider);
+    });
   }
 
   @override

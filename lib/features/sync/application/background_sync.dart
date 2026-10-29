@@ -11,6 +11,7 @@ import '../../../core/supabase/supabase_bootstrap.dart';
 import '../../investments/data/live_price_gateway.dart';
 import '../../notifications/data/notification_service.dart';
 import '../../price_alerts/application/price_alerts_providers.dart';
+import '../../price_alerts/data/notified_alerts_store.dart';
 import '../../price_alerts/data/price_alerts_gateway.dart';
 import '../../workspace/application/workspace_providers.dart';
 import 'sync_engine.dart';
@@ -26,9 +27,19 @@ import 'sync_engine.dart';
 const _uniqueName = 'finroot-periodic-sync';
 const _taskName = 'finroot.sync.periodic';
 
+/// Price alerts get their own, more frequent job: 15 minutes is the shortest
+/// period Android allows, and the sync job stays hourly. Android may still
+/// stretch both while the phone is in battery saver / Doze.
+const _alertsUniqueName = 'finroot-price-alerts';
+const _alertsTaskName = 'finroot.price_alerts.check';
+
 @pragma('vm:entry-point')
 void syncCallbackDispatcher() {
-  Workmanager().executeTask((task, inputData) => _runBackgroundSync());
+  Workmanager().executeTask(
+    (task, inputData) => task == _alertsTaskName
+        ? _runBackgroundPriceAlerts()
+        : _runBackgroundSync(),
+  );
 }
 
 /// Registered from `bootstrap()`.
@@ -39,6 +50,13 @@ Future<void> initBackgroundSync() async {
       _uniqueName,
       _taskName,
       frequency: const Duration(hours: 1),
+      constraints: Constraints(networkType: NetworkType.connected),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+    );
+    await Workmanager().registerPeriodicTask(
+      _alertsUniqueName,
+      _alertsTaskName,
+      frequency: const Duration(minutes: 15),
       constraints: Constraints(networkType: NetworkType.connected),
       existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
     );
@@ -73,27 +91,50 @@ Future<bool> _runBackgroundSync() async {
 
     await container.read(syncEngineProvider.notifier).syncNow();
     log.info('background sync run complete');
-
-    // Price alerts ride along: the app may be closed when a stock reaches
-    // the price someone set. A failure here must not fail the sync run.
-    final tenantId = container.read(currentTenantIdProvider);
-    if (tenantId != null) {
-      try {
-        await runPriceAlertCheck(
-          tenantId: tenantId,
-          userId: container.read(currentUserIdProvider),
-          alerts: container.read(priceAlertsGatewayProvider),
-          prices: container.read(livePriceGatewayProvider),
-          notifications: container.read(notificationServiceProvider),
-        );
-      } on Object catch (e) {
-        log.warning('background price alert check failed: ${e.runtimeType}');
-      }
-    }
     return true;
   } on Object catch (e) {
     log.warning('background sync failed: ${e.runtimeType}');
     return false; // WorkManager retries per its own policy
+  } finally {
+    container?.dispose();
+  }
+}
+
+/// The app may be closed when a stock reaches the price someone set: price
+/// the alerts, record triggers, and notify — including triggers another
+/// device recorded first.
+Future<bool> _runBackgroundPriceAlerts() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  AppLog.init();
+  final log = AppLog.of('price-alerts.bg');
+  ProviderContainer? container;
+  try {
+    final config = AppConfig.fromEnvironment();
+    if (!config.isConfigured) return false;
+    await initSupabase(config);
+
+    final prefs = await SharedPreferences.getInstance();
+    container = ProviderContainer(
+      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+    );
+    if (!container.read(isSignedInProvider)) return true;
+
+    await container.read(membershipsProvider.future);
+    final tenantId = container.read(currentTenantIdProvider);
+    if (tenantId == null) return true;
+
+    await runPriceAlertCheck(
+      tenantId: tenantId,
+      userId: container.read(currentUserIdProvider),
+      alerts: container.read(priceAlertsGatewayProvider),
+      prices: container.read(livePriceGatewayProvider),
+      notifications: container.read(notificationServiceProvider),
+      notified: container.read(notifiedAlertsStoreProvider),
+    );
+    return true;
+  } on Object catch (e) {
+    log.warning('background price alert check failed: ${e.runtimeType}');
+    return false;
   } finally {
     container?.dispose();
   }

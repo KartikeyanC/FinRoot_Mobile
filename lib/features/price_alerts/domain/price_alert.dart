@@ -228,3 +228,28 @@ double distanceToTarget(PriceAlert a, double price) {
       : 'at or above your $target target';
   return (title: 'Price alert: ${a.name}', body: '${a.symbol} is at $at, $side.');
 }
+
+/// How far back a trigger still deserves a phone notification. Older ones
+/// (say, everything triggered before this phone first installed the app)
+/// are shown in the list, not pushed.
+const notifyWindow = Duration(hours: 24);
+
+/// The device-local record of an announced trigger. Includes the trigger time
+/// so an alert that is re-armed and fires again is announced again.
+String notifiedKey(PriceAlert a) =>
+    '${a.id}@${a.triggeredAt?.toUtc().toIso8601String()}';
+
+/// Triggered alerts this phone has not announced yet — wherever they fired:
+/// the web dashboard or the Windows app may have caught the price first and
+/// marked the alert, and the phone must still tell its owner.
+List<PriceAlert> alertsToNotify(
+  List<PriceAlert> alerts,
+  Set<String> alreadyNotified,
+  DateTime now,
+) => [
+  for (final a in alerts)
+    if (a.triggeredAt != null &&
+        now.toUtc().difference(a.triggeredAt!.toUtc()) <= notifyWindow &&
+        !alreadyNotified.contains(notifiedKey(a)))
+      a,
+];
