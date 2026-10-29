@@ -19,6 +19,7 @@ import '../features/more/presentation/more_screen.dart';
 import '../features/net_worth/presentation/net_worth_screen.dart';
 import '../features/payment_capture/presentation/detected_payments_screen.dart';
 import '../features/price_alerts/presentation/price_alerts_screen.dart';
+import '../features/quick_add/presentation/floating_quick_add_screen.dart';
 import '../features/recurring/presentation/recurring_screen.dart';
 import '../features/reminders/presentation/reminders_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
@@ -206,6 +207,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.investments,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const InvestmentsScreen(),
+      ),
+      // The floating Quick Add, shown by Android's QuickAddDialogActivity in a
+      // transparent window over another app: a see-through page, so the app
+      // underneath stays visible behind the dimmed card.
+      GoRoute(
+        path: floatingQuickAddPath,
+        parentNavigatorKey: _rootKey,
+        pageBuilder: (_, state) => CustomTransitionPage<void>(
+          key: state.pageKey,
+          opaque: false,
+          transitionDuration: const Duration(milliseconds: 120),
+          child: const FloatingQuickAddScreen(),
+          transitionsBuilder: (_, animation, _, child) =>
+              FadeTransition(opacity: animation, child: child),
+        ),
       ),
       GoRoute(
         path: priceAlertsPath,

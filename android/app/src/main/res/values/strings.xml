@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="quick_add_label">FinRoot expense</string>
+    <string name="quick_add_short">Add expense</string>
+    <string name="quick_add_long">Add an expense to FinRoot</string>
+</resources>

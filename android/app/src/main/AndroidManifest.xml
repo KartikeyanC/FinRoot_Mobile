@@ -47,6 +47,11 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Long-press the app icon: "Add expense" (floating Quick Add). -->
+            <meta-data
+              android:name="android.app.shortcuts"
+              android:resource="@xml/shortcuts"
+              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -82,6 +87,34 @@
         <receiver
             android:exported="false"
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
+
+        <!-- Floating Quick Add over other apps: a transparent Flutter window
+             (QuickAddDialogActivity.kt). Its own task, single instance, out
+             of Recents; the keyboard opens with it. Opened only by the tile
+             and the shortcut below, so not exported. -->
+        <activity
+            android:name=".QuickAddDialogActivity"
+            android:exported="false"
+            android:theme="@style/QuickAddDialogTheme"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true" />
+
+        <!-- Quick-settings tile "FinRoot expense" opens the floating Quick Add.
+             BIND_QUICK_SETTINGS_TILE only lets the system bind it. -->
+        <service
+            android:name=".QuickAddTileService"
+            android:exported="true"
+            android:label="@string/quick_add_label"
+            android:icon="@drawable/ic_quick_add"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <!-- Payment detection: reads payment / bank app notifications, only
              after the user turns it on in the app AND grants notification
