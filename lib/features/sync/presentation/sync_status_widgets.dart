@@ -5,6 +5,7 @@ import '../../../core/time/relative_time.dart';
 import '../../../design/design.dart';
 import '../application/sync_engine.dart';
 import '../application/sync_status.dart';
+import 'failed_changes_sheet.dart';
 
 /// App-wide sync notice. Renders nothing unless the state is one a person
 /// should see — offline (informational) or a failed sync (offer a retry).
@@ -60,6 +61,18 @@ class SyncStatusBanner extends ConsumerWidget {
                       ?.copyWith(color: foreground),
                 ),
               ),
+              if (isProblem && view.failedCount > 0)
+                TextButton(
+                  onPressed: () => showFailedChanges(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: foreground,
+                    minimumSize: const Size(64, 44),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                    ),
+                  ),
+                  child: const Text('Details'),
+                ),
               if (isProblem) ...[
                 const SizedBox(width: AppSpacing.xs),
                 TextButton(

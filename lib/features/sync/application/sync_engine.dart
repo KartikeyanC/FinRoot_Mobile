@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/error_mapper.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../core/providers/providers.dart';
+import '../../../data/local/app_database.dart';
 import '../../../data/local/database_providers.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../data/mutation_gateway.dart';
@@ -14,6 +16,9 @@ import '../domain/backoff.dart';
 import '../domain/sync_types.dart';
 import 'delta_puller.dart';
 import 'outbox_processor.dart';
+
+/// How long a refused change waits before the engine retries it by itself.
+const failedRetryAfter = Duration(minutes: 30);
 
 final syncEngineProvider = NotifierProvider<SyncEngine, SyncSnapshot>(
   SyncEngine.new,
@@ -71,6 +76,12 @@ class SyncEngine extends Notifier<SyncSnapshot> {
     _running = true;
     try {
       state = state.copyWith(phase: SyncPhase.pushing, clearError: true);
+      // Self-heal: anything refused more than [failedRetryAfter] ago gets one
+      // more try, so a fault fixed on the server clears by itself.
+      await ref
+          .read(appDatabaseProvider)
+          .syncOutboxDao
+          .requeueFailed(olderThan: DateTime.now().subtract(failedRetryAfter));
       final push = await _outbox().run();
 
       if (push.backendMissing) {
@@ -124,6 +135,29 @@ class SyncEngine extends Notifier<SyncSnapshot> {
     await syncNow(force: true);
   }
 
+  /// Throw away one change the server refused. A new entry that never
+  /// reached the server disappears from the phone; an edit or delete is
+  /// undone by putting the server's copy back (a full sync).
+  Future<void> discardFailed(OutboxEntry entry) async {
+    final db = ref.read(appDatabaseProvider);
+    await db.syncOutboxDao.discard(entry.id);
+    final row = db.update(db.localTransactions)
+      ..where((t) => t.id.equals(entry.entityLocalId));
+    if (entry.operation.isCreate) {
+      await (db.delete(db.localTransactions)
+            ..where((t) => t.id.equals(entry.entityLocalId)))
+          .go();
+    } else {
+      await row.write(
+        const LocalTransactionsCompanion(
+          syncStatus: Value(LocalSyncStatus.synced),
+          pendingMutationId: Value(null),
+        ),
+      );
+    }
+    await syncNow(full: true, force: true);
+  }
+
   void _cooldown(int attempt) {
     _nextAllowedAt = DateTime.now().add(_backoff.ceilingFor(attempt));
   }
@@ -146,6 +180,11 @@ class SyncEngine extends Notifier<SyncSnapshot> {
     );
   }
 }
+
+/// Changes the server refused, for the "didn't sync" details sheet.
+final failedChangesProvider = StreamProvider<List<OutboxEntry>>((ref) {
+  return ref.watch(appDatabaseProvider).syncOutboxDao.watchFailed();
+}, name: 'failedChanges');
 
 /// Live count of everything waiting to reach the server — for a badge on the
 /// nav / a status line.
