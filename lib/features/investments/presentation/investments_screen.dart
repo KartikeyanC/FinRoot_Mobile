@@ -9,14 +9,17 @@ import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../menus/application/menu_providers.dart';
 import '../../menus/presentation/menu_locked_view.dart';
-import '../../price_alerts/domain/price_alert.dart' show formatPrice;
+import '../../price_alerts/application/price_alerts_providers.dart';
+import '../../price_alerts/domain/price_alert.dart' show alertLabelFor, formatPrice;
 import '../../price_alerts/presentation/price_alerts_screen.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
 import '../domain/investment.dart';
 import '../domain/live_price.dart';
+import '../domain/stock_lots.dart';
 import 'investment_form_sheet.dart';
+import 'stock_group_tile.dart';
 
 /// Investments (M11) — a simple portfolio: invested vs current per holding,
 /// totals and a return figure. Menu-gated (ADR-0002). Online-only (not cached).
@@ -85,8 +88,19 @@ class InvestmentsScreen extends ConsumerWidget {
                     const _LivePriceTicker(),
                     _SummaryCard(summary: summary),
                     const SizedBox(height: AppSpacing.lg),
-                    for (final r in list)
-                      _HoldingTile(record: r, canWrite: canWrite),
+                    // Several purchases of one stock show as one holding.
+                    for (final item in groupPortfolio(list))
+                      switch (item) {
+                        GroupedHolding(:final group) => StockGroupTile(
+                          key: ValueKey(group.key),
+                          group: group,
+                          canWrite: canWrite,
+                        ),
+                        SingleHolding(:final record) => _HoldingTile(
+                          record: record,
+                          canWrite: canWrite,
+                        ),
+                      },
                   ],
                 ),
         ),
@@ -158,6 +172,8 @@ class _HoldingTile extends ConsumerWidget {
     final prices = ref.watch(holdingPricesProvider).value ?? const {};
     final live = liveFor(record, prices);
     final symbol = resolveLiveSymbol(record)?.symbol;
+    final lot = toLot(record);
+    final alerts = ref.watch(priceAlertsProvider).value ?? const [];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -199,6 +215,13 @@ class _HoldingTile extends ConsumerWidget {
                         color: finance.income,
                         fontWeight: FontWeight.w600,
                       ),
+                    ),
+                  if (record.asset == 'stocks')
+                    HoldingFacts(
+                      avgPrice: lot.price > 0 && symbol != null
+                          ? formatPrice(symbol, lot.price)
+                          : null,
+                      alert: symbol == null ? null : alertLabelFor(symbol, alerts),
                     ),
                 ],
               ),

@@ -253,3 +253,37 @@ List<PriceAlert> alertsToNotify(
         !alreadyNotified.contains(notifiedKey(a)))
       a,
 ];
+
+/// The "Price alert" label a holding shows for one stock — same rule as the
+/// web's `alertColumnFor`: the watching alert nearest to firing ("↓ ₹250",
+/// with "+1" when there are more), else the latest trigger ("Hit ₹257.5").
+({String text, bool triggered})? alertLabelFor(
+  String symbol,
+  List<PriceAlert> alerts,
+) {
+  final mine = alerts.where((a) => a.symbol == symbol).toList();
+  if (mine.isEmpty) return null;
+  final watching = mine.where((a) => a.isActive).toList()
+    ..sort((x, y) {
+      if (x.direction != y.direction) {
+        return x.direction == AlertDirection.below ? -1 : 1;
+      }
+      return x.direction == AlertDirection.below
+          ? y.target.compareTo(x.target)
+          : x.target.compareTo(y.target);
+    });
+  if (watching.isNotEmpty) {
+    final pick = watching.first;
+    final arrow = pick.direction == AlertDirection.below ? '↓' : '↑';
+    final more = watching.length > 1 ? ' +${watching.length - 1}' : '';
+    return (text: '$arrow ${formatPrice(symbol, pick.target)}$more', triggered: false);
+  }
+  mine.sort(
+    (x, y) => (y.triggeredAt ?? DateTime(0)).compareTo(x.triggeredAt ?? DateTime(0)),
+  );
+  final last = mine.first;
+  return (
+    text: 'Hit ${formatPrice(symbol, last.triggeredPrice ?? last.target)}',
+    triggered: true,
+  );
+}

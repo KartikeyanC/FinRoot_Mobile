@@ -298,6 +298,34 @@ void main() {
     });
   });
 
+  group('alertLabelFor matches the web alertColumnFor', () {
+    test('nearest buy level first, with a count of the rest', () {
+      final label = alertLabelFor('ITC.NS', [_itc(target: 240), _itc(id: 'a2', target: 255)]);
+      expect(label?.text, '↓ ₹255 +1');
+      expect(label?.triggered, isFalse);
+    });
+
+    test('an upper target uses an up arrow', () {
+      expect(
+        alertLabelFor('ITC.NS', [_itc(direction: AlertDirection.above, target: 300)])?.text,
+        '↑ ₹300',
+      );
+    });
+
+    test('all fired: the latest trigger', () {
+      final label = alertLabelFor('ITC.NS', [
+        _itc(triggeredAt: _now.subtract(const Duration(days: 1)), triggeredPrice: 259),
+        _itc(id: 'a2', triggeredAt: _now, triggeredPrice: 257.5),
+      ]);
+      expect(label?.text, 'Hit ₹257.5');
+      expect(label?.triggered, isTrue);
+    });
+
+    test('no alert on that stock: nothing', () {
+      expect(alertLabelFor('AAPL', [_itc()]), isNull);
+    });
+  });
+
   test('parseLivePrices keeps only usable numbers', () {
     expect(
       parseLivePrices({
