@@ -86,6 +86,15 @@ const kMoreEntries = <MoreEntry>[
     '/net-worth',
     menu: FeatureMenu.netWorth,
   ),
+  MoreEntry('Debts', Icons.account_balance_outlined, '/debts'),
+  MoreEntry('Subscriptions', Icons.subscriptions_outlined, '/subscriptions'),
+  MoreEntry(
+    'Insurance',
+    Icons.health_and_safety_outlined,
+    '/insurance',
+    menu: FeatureMenu.insurance,
+  ),
+  MoreEntry('Calendar', Icons.calendar_month_outlined, '/calendar'),
   MoreEntry('Recurring', Icons.event_repeat_outlined, '/recurring'),
   MoreEntry(
     'Reminders',
@@ -102,6 +111,6 @@ const kMoreEntries = <MoreEntry>[
   MoreEntry('Voice', Icons.mic_none, '/voice'),
   MoreEntry('Detected payments', Icons.bolt_outlined, '/detected-payments'),
   MoreEntry('Insights', Icons.insights_outlined, '/insights'),
-  MoreEntry('Search', Icons.search, '/search', phase: 'M8'),
+  MoreEntry('Search', Icons.search, '/search'),
   MoreEntry('Settings', Icons.settings_outlined, '/settings', phase: 'M3'),
 ];

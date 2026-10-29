@@ -11,9 +11,12 @@ import '../features/auth/presentation/auth_screen.dart';
 import '../features/auth/presentation/reset_password_screen.dart';
 import '../features/bill_scan/presentation/bill_scan_screen.dart';
 import '../features/budget/presentation/budget_screen.dart';
+import '../features/calendar/calendar_screen.dart';
+import '../features/debts/debts_screen.dart';
 import '../features/goals/presentation/goals_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/insights/presentation/insights_screen.dart';
+import '../features/insurance/insurance_screen.dart';
 import '../features/investments/presentation/investments_screen.dart';
 import '../features/more/presentation/more_screen.dart';
 import '../features/net_worth/presentation/net_worth_screen.dart';
@@ -22,7 +25,9 @@ import '../features/price_alerts/presentation/price_alerts_screen.dart';
 import '../features/quick_add/presentation/floating_quick_add_screen.dart';
 import '../features/recurring/presentation/recurring_screen.dart';
 import '../features/reminders/presentation/reminders_screen.dart';
+import '../features/search/presentation/search_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
+import '../features/subscriptions/subscriptions_screen.dart';
 import '../features/trackers/presentation/tracker_detail_screen.dart';
 import '../features/trackers/presentation/trackers_screen.dart';
 import '../features/transactions/presentation/transactions_screen.dart';
@@ -50,6 +55,11 @@ class _Routes {
   static const voice = '/voice';
   static const insights = '/insights';
   static const detectedPayments = '/detected-payments';
+  static const search = '/search';
+  static const debts = '/debts';
+  static const subscriptions = '/subscriptions';
+  static const insurance = '/insurance';
+  static const calendar = '/calendar';
 
   /// "More" entries that have a real screen rather than a milestone placeholder.
   static const realScreens = {
@@ -65,6 +75,11 @@ class _Routes {
     voice,
     insights,
     detectedPayments,
+    search,
+    debts,
+    subscriptions,
+    insurance,
+    calendar,
   };
 }
 
@@ -252,6 +267,31 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.voice,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const VoiceScreen(),
+      ),
+      GoRoute(
+        path: _Routes.search,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const SearchScreen(),
+      ),
+      GoRoute(
+        path: _Routes.debts,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const DebtsScreen(),
+      ),
+      GoRoute(
+        path: _Routes.subscriptions,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const SubscriptionsScreen(),
+      ),
+      GoRoute(
+        path: _Routes.insurance,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const InsuranceScreen(),
+      ),
+      GoRoute(
+        path: _Routes.calendar,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const CalendarScreen(),
       ),
       GoRoute(
         path: _Routes.detectedPayments,

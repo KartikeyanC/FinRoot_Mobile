@@ -99,6 +99,27 @@ class TransactionsRepository {
     );
   }
 
+  /// Every cached transaction in `[from, toExclusive)`, oldest first — the
+  /// Calendar's month.
+  Stream<List<TransactionEntity>> watchBetween(
+    String tenantId, {
+    required DateTime from,
+    required DateTime toExclusive,
+  }) {
+    final query = _db.select(_db.localTransactions)
+      ..where(
+        (t) =>
+            t.tenantId.equals(tenantId) &
+            t.syncStatus.equalsValue(LocalSyncStatus.pendingDelete).not() &
+            t.occurredAt.isBiggerOrEqualValue(from) &
+            t.occurredAt.isSmallerThanValue(toExclusive),
+      )
+      ..orderBy([(t) => OrderingTerm.asc(t.occurredAt)]);
+    return query.watch().map(
+      (rows) => rows.map(_toEntity).toList(growable: false),
+    );
+  }
+
   /// Untagged expenses / income in a date window — the pool the "assign older
   /// transactions to a tracker" flow offers (M9). Transfers are excluded (a
   /// transfer is not project spend). `[from, toExclusive)`.
