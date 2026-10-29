@@ -14,24 +14,27 @@ import '../domain/quick_add_draft.dart';
 const floatingQuickAddPath = '/quick-add-float';
 
 /// One of the six quick categories, and what it saves as. FinRoot has no
-/// "Groceries" or "Bills" category, so those map onto the nearest existing
+/// "Grocery" or "Bills" category, so those map onto the nearest existing
 /// one, with a note where the mapping loses information.
 class QuickCategory {
-  const QuickCategory(this.label, this.icon, this.category, [this.note]);
+  const QuickCategory(this.emoji, this.label, this.category, [this.note]);
+  final String emoji;
   final String label;
-  final IconData icon;
   final String category;
   final String? note;
 }
 
 const quickCategories = [
-  QuickCategory('Food', Icons.restaurant, 'Food & Dining'),
-  QuickCategory('Travel', Icons.directions_car, 'Travel'),
-  QuickCategory('Groceries', Icons.local_grocery_store, 'Food & Dining', 'Groceries'),
-  QuickCategory('Shopping', Icons.shopping_bag, 'Shopping'),
-  QuickCategory('Bills', Icons.receipt_long, 'Utilities'),
-  QuickCategory('Others', Icons.more_horiz, 'Other'),
+  QuickCategory('🍔', 'Food', 'Food & Dining'),
+  QuickCategory('🚕', 'Travel', 'Travel'),
+  QuickCategory('🛒', 'Grocery', 'Food & Dining', 'Groceries'),
+  QuickCategory('🛍️', 'Shopping', 'Shopping'),
+  QuickCategory('⚡', 'Bills', 'Utilities'),
+  QuickCategory('🍿', 'Entertainment', 'Entertainment'),
 ];
+
+/// What a save with no pill picked is filed under.
+const uncategorised = 'Other';
 
 /// Null when [raw] is a usable amount, else why not.
 String? amountProblem(String raw) {
@@ -42,10 +45,34 @@ String? amountProblem(String raw) {
   return null;
 }
 
-/// A compact card over a dimmed background: amount (focused, decimal
-/// keyboard), six category pills, one Save. Saves through the normal Quick
-/// Add path — an offline-first local write that syncs — then closes the
-/// window at once, returning the person to the app they paid in.
+/// The numpad's backspace key.
+const backspaceKey = '⌫';
+
+/// [amount] after pressing [key] on the numpad: a digit, '.' or
+/// [backspaceKey]. Keeps at most one '.', two decimals and nine whole digits;
+/// a key that would break that is ignored.
+String pressKey(String amount, String key) {
+  if (key == backspaceKey) {
+    return amount.isEmpty ? amount : amount.substring(0, amount.length - 1);
+  }
+  final dot = amount.indexOf('.');
+  if (key == '.') {
+    if (dot >= 0) return amount;
+    return amount.isEmpty ? '0.' : '$amount.';
+  }
+  if (dot >= 0) return amount.length - dot > 2 ? amount : '$amount$key';
+  if (amount == '0') return key; // no leading zeros
+  return amount.length >= 9 ? amount : '$amount$key';
+}
+
+/// The amount as the big preview shows it: "₹ 0.00" until something is typed.
+String amountPreview(String amount) => amount.isEmpty ? '₹ 0.00' : '₹ $amount';
+
+/// A compact card over a dimmed background: a large amount preview, six
+/// category pills, its own numpad (so Android's full keyboard never opens)
+/// and one Save. Saves through the normal Quick Add path — an offline-first
+/// local write that syncs in the background — then closes the window at
+/// once, returning the person to the app they paid in.
 class FloatingQuickAddScreen extends ConsumerStatefulWidget {
   const FloatingQuickAddScreen({super.key, this.close});
 
@@ -57,21 +84,24 @@ class FloatingQuickAddScreen extends ConsumerStatefulWidget {
 }
 
 class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen> {
-  final _amount = TextEditingController();
-  var _category = quickCategories.last;
+  var _amount = '';
+  QuickCategory? _category;
   String? _error;
   bool _saving = false;
 
-  @override
-  void dispose() {
-    _amount.dispose();
-    super.dispose();
-  }
-
   void _close() => (widget.close ?? SystemNavigator.pop)();
 
+  void _press(String key) {
+    if (_saving) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _amount = pressKey(_amount, key);
+      _error = null;
+    });
+  }
+
   Future<void> _save() async {
-    final problem = amountProblem(_amount.text);
+    final problem = amountProblem(_amount);
     if (problem != null) {
       setState(() => _error = problem);
       return;
@@ -83,10 +113,10 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
     try {
       await ref.read(quickAddControllerProvider).submit(
         kind: QuickAddKind.expense,
-        amount: Money.parse(_amount.text),
+        amount: Money.parse(_amount),
         occurredAt: DateTime.now(),
-        category: _category.category,
-        note: _category.note,
+        category: _category?.category ?? uncategorised,
+        note: _category?.note,
       );
       // The write is local (it syncs on its own), so this returns at once.
       _close();
@@ -118,16 +148,12 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
           SafeArea(
             child: Align(
               child: Padding(
-                padding: EdgeInsets.only(
-                  left: AppSpacing.screenGutter,
-                  right: AppSpacing.screenGutter,
-                  bottom: MediaQuery.viewInsetsOf(context).bottom,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenGutter),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: Card(
                     elevation: 8,
-                    child: Padding(
+                    child: SingleChildScrollView(
                       padding: const EdgeInsets.all(AppSpacing.lg),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -135,7 +161,7 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
                         children: [
                           Row(
                             children: [
-                              Expanded(child: Text('Quick expense', style: tt.titleLarge)),
+                              Expanded(child: Text('⚡ Quick Log', style: tt.titleLarge)),
                               IconButton(
                                 tooltip: 'Close',
                                 icon: const Icon(Icons.close),
@@ -143,48 +169,50 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
                               ),
                             ],
                           ),
-                          const SizedBox(height: AppSpacing.sm),
-                          TextField(
-                            controller: _amount,
-                            autofocus: true,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                            ],
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => _save(),
-                            style: tt.headlineMedium,
-                            decoration: const InputDecoration(
-                              labelText: 'Amount',
-                              prefixText: '₹ ',
+                          Semantics(
+                            liveRegion: true,
+                            label: 'Amount',
+                            child: Text(
+                              amountPreview(_amount),
+                              key: const Key('quick-add-amount'),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              style: tt.displaySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: _amount.isEmpty ? scheme.onSurfaceVariant : scheme.onSurface,
+                              ),
                             ),
-                            onChanged: (_) {
-                              if (_error != null) setState(() => _error = null);
-                            },
                           ),
                           const SizedBox(height: AppSpacing.md),
                           Wrap(
                             spacing: AppSpacing.xs,
                             runSpacing: AppSpacing.xs,
+                            alignment: WrapAlignment.center,
                             children: [
                               for (final c in quickCategories)
                                 ChoiceChip(
-                                  avatar: Icon(c.icon, size: 18),
-                                  label: Text(c.label),
+                                  label: Text('${c.emoji} ${c.label}'),
                                   selected: identical(c, _category),
-                                  onSelected: (_) => setState(() => _category = c),
+                                  // Tapping the picked pill again un-picks it.
+                                  onSelected: (on) => setState(() => _category = on ? c : null),
                                 ),
                             ],
                           ),
                           if (_error != null) ...[
                             const SizedBox(height: AppSpacing.sm),
-                            Text(_error!, style: tt.bodyMedium?.copyWith(color: scheme.error)),
+                            Text(
+                              _error!,
+                              textAlign: TextAlign.center,
+                              style: tt.bodyMedium?.copyWith(color: scheme.error),
+                            ),
                           ],
-                          const SizedBox(height: AppSpacing.lg),
-                          FilledButton.icon(
+                          const SizedBox(height: AppSpacing.md),
+                          _Numpad(onKey: _press, onClear: () => setState(() => _amount = '')),
+                          const SizedBox(height: AppSpacing.md),
+                          FilledButton(
                             onPressed: _saving ? null : _save,
-                            icon: const Icon(Icons.check),
-                            label: Text(_saving ? 'Saving…' : 'Save expense'),
+                            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                            child: Text(_saving ? 'SAVING…' : 'SAVE TO FINROOT'),
                           ),
                         ],
                       ),
@@ -196,6 +224,49 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 3×4 keys: 1–9, then '.', 0 and backspace. Long-press backspace to clear.
+class _Numpad extends StatelessWidget {
+  const _Numpad({required this.onKey, required this.onClear});
+
+  final ValueChanged<String> onKey;
+  final VoidCallback onClear;
+
+  static const _rows = [
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['.', '0', backspaceKey],
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Column(
+      children: [
+        for (final row in _rows)
+          Row(
+            children: [
+              for (final key in row)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xs / 2),
+                    child: TextButton(
+                      onPressed: () => onKey(key),
+                      onLongPress: key == backspaceKey ? onClear : null,
+                      style: TextButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                      child: key == backspaceKey
+                          ? const Icon(Icons.backspace_outlined, semanticLabel: 'Delete')
+                          : Text(key, style: tt.headlineSmall),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+      ],
     );
   }
 }

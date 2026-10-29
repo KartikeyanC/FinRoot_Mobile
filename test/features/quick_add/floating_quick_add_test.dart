@@ -56,6 +56,14 @@ Future<({_FakeQuickAdd quickAdd, List<int> closed})> _pump(
   return (quickAdd: fake, closed: closed);
 }
 
+/// Types [digits] on the card's numpad.
+Future<void> _type(WidgetTester tester, String digits) async {
+  for (final k in digits.split('')) {
+    await tester.tap(find.widgetWithText(TextButton, k));
+  }
+  await tester.pump();
+}
+
 void main() {
   test('amounts are checked before anything is saved', () {
     expect(amountProblem(''), isNotNull);
@@ -64,27 +72,45 @@ void main() {
     expect(amountProblem('249.50'), isNull);
   });
 
+  test('the numpad keeps a well-formed amount', () {
+    String typed(List<String> keys) => keys.fold('', pressKey);
+    expect(typed(['2', '4', '9', '.', '5', '0']), '249.50');
+    expect(typed(['.', '5']), '0.5');
+    expect(typed(['1', '.', '2', '3', '4']), '1.23', reason: 'two decimals at most');
+    expect(typed(['1', '.', '.', '2']), '1.2', reason: 'one decimal point');
+    expect(typed(['0', '0', '7']), '7', reason: 'no leading zeros');
+    expect(typed(List.filled(12, '9')), '999999999', reason: 'nine whole digits');
+    expect(typed(['4', '2', backspaceKey]), '4');
+    expect(typed([backspaceKey]), '');
+    expect(amountPreview(''), '₹ 0.00');
+    expect(amountPreview('249.5'), '₹ 249.5');
+  });
+
   test('the six quick categories save as FinRoot categories', () {
     expect(quickCategories.map((c) => c.label), [
-      'Food', 'Travel', 'Groceries', 'Shopping', 'Bills', 'Others',
+      'Food', 'Travel', 'Grocery', 'Shopping', 'Bills', 'Entertainment',
     ]);
     expect(quickCategories.map((c) => c.category), [
-      'Food & Dining', 'Travel', 'Food & Dining', 'Shopping', 'Utilities', 'Other',
+      'Food & Dining', 'Travel', 'Food & Dining', 'Shopping', 'Utilities', 'Entertainment',
     ]);
     expect(quickCategories[2].note, 'Groceries');
   });
 
-  testWidgets('the amount is focused, and Save adds the expense and closes', (tester) async {
-    final h = await _pump(tester);
-    final field = tester.widget<TextField>(find.byType(TextField));
-    expect(field.autofocus, isTrue);
-    expect(field.keyboardType, const TextInputType.numberWithOptions(decimal: true));
+  testWidgets('no text field, so the system keyboard never opens', (tester) async {
+    await _pump(tester);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('₹ 0.00'), findsOneWidget);
     expect(find.byType(ChoiceChip), findsNWidgets(6));
+  });
 
-    await tester.enterText(find.byType(TextField), '249.50');
-    await tester.tap(find.text('Bills'));
+  testWidgets('numpad + pill + Save adds the expense and closes', (tester) async {
+    final h = await _pump(tester);
+    await _type(tester, '249.50');
+    expect(find.text('₹ 249.50'), findsOneWidget);
+
+    await tester.tap(find.text('⚡ Bills'));
     await tester.pump();
-    await tester.tap(find.text('Save expense'));
+    await tester.tap(find.text('SAVE TO FINROOT'));
     await tester.pump();
 
     expect(h.quickAdd.calls.single.kind, QuickAddKind.expense);
@@ -93,20 +119,37 @@ void main() {
     expect(h.closed, [1], reason: 'the window closes as soon as it is saved');
   });
 
-  testWidgets('Groceries saves under Food & Dining with a note', (tester) async {
+  testWidgets('Grocery saves under Food & Dining with a note', (tester) async {
     final h = await _pump(tester);
-    await tester.enterText(find.byType(TextField), '600');
-    await tester.tap(find.text('Groceries'));
+    await _type(tester, '600');
+    await tester.tap(find.text('🛒 Grocery'));
     await tester.pump();
-    await tester.tap(find.text('Save expense'));
+    await tester.tap(find.text('SAVE TO FINROOT'));
     await tester.pump();
     expect(h.quickAdd.calls.single.category, 'Food & Dining');
     expect(h.quickAdd.calls.single.note, 'Groceries');
   });
 
+  testWidgets('no pill picked saves as Other', (tester) async {
+    final h = await _pump(tester);
+    await _type(tester, '80');
+    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.pump();
+    expect(h.quickAdd.calls.single.category, 'Other');
+    expect(h.quickAdd.calls.single.note, isNull);
+  });
+
+  testWidgets('long-press backspace clears the amount', (tester) async {
+    await _pump(tester);
+    await _type(tester, '123');
+    await tester.longPress(find.byIcon(Icons.backspace_outlined));
+    await tester.pump();
+    expect(find.text('₹ 0.00'), findsOneWidget);
+  });
+
   testWidgets('no amount: says so and stays open', (tester) async {
     final h = await _pump(tester);
-    await tester.tap(find.text('Save expense'));
+    await tester.tap(find.text('SAVE TO FINROOT'));
     await tester.pump();
     expect(find.text('Enter the amount you paid.'), findsOneWidget);
     expect(h.quickAdd.calls, isEmpty);
@@ -118,8 +161,8 @@ void main() {
       tester,
       fail: const PermissionFailure(message: 'Only owners and admins can add.'),
     );
-    await tester.enterText(find.byType(TextField), '100');
-    await tester.tap(find.text('Save expense'));
+    await _type(tester, '100');
+    await tester.tap(find.text('SAVE TO FINROOT'));
     await tester.pump();
     expect(find.text('Only owners and admins can add.'), findsOneWidget);
     expect(h.closed, isEmpty);
