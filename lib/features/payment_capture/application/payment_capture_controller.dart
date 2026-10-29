@@ -39,7 +39,7 @@ class PaymentCaptureController extends AsyncNotifier<PaymentCaptureState> {
 
   Future<PaymentCaptureState> _load() async {
     final status = await _gateway.status();
-    if (!status.supported || !status.enabled) {
+    if (!status.supported || !status.included || !status.enabled) {
       return PaymentCaptureState(status: status);
     }
     final notices = await _gateway.pending();

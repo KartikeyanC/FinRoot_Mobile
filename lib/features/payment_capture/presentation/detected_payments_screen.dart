@@ -91,6 +91,16 @@ class _DetectedPaymentsScreenState
                         'Payment detection reads payment notifications, which '
                         'only Android lets an app do.',
                   )
+                else if (!value.status.included)
+                  const EmptyView(
+                    icon: Icons.shield_outlined,
+                    title: 'Not in this version',
+                    message:
+                        'Automatic payment detection needs access to your '
+                        'notifications. Google Play Protect blocks that for apps '
+                        'installed outside the Play Store, so this version leaves '
+                        'it out. Add payments with Quick Add instead.',
+                  )
                 else ...[
                   _SetupCard(status: value.status),
                   if (value.status.active) ...[

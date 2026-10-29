@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Overlay for side-loaded release builds (the default): removes the payment
+  detection NotificationListenerService.
+
+  Google Play Protect's fraud protection in India blocks an app installed
+  outside the Play Store that asks for notification access ("App blocked to
+  protect your device"), whoever made it. Without the service the APK asks
+  for nothing that is blocked; the app sees `included: false` and explains
+  that payment detection is not in this version.
+
+  Build WITH payment detection (a Play Store build) by passing the Gradle
+  property finroot.paymentDetection=true; see docs/RELEASE.md.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <service
+            android:name=".PaymentListenerService"
+            tools:node="remove" />
+    </application>
+</manifest>

@@ -157,6 +157,26 @@ laws* checkbox (§4) → roll out.
 
 ---
 
+### Payment detection and side-loaded APKs
+
+Payment detection (the "₹500 paid — add to FinRoot?" pop-up) needs Android's
+notification access. **Google Play Protect blocks any app installed outside the
+Play Store that asks for it** ("App blocked to protect your device" — the India
+fraud-protection rule), so release builds leave the `PaymentListenerService` out
+by default (`android/app/src/noPaymentDetection/AndroidManifest.xml`). The app
+then reports `included: false` and the Detected payments screen explains why.
+
+```bash
+# Side-loaded APK (default): no notification access, installs cleanly.
+flutter build apk --release --dart-define-from-file=config/dev.json
+
+# Play Store build WITH payment detection (declare notification access in
+# Play Console first):
+flutter build appbundle --release --dart-define-from-file=config/prod.json --android-project-arg=finroot.paymentDetection=true
+```
+
+Debug builds always include it.
+
 ## 5. iOS — build & upload  (Mac only)
 
 ### 5.1 One-time: signing

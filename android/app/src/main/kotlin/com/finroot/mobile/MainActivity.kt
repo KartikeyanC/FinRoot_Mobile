@@ -32,6 +32,9 @@ class MainActivity : FlutterActivity() {
                         "popupEnabled" to PaymentCaptureStore.isPopupEnabled(ctx),
                         "canPostNotifications" to canPostNotifications(),
                         "hasAccess" to PaymentListenerService.hasAccess(ctx),
+                        // False in side-loaded builds, which leave the listener
+                        // service out (see src/noPaymentDetection/).
+                        "included" to listenerIncluded(),
                     ),
                 )
                 "setEnabled" -> {
@@ -82,6 +85,16 @@ class MainActivity : FlutterActivity() {
         // Don't reopen it on a configuration change / recreate.
         intent.removeExtra(PaymentPopup.EXTRA_NOTICE_ID)
         return id
+    }
+
+    private fun listenerIncluded(): Boolean = try {
+        packageManager.getServiceInfo(
+            android.content.ComponentName(this, PaymentListenerService::class.java),
+            0,
+        )
+        true
+    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+        false
     }
 
     private fun canPostNotifications() = Build.VERSION.SDK_INT < 33 ||

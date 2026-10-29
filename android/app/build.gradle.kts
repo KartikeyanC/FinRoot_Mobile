@@ -54,6 +54,15 @@ android {
         }
     }
 
+    // Payment detection needs notification access, which Play Protect blocks
+    // for side-loaded apps in India. Release builds leave its service out
+    // unless built with -Pfinroot.paymentDetection=true (see the overlay
+    // manifest in src/noPaymentDetection/). Debug builds keep it.
+    if (project.findProperty("finroot.paymentDetection")?.toString() != "true") {
+        sourceSets.maybeCreate("release").manifest.srcFile("src/noPaymentDetection/AndroidManifest.xml")
+        sourceSets.maybeCreate("profile").manifest.srcFile("src/noPaymentDetection/AndroidManifest.xml")
+    }
+
     buildTypes {
         release {
             signingConfig = if (hasReleaseKeystore) {

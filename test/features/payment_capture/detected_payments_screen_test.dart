@@ -15,8 +15,11 @@ class FakeGateway implements PaymentCaptureGateway {
   FakeGateway({
     this.enabled = true,
     this.hasAccess = true,
+    this.included = true,
     List<PaymentNotice>? notices,
   }) : notices = notices ?? [];
+
+  final bool included;
 
   bool enabled;
   bool hasAccess;
@@ -35,6 +38,7 @@ class FakeGateway implements PaymentCaptureGateway {
     popupEnabled: popup,
     canPostNotifications: canPost,
     hasAccess: hasAccess,
+    included: included,
   );
 
   @override
@@ -105,6 +109,17 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets('a side-loaded build without the feature explains why, no switch', (
+    tester,
+  ) async {
+    final gw = FakeGateway(included: false);
+    await _pump(tester, gw);
+    expect(find.text('Not in this version'), findsOneWidget);
+    expect(find.textContaining('Play Protect'), findsOneWidget);
+    expect(find.byType(Switch), findsNothing);
+    expect(gw.settingsOpened, 0);
+  });
+
   testWidgets('off: only the switch, turning it on asks for access', (
     tester,
   ) async {

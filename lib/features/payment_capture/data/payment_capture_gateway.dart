@@ -15,6 +15,7 @@ class PaymentCaptureStatus {
     this.popupEnabled = true,
     this.canPostNotifications = true,
     this.hasAccess = false,
+    this.included = true,
   });
 
   /// Android only — iOS gives apps no access to other apps' notifications.
@@ -36,7 +37,12 @@ class PaymentCaptureStatus {
   /// Android's "Notification access" is granted to FinRoot.
   final bool hasAccess;
 
-  bool get active => supported && enabled && hasAccess;
+  /// This build carries payment detection. Side-loaded release builds leave
+  /// it out: Play Protect blocks apps installed outside the Play Store that
+  /// ask for notification access.
+  final bool included;
+
+  bool get active => supported && included && enabled && hasAccess;
 }
 
 /// The Android side lives in PaymentListenerService.kt / MainActivity.kt.
@@ -85,6 +91,7 @@ class MethodChannelPaymentCaptureGateway implements PaymentCaptureGateway {
       popupEnabled: m['popupEnabled'] != false,
       canPostNotifications: m['canPostNotifications'] != false,
       hasAccess: m['hasAccess'] == true,
+      included: m['included'] != false,
     );
   }
 
