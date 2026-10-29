@@ -8,6 +8,10 @@ import '../../../core/device/device_prefs.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/supabase/supabase_bootstrap.dart';
+import '../../investments/data/live_price_gateway.dart';
+import '../../notifications/data/notification_service.dart';
+import '../../price_alerts/application/price_alerts_providers.dart';
+import '../../price_alerts/data/price_alerts_gateway.dart';
 import '../../workspace/application/workspace_providers.dart';
 import 'sync_engine.dart';
 
@@ -69,6 +73,23 @@ Future<bool> _runBackgroundSync() async {
 
     await container.read(syncEngineProvider.notifier).syncNow();
     log.info('background sync run complete');
+
+    // Price alerts ride along: the app may be closed when a stock reaches
+    // the price someone set. A failure here must not fail the sync run.
+    final tenantId = container.read(currentTenantIdProvider);
+    if (tenantId != null) {
+      try {
+        await runPriceAlertCheck(
+          tenantId: tenantId,
+          userId: container.read(currentUserIdProvider),
+          alerts: container.read(priceAlertsGatewayProvider),
+          prices: container.read(livePriceGatewayProvider),
+          notifications: container.read(notificationServiceProvider),
+        );
+      } on Object catch (e) {
+        log.warning('background price alert check failed: ${e.runtimeType}');
+      }
+    }
     return true;
   } on Object catch (e) {
     log.warning('background sync failed: ${e.runtimeType}');

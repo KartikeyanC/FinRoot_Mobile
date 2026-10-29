@@ -22,6 +22,10 @@ abstract interface class NotificationService {
 
   /// Drop every scheduled notification (used on sign-out).
   Future<void> cancelAll();
+
+  /// Post a notification right now (a price alert that just fired). Separate
+  /// channel and ids from the schedule, so [reconcile] never cancels it.
+  Future<void> showNow({required int id, required String title, required String body});
 }
 
 /// Real implementation over `flutter_local_notifications`.
@@ -120,6 +124,39 @@ class LocalNotificationService implements NotificationService {
       _log.info('reconciled ${plan.length} notification(s)');
     } catch (error, stack) {
       _log.warning('reconcile failed (device-unverified)', error, stack);
+    }
+  }
+
+  static const _alertChannelId = 'finroot_price_alerts';
+  static const _alertChannelName = 'Price alerts';
+
+  @override
+  Future<void> showNow({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    await init();
+    if (!_ready) return;
+    try {
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _alertChannelId,
+            _alertChannelName,
+            channelDescription: 'When a stock reaches the price you set',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(),
+          macOS: DarwinNotificationDetails(),
+        ),
+      );
+    } catch (error, stack) {
+      _log.warning('showNow failed', error, stack);
     }
   }
 

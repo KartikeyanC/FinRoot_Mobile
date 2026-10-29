@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,10 +8,13 @@ import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../menus/application/menu_providers.dart';
 import '../../menus/presentation/menu_locked_view.dart';
+import '../../price_alerts/domain/price_alert.dart' show formatPrice;
+import '../../price_alerts/presentation/price_alerts_screen.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
 import '../domain/investment.dart';
+import '../domain/live_price.dart';
 import 'investment_form_sheet.dart';
 
 /// Investments (M11) — a simple portfolio: invested vs current per holding,
@@ -38,7 +43,18 @@ class InvestmentsScreen extends ConsumerWidget {
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Investments')),
+      appBar: AppBar(
+        title: const Text('Investments'),
+        actions: [
+          IconButton(
+            tooltip: 'Price alerts',
+            icon: const Icon(Icons.notifications_active_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const PriceAlertsScreen()),
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: canWrite
           ? FloatingActionButton.extended(
               onPressed: () => openInvestmentForm(context),
@@ -47,7 +63,10 @@ class InvestmentsScreen extends ConsumerWidget {
             )
           : null,
       body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(investmentsProvider),
+        onRefresh: () async {
+          ref.invalidate(investmentsProvider);
+          ref.invalidate(holdingPricesProvider);
+        },
         child: records.when(
           loading: () => const LoadingView(),
           error: (e, _) => ErrorView(
@@ -64,6 +83,7 @@ class InvestmentsScreen extends ConsumerWidget {
                     AppSpacing.huge,
                   ),
                   children: [
+                    const _LivePriceTicker(),
                     _SummaryCard(summary: summary),
                     const SizedBox(height: AppSpacing.lg),
                     for (final r in list)
@@ -136,6 +156,9 @@ class _HoldingTile extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final finance = context.finance;
     final up = record.gain.amount.sign >= 0;
+    final prices = ref.watch(holdingPricesProvider).value ?? const {};
+    final live = liveFor(record, prices);
+    final symbol = resolveLiveSymbol(record)?.symbol;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -170,6 +193,14 @@ class _HoldingTile extends ConsumerWidget {
                       color: scheme.onSurfaceVariant,
                     ),
                   ),
+                  if (live != null && symbol != null)
+                    Text(
+                      'Live ${formatPrice(symbol, live.unitPrice)} · $symbol',
+                      style: tt.labelSmall?.copyWith(
+                        color: finance.income,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -177,7 +208,13 @@ class _HoldingTile extends ConsumerWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                AmountText.money(record.current, signed: false),
+                if (live?.value case final v?)
+                  Text(
+                    formatPrice(symbol ?? '', v),
+                    style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                  )
+                else
+                  AmountText.money(record.current, signed: false),
                 Text(
                   '${up ? '+' : ''}${record.gain.formatShort()}',
                   style: tt.labelSmall?.copyWith(
@@ -259,4 +296,34 @@ class _Empty extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Re-asks for live prices every minute while the Investments list is shown.
+class _LivePriceTicker extends ConsumerStatefulWidget {
+  const _LivePriceTicker();
+
+  @override
+  ConsumerState<_LivePriceTicker> createState() => _LivePriceTickerState();
+}
+
+class _LivePriceTickerState extends ConsumerState<_LivePriceTicker> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(
+      livePriceRefresh,
+      (_) => ref.invalidate(holdingPricesProvider),
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

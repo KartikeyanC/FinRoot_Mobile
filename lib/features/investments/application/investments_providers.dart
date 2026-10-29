@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/money/money.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../data/investments_gateway.dart';
+import '../data/live_price_gateway.dart';
 import '../domain/investment.dart';
+import '../domain/live_price.dart';
 
 /// The workspace's investment holdings — live from PostgREST (not cached).
 /// Invalidate to refresh.
@@ -53,3 +55,16 @@ final portfolioSummaryProvider = Provider<PortfolioSummary>((ref) {
     byAsset: sorted,
   );
 }, name: 'portfolioSummary');
+
+/// How often the Investments screen re-asks for live prices while open.
+const livePriceRefresh = Duration(seconds: 60);
+
+/// Live prices for every holding that has a ticker or scheme code, keyed like
+/// the function answers (`yahoo:ITC.NS`). Empty until holdings load, and on
+/// any failure. The screen invalidates this every [livePriceRefresh].
+final holdingPricesProvider = FutureProvider<Map<String, double>>((ref) async {
+  final records = ref.watch(investmentsProvider).value ?? const [];
+  final wants = liveWantsFor(records);
+  if (wants.isEmpty) return const {};
+  return ref.watch(livePriceGatewayProvider).fetch(wants);
+}, name: 'holdingPrices');
