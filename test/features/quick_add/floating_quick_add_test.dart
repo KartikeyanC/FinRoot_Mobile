@@ -2,6 +2,7 @@ import 'package:finroot_mobile/core/error/failure.dart';
 import 'package:finroot_mobile/core/money/money.dart';
 import 'package:finroot_mobile/design/design.dart';
 import 'package:finroot_mobile/features/quick_add/application/quick_add_controller.dart';
+import 'package:finroot_mobile/features/quick_add/data/custom_categories.dart';
 import 'package:finroot_mobile/features/quick_add/domain/quick_add_draft.dart';
 import 'package:finroot_mobile/features/quick_add/presentation/floating_quick_add_screen.dart';
 import 'package:flutter/material.dart';
@@ -32,20 +33,48 @@ class _FakeQuickAdd extends QuickAddController {
   }
 }
 
-Future<({_FakeQuickAdd quickAdd, List<int> closed})> _pump(
+/// Custom categories without Supabase: [add] keeps them in memory.
+class _FakeCustom extends CustomExpenseCategories {
+  _FakeCustom(this.initial);
+  final List<String> initial;
+
+  @override
+  Future<List<String>> build() async => initial;
+
+  @override
+  Future<String> add(String name) async {
+    final problem = customCategoryProblem(name, state.value ?? const []);
+    if (problem != null) throw ValidationFailure(problem);
+    state = AsyncData([...?state.value, name.trim()]);
+    return name.trim();
+  }
+}
+
+Future<({_FakeQuickAdd quickAdd, List<int> closed, List<String> events})> _pump(
   WidgetTester tester, {
   Failure? fail,
+  List<String> custom = const [],
 }) async {
   late _FakeQuickAdd fake;
   final closed = <int>[];
+  final events = <String>[];
+  // A typical phone (1080×2340), so the whole card is on screen.
+  tester.view.physicalSize = const Size(1080, 2340);
+  tester.view.devicePixelRatio = 2.625;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         quickAddControllerProvider.overrideWith((ref) => fake = _FakeQuickAdd(ref, fail: fail)),
+        customExpenseCategoriesProvider.overrideWith(() => _FakeCustom(custom)),
+        quickLogAfterSaveProvider.overrideWithValue(() async => events.add('pushed')),
       ],
       child: MaterialApp(
         theme: AppTheme.light,
-        home: FloatingQuickAddScreen(close: () => closed.add(1)),
+        home: FloatingQuickAddScreen(close: () {
+          closed.add(1);
+          events.add('closed');
+        }),
       ),
     ),
   );
@@ -53,7 +82,7 @@ Future<({_FakeQuickAdd quickAdd, List<int> closed})> _pump(
   // Touch the provider so `fake` exists even before the first save.
   final container = ProviderScope.containerOf(tester.element(find.byType(FloatingQuickAddScreen)));
   container.read(quickAddControllerProvider);
-  return (quickAdd: fake, closed: closed);
+  return (quickAdd: fake, closed: closed, events: events);
 }
 
 /// Types [digits] on the card's numpad.
@@ -116,7 +145,8 @@ void main() {
     expect(h.quickAdd.calls.single.kind, QuickAddKind.expense);
     expect(h.quickAdd.calls.single.amount.toStorageString(), '249.50');
     expect(h.quickAdd.calls.single.category, 'Utilities');
-    expect(h.closed, [1], reason: 'the window closes as soon as it is saved');
+    expect(h.closed, [1], reason: 'the window closes once it is saved');
+    expect(h.events, ['pushed', 'closed'], reason: 'the push finishes before the window closes');
   });
 
   testWidgets('Grocery saves under Food & Dining with a note', (tester) async {
@@ -137,6 +167,53 @@ void main() {
     await tester.pump();
     expect(h.quickAdd.calls.single.category, 'Other');
     expect(h.quickAdd.calls.single.note, isNull);
+  });
+
+  test('custom categories read and extend the web tenant_settings shape', () {
+    expect(parseCustomExpense(null), isEmpty);
+    expect(parseCustomExpense({'expense': ['Petrol', ' ', 3]}), ['Petrol']);
+    final next = withCustomExpense({
+      'income': {'active': ['Tips'], 'passive': <String>[]},
+      'expense': ['Petrol'],
+    }, 'Pets');
+    expect(next['expense'], ['Petrol', 'Pets']);
+    expect((next['income'] as Map)['active'], ['Tips'], reason: 'income lists are kept');
+    expect(withCustomExpense(null, 'Pets')['expense'], ['Pets']);
+    expect(customCategoryProblem(' ', const []), isNotNull);
+    expect(customCategoryProblem('shopping', const []), isNotNull, reason: 'built-in');
+    expect(customCategoryProblem('petrol', const ['Petrol']), isNotNull, reason: 'custom');
+    expect(customCategoryProblem('Gifts', const ['Petrol']), isNull);
+  });
+
+  testWidgets('a workspace category saves under its own name', (tester) async {
+    final h = await _pump(tester, custom: ['Petrol']);
+    await _type(tester, '500');
+    await tester.tap(find.text('🏷️ Petrol'));
+    await tester.pump();
+    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.pump();
+    expect(h.quickAdd.calls.single.category, 'Petrol');
+    expect(h.quickAdd.calls.single.note, isNull);
+  });
+
+  testWidgets('Add category names one, picks it and saves with it', (tester) async {
+    final h = await _pump(tester);
+    await tester.tap(find.text('Add category'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Shopping');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pump();
+    expect(find.text('"Shopping" is already a category.'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Pets');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+    expect(find.text('🏷️ Pets'), findsOneWidget);
+
+    await _type(tester, '350');
+    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.pump();
+    expect(h.quickAdd.calls.single.category, 'Pets');
   });
 
   testWidgets('long-press backspace clears the amount', (tester) async {

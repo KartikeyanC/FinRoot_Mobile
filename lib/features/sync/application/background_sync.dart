@@ -68,6 +68,25 @@ Future<void> initBackgroundSync() async {
   }
 }
 
+/// Ask Android to run one sync as soon as the phone is online, even if
+/// FinRoot is no longer open. The floating Quick Log uses this as its
+/// backstop: its window closes right after saving, which can cut its own
+/// push short. Never throws.
+Future<void> requestSyncSoon() async {
+  try {
+    await Workmanager().registerOneOffTask(
+      _soonUniqueName,
+      _taskName,
+      constraints: Constraints(networkType: NetworkType.connected),
+      existingWorkPolicy: ExistingWorkPolicy.replace,
+    );
+  } on Object catch (e) {
+    AppLog.of('sync.bg').warning('sync-soon not registered: ${e.runtimeType}');
+  }
+}
+
+const _soonUniqueName = 'finroot-sync-soon';
+
 Future<bool> _runBackgroundSync() async {
   WidgetsFlutterBinding.ensureInitialized();
   AppLog.init();

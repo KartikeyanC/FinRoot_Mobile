@@ -4,8 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
+import '../../../data/local/database_providers.dart';
 import '../../../design/design.dart';
+import '../../sync/application/background_sync.dart';
+import '../../sync/application/sync_engine.dart';
 import '../application/quick_add_controller.dart';
+import '../data/custom_categories.dart';
 import '../domain/quick_add_draft.dart';
 
 /// Route of the floating Quick Add. Opened only by Android's
@@ -44,6 +48,30 @@ String? amountProblem(String raw) {
   if (v > 100000000) return 'That amount looks too large.';
   return null;
 }
+
+const _window = MethodChannel('finroot/quick_log');
+
+/// Runs after Quick Log has saved, before its window closes. The window hides
+/// at once (Android sends it to the back), then waits for the push to reach
+/// the server: closing straight away killed the push, leaving the entry
+/// "Pending" until the main app was opened. Anything still unsent is handed
+/// to Android's background sync. Overridden in tests.
+final quickLogAfterSaveProvider = Provider<Future<void> Function()>((ref) {
+  return () async {
+    try {
+      await _window.invokeMethod<void>('hide');
+    } on Object {
+      // Not on Android / no channel: the window just stays until it closes.
+    }
+    await ref
+        .read(syncEngineProvider.notifier)
+        .syncNow(force: true)
+        .timeout(const Duration(seconds: 20), onTimeout: () {});
+    if (await ref.read(appDatabaseProvider).syncOutboxDao.countPending() > 0) {
+      await requestSyncSoon();
+    }
+  };
+}, name: 'quickLogAfterSave');
 
 /// The numpad's backspace key.
 const backspaceKey = '⌫';
@@ -86,6 +114,8 @@ class FloatingQuickAddScreen extends ConsumerStatefulWidget {
 class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen> {
   var _amount = '';
   QuickCategory? _category;
+  // A workspace category picked instead of one of the six (they exclude each other).
+  String? _custom;
   String? _error;
   bool _saving = false;
 
@@ -115,16 +145,31 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
         kind: QuickAddKind.expense,
         amount: Money.parse(_amount),
         occurredAt: DateTime.now(),
-        category: _category?.category ?? uncategorised,
-        note: _category?.note,
+        category: _custom ?? _category?.category ?? uncategorised,
+        note: _custom == null ? _category?.note : null,
       );
-      // The write is local (it syncs on its own), so this returns at once.
+      // The write is local, so this returns at once; the window hides, then
+      // closes once the entry has been pushed.
+      await ref.read(quickLogAfterSaveProvider)();
       _close();
     } on Failure catch (f) {
       if (!mounted) return;
       setState(() {
         _saving = false;
         _error = f.message;
+      });
+    }
+  }
+
+  Future<void> _addCategory() async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => const _AddCategoryDialog(),
+    );
+    if (name != null && mounted) {
+      setState(() {
+        _custom = name;
+        _category = null;
       });
     }
   }
@@ -194,8 +239,25 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
                                   label: Text('${c.emoji} ${c.label}'),
                                   selected: identical(c, _category),
                                   // Tapping the picked pill again un-picks it.
-                                  onSelected: (on) => setState(() => _category = on ? c : null),
+                                  onSelected: (on) => setState(() {
+                                    _category = on ? c : null;
+                                    _custom = null;
+                                  }),
                                 ),
+                              for (final name in ref.watch(customExpenseCategoriesProvider).value ?? const <String>[])
+                                ChoiceChip(
+                                  label: Text('🏷️ $name'),
+                                  selected: name == _custom,
+                                  onSelected: (on) => setState(() {
+                                    _custom = on ? name : null;
+                                    _category = null;
+                                  }),
+                                ),
+                              ActionChip(
+                                avatar: const Icon(Icons.add, size: 18),
+                                label: const Text('Add category'),
+                                onPressed: _saving ? null : _addCategory,
+                              ),
                             ],
                           ),
                           if (_error != null) ...[
@@ -266,6 +328,74 @@ class _Numpad extends StatelessWidget {
                 ),
             ],
           ),
+      ],
+    );
+  }
+}
+
+/// Name a new expense category. It is saved for the whole workspace (the web
+/// dashboard lists it too); pops with the saved name.
+class _AddCategoryDialog extends ConsumerStatefulWidget {
+  const _AddCategoryDialog();
+
+  @override
+  ConsumerState<_AddCategoryDialog> createState() => _AddCategoryDialogState();
+}
+
+class _AddCategoryDialogState extends ConsumerState<_AddCategoryDialog> {
+  final _name = TextEditingController();
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _add() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final saved = await ref.read(customExpenseCategoriesProvider.notifier).add(_name.text);
+      if (mounted) Navigator.of(context).pop(saved);
+    } on Failure catch (f) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = f.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New category'),
+      content: TextField(
+        controller: _name,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        maxLength: 40,
+        onSubmitted: (_) => _busy ? null : _add(),
+        decoration: InputDecoration(
+          labelText: 'Name',
+          hintText: 'e.g. Petrol, Pets, Gifts',
+          errorText: _error,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _add,
+          child: Text(_busy ? 'Adding…' : 'Add'),
+        ),
       ],
     );
   }

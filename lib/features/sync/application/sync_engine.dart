@@ -33,6 +33,7 @@ class SyncEngine extends Notifier<SyncSnapshot> {
   final _backoff = const Backoff();
 
   bool _running = false;
+  Future<void>? _inFlight;
   DateTime? _nextAllowedAt;
   int _retryRuns = 0;
 
@@ -45,9 +46,14 @@ class SyncEngine extends Notifier<SyncSnapshot> {
       DeltaPuller(ref.read(appDatabaseProvider), ref.read(pullGatewayProvider));
 
   /// Run a sync. [full] ignores cursors and prunes; [force] bypasses the
-  /// cool-off. Never throws.
-  Future<void> syncNow({bool full = false, bool force = false}) async {
-    if (_running) return;
+  /// cool-off. Never throws. While a run is already going, returns that run,
+  /// so a caller can wait for an earlier push to finish.
+  Future<void> syncNow({bool full = false, bool force = false}) {
+    if (_running) return _inFlight ?? Future.value();
+    return _inFlight = _run(full: full, force: force);
+  }
+
+  Future<void> _run({required bool full, required bool force}) async {
     final tenantId = ref.read(currentTenantIdProvider);
     if (tenantId == null) return;
 

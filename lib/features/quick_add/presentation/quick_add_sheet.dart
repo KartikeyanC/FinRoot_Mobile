@@ -11,6 +11,7 @@ import '../../accounts/domain/account.dart';
 import '../../transactions/domain/transaction.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/quick_add_controller.dart';
+import '../data/custom_categories.dart';
 import '../domain/quick_add_draft.dart';
 import 'widgets/amount_input_field.dart';
 
@@ -249,6 +250,9 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
                           amount: _amount,
                           note: _note,
                           category: _category,
+                          customCategories: _kind == QuickAddKind.expense
+                              ? ref.watch(customExpenseCategoriesProvider).value ?? const []
+                              : const [],
                           paymentMode: _paymentMode,
                           accountId: _accountId,
                           accounts: accounts,
@@ -312,6 +316,7 @@ class _EntryForm extends StatelessWidget {
     required this.amount,
     required this.note,
     required this.category,
+    required this.customCategories,
     required this.paymentMode,
     required this.accountId,
     required this.accounts,
@@ -326,6 +331,9 @@ class _EntryForm extends StatelessWidget {
   final TextEditingController amount;
   final TextEditingController note;
   final String? category;
+
+  /// The workspace's own categories (set on the web or from Quick Log).
+  final List<String> customCategories;
   final String? paymentMode;
   final String? accountId;
   final List<AccountEntity> accounts;
@@ -355,7 +363,13 @@ class _EntryForm extends StatelessWidget {
             hint: 'Choose a category',
           ),
           items: [
-            for (final c in kind.categories)
+            for (final c in {
+              ...kind.categories,
+              ...customCategories,
+              // An edited row keeps a category this list doesn't know (e.g.
+              // one since removed on the web) instead of breaking the picker.
+              ?category,
+            })
               DropdownMenuItem(value: c, child: Text(c)),
           ],
           onChanged: onCategory,
