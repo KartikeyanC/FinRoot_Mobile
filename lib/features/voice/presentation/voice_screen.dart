@@ -21,14 +21,14 @@ class VoiceScreen extends ConsumerWidget {
     final state = ref.watch(voiceCaptureControllerProvider);
     final c = ref.read(voiceCaptureControllerProvider.notifier);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Voice entry'),
-        actions: [
-          if (state.phase == VoicePhase.review)
-            TextButton(onPressed: c.reset, child: const Text('Start over')),
-        ],
-      ),
+    return AppPage(
+      title: 'Voice entry',
+      subtitle: 'Say it, check it, log it',
+      actions: [
+        if (state.phase == VoicePhase.review)
+          TextButton(onPressed: c.reset, child: const Text('Start over')),
+      ],
+      padBody: false,
       body: switch (state.phase) {
         VoicePhase.review => _Review(state: state),
         _ => _Listen(state: state),
@@ -44,44 +44,55 @@ class _Listen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = ref.read(voiceCaptureControllerProvider.notifier);
-    final tt = Theme.of(context).textTheme;
+    final palette = context.palette;
     final scheme = Theme.of(context).colorScheme;
     final listening = state.phase == VoicePhase.listening;
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Spacer(),
-          Text(
-            listening ? 'Listening…' : 'Tap to speak an entry',
-            style: tt.titleMedium,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            state.transcript.isNotEmpty
-                ? '“${state.transcript}”'
-                : 'e.g. “spent 400 on groceries with card yesterday”',
-            textAlign: TextAlign.center,
-            style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-          if (state.error != null) ...[
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              state.error!,
-              textAlign: TextAlign.center,
-              style: tt.bodyMedium?.copyWith(color: scheme.error),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.xxl),
-          _MicButton(
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenGutter,
+        AppSpacing.xl,
+        AppSpacing.screenGutter,
+        AppSpacing.huge,
+      ),
+      children: [
+        Center(
+          child: _MicButton(
             listening: listening,
             onTap: listening ? c.stopListening : c.startListening,
           ),
-          const Spacer(),
-        ],
-      ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        Text(
+          listening ? 'Listening…' : 'Tap to speak an entry',
+          textAlign: TextAlign.center,
+          style: AppTypography.title.copyWith(color: palette.ink),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        AppCard(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Eyebrow('What you said'),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                state.transcript.isNotEmpty
+                    ? '“${state.transcript}”'
+                    : 'e.g. “spent 400 on groceries with card yesterday”',
+                style: AppTypography.body.copyWith(color: palette.muted),
+              ),
+              if (state.error != null) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  state.error!,
+                  style: AppTypography.bodyStrong.copyWith(color: scheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -93,24 +104,38 @@ class _MicButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
+    final danger = context.finance.danger;
     return Semantics(
       button: true,
       label: listening ? 'Stop listening' : 'Start listening',
       child: InkResponse(
         onTap: onTap,
-        radius: 64,
+        radius: 80,
         child: Container(
-          width: 96,
-          height: 96,
+          width: 140,
+          height: 140,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: listening ? scheme.error : scheme.primary,
+            color: (listening ? danger : palette.accent).withValues(
+              alpha: 0.14,
+            ),
           ),
-          child: Icon(
-            listening ? Icons.stop_rounded : Icons.mic_rounded,
-            size: 40,
-            color: listening ? scheme.onError : scheme.onPrimary,
+          alignment: Alignment.center,
+          child: Container(
+            width: 104,
+            height: 104,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: listening ? null : palette.gradient,
+              color: listening ? AppColors.dangerFill : null,
+              boxShadow: AppShadows.lift(palette.shadow),
+            ),
+            child: Icon(
+              listening ? Icons.stop_rounded : Icons.mic_rounded,
+              size: 44,
+              color: Colors.white,
+            ),
           ),
         ),
       ),
@@ -178,127 +203,170 @@ class _ReviewState extends ConsumerState<_Review> {
         ? d.category
         : null;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenGutter,
-        AppSpacing.lg,
-        AppSpacing.screenGutter,
-        AppSpacing.huge,
-      ),
+    return Column(
       children: [
-        Text('“${d.transcript}”',
-            style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
-        const SizedBox(height: AppSpacing.lg),
-        if (d.kind == QuickAddKind.transfer)
-          Container(
-            margin: const EdgeInsets.only(bottom: AppSpacing.md),
-            padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(
-              color: scheme.tertiaryContainer,
-              borderRadius: AppRadius.field,
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenGutter,
+              AppSpacing.lg,
+              AppSpacing.screenGutter,
+              AppSpacing.huge,
             ),
-            child: Text(
-              'That sounds like a transfer. Transfers need two accounts — '
-              'use Quick Add for those.',
-              style: tt.bodySmall
-                  ?.copyWith(color: scheme.onTertiaryContainer),
-            ),
-          ),
-        SegmentedButton<QuickAddKind>(
-          segments: const [
-            ButtonSegment(value: QuickAddKind.expense, label: Text('Expense')),
-            ButtonSegment(value: QuickAddKind.income, label: Text('Income')),
-          ],
-          selected: {
-            d.kind == QuickAddKind.income
-                ? QuickAddKind.income
-                : QuickAddKind.expense,
-          },
-          onSelectionChanged: (s) => _c.editDraft(kind: s.first),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        TextField(
-          controller: _amount,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Amount',
-            prefixIcon: Icon(Icons.currency_rupee),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        DropdownButtonFormField<String>(
-          initialValue: category,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Category',
-            prefixIcon: Icon(Icons.sell_outlined),
-          ),
-          items: [
-            for (final cat in cats)
-              DropdownMenuItem(value: cat, child: Text(cat)),
-          ],
-          onChanged: (v) => _c.editDraft(category: v),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        DropdownButtonFormField<String>(
-          initialValue: d.paymentMode,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Payment mode (optional)',
-            prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-          ),
-          items: [
-            const DropdownMenuItem<String>(child: Text('Not set')),
-            for (final m in kPaymentModes)
-              DropdownMenuItem(value: m, child: Text(m)),
-          ],
-          onChanged: (v) => _c.editDraft(paymentMode: v),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        InkWell(
-          onTap: () async {
-            final now = DateTime.now();
-            final picked = await showDatePicker(
-              context: context,
-              initialDate: d.occurredAt.isAfter(now) ? now : d.occurredAt,
-              firstDate: DateTime(now.year - 5),
-              lastDate: now,
-            );
-            if (picked != null) {
-              _c.editDraft(
-                occurredAt: DateTime(
-                  picked.year,
-                  picked.month,
-                  picked.day,
-                  d.occurredAt.hour,
-                  d.occurredAt.minute,
+            children: [
+              AppCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Eyebrow('What you said'),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      '“${d.transcript}”',
+                      style: AppTypography.body.copyWith(
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ],
                 ),
-              );
-            }
-          },
-          borderRadius: AppRadius.field,
-          child: InputDecorator(
-            decoration: const InputDecoration(
-              labelText: 'Date',
-              prefixIcon: Icon(Icons.event_outlined),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              if (d.kind == QuickAddKind.transfer)
+                Container(
+                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: scheme.tertiaryContainer,
+                    borderRadius: AppRadius.field,
+                  ),
+                  child: Text(
+                    'That sounds like a transfer. Transfers need two accounts — '
+                    'use Quick Add for those.',
+                    style: tt.bodySmall?.copyWith(
+                      color: scheme.onTertiaryContainer,
+                    ),
+                  ),
+                ),
+              FilterPills<QuickAddKind>(
+                options: const [
+                  FilterPill(QuickAddKind.expense, 'Expense'),
+                  FilterPill(QuickAddKind.income, 'Income'),
+                ],
+                selected: d.kind == QuickAddKind.income
+                    ? QuickAddKind.income
+                    : QuickAddKind.expense,
+                onSelected: (k) => _c.editDraft(kind: k),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Amount'),
+              TextField(
+                controller: _amount,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                style: AppTypography.moneyLarge,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.currency_rupee),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Category'),
+              DropdownButtonFormField<String>(
+                initialValue: category,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  hintText: 'Choose a category',
+                  prefixIcon: Icon(Icons.sell_outlined),
+                ),
+                items: [
+                  for (final cat in cats)
+                    DropdownMenuItem(value: cat, child: Text(cat)),
+                ],
+                onChanged: (v) => _c.editDraft(category: v),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Payment mode (optional)'),
+              DropdownButtonFormField<String>(
+                initialValue: d.paymentMode,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                ),
+                items: [
+                  const DropdownMenuItem<String>(child: Text('Not set')),
+                  for (final m in kPaymentModes)
+                    DropdownMenuItem(value: m, child: Text(m)),
+                ],
+                onChanged: (v) => _c.editDraft(paymentMode: v),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Date'),
+              InkWell(
+                onTap: () async {
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: d.occurredAt.isAfter(now) ? now : d.occurredAt,
+                    firstDate: DateTime(now.year - 5),
+                    lastDate: now,
+                  );
+                  if (picked != null) {
+                    _c.editDraft(
+                      occurredAt: DateTime(
+                        picked.year,
+                        picked.month,
+                        picked.day,
+                        d.occurredAt.hour,
+                        d.occurredAt.minute,
+                      ),
+                    );
+                  }
+                },
+                borderRadius: AppRadius.field,
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.event_outlined),
+                  ),
+                  child: Text(
+                    DateFormat('EEE, d MMM yyyy').format(d.occurredAt),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Note (optional)'),
+              TextField(
+                controller: _note,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.notes),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: FilledButton(
+              onPressed: d.kind == QuickAddKind.transfer ? null : _log,
+              child: const Text('Log it'),
             ),
-            child: Text(DateFormat('EEE, d MMM yyyy').format(d.occurredAt)),
           ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        TextField(
-          controller: _note,
-          decoration: const InputDecoration(
-            labelText: 'Note (optional)',
-            prefixIcon: Icon(Icons.notes),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        FilledButton(
-          onPressed: d.kind == QuickAddKind.transfer ? null : _log,
-          child: const Text('Log it'),
         ),
       ],
     );
   }
+}
+
+class _Label extends StatelessWidget {
+  const _Label(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: AppTypography.label.copyWith(color: context.palette.muted),
+    ),
+  );
 }

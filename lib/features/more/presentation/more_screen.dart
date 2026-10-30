@@ -18,7 +18,7 @@ import '../../recurring/presentation/recurring_screen.dart';
 import '../../reminders/presentation/reminders_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../voice/presentation/voice_screen.dart';
-import '../../workspace/presentation/workspace_switcher_sheet.dart';
+import 'workspace_row.dart';
 
 /// "More" — secondary features via progressive disclosure (brief §5).
 ///
@@ -28,8 +28,9 @@ import '../../workspace/presentation/workspace_switcher_sheet.dart';
 /// went. No upgrade prompt yet — distinguishing a plan lock from an
 /// owner-disabled menu is the billing phase's job (web `menuUpsell`).
 ///
-/// Phone: tapping an entry pushes its route. Tablet (expanded): the list and
-/// the chosen feature sit side by side in two panes (M16).
+/// Phone: grouped cards of tiles; tapping one pushes its route. Tablet
+/// (expanded): the list and the chosen feature sit side by side in two panes
+/// (M16).
 class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
 
@@ -50,37 +51,151 @@ class MoreScreen extends ConsumerWidget {
       }
     }
 
-    final listBody = ListView(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      children: [
-        const WorkspaceSummaryTile(),
-        const Divider(height: 1, indent: 56),
-        for (final e in kMoreEntries)
-          _MoreTile(
-            entry: e,
-            selected: twoPane && e.route == selectedRoute,
-            onOpen: openEntry,
-          ),
-      ],
+    final list = _MoreList(
+      selectedRoute: selectedRoute,
+      onOpen: openEntry,
+      showTitle: twoPane,
     );
 
     if (!twoPane) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('More')),
-        body: listBody,
+      return AppPage(
+        title: 'More',
+        subtitle: 'Everything else in your workspace',
+        padBody: false,
+        body: list,
       );
     }
 
     return Scaffold(
+      backgroundColor: context.palette.page,
       body: SafeArea(
         bottom: false,
         child: TwoPane(
-          list: listBody,
+          list: list,
           detail: _MorePaneDetail(
             key: ValueKey(selectedRoute),
             route: selectedRoute!,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// How the entries are grouped into cards, by route.
+const _kMoreGroups = <(String, List<String>)>[
+  (
+    'Money',
+    ['/accounts', '/budget', '/goals', '/investments', '/net-worth', '/debts'],
+  ),
+  (
+    'Plan ahead',
+    ['/subscriptions', '/insurance', '/calendar', '/recurring', '/reminders'],
+  ),
+  (
+    'Capture and tools',
+    ['/bill-scan', '/voice', '/detected-payments', '/insights', '/search'],
+  ),
+  ('App', ['/backup', '/settings']),
+];
+
+class _MoreList extends StatelessWidget {
+  const _MoreList({
+    required this.selectedRoute,
+    required this.onOpen,
+    required this.showTitle,
+  });
+
+  final String? selectedRoute;
+  final void Function(MoreEntry entry, bool locked) onOpen;
+  final bool showTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final grouped = <String>{for (final g in _kMoreGroups) ...g.$2};
+    final others = [
+      for (final e in kMoreEntries)
+        if (!grouped.contains(e.route)) e,
+    ];
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenGutter,
+        AppSpacing.sm,
+        AppSpacing.screenGutter,
+        AppSpacing.huge,
+      ),
+      children: [
+        if (showTitle)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            child: Semantics(
+              header: true,
+              child: Text(
+                'More',
+                style: AppTypography.display.copyWith(
+                  color: context.palette.ink,
+                ),
+              ),
+            ),
+          ),
+        const MoreWorkspaceRow(),
+        for (final g in _kMoreGroups) ...[
+          SectionTitle(g.$1),
+          _MoreGroupCard(
+            entries: [
+              for (final route in g.$2)
+                for (final e in kMoreEntries)
+                  if (e.route == route) e,
+            ],
+            selectedRoute: selectedRoute,
+            onOpen: onOpen,
+          ),
+        ],
+        if (others.isNotEmpty) ...[
+          const SectionTitle('Other'),
+          _MoreGroupCard(
+            entries: others,
+            selectedRoute: selectedRoute,
+            onOpen: onOpen,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MoreGroupCard extends StatelessWidget {
+  const _MoreGroupCard({
+    required this.entries,
+    required this.selectedRoute,
+    required this.onOpen,
+  });
+
+  final List<MoreEntry> entries;
+  final String? selectedRoute;
+  final void Function(MoreEntry entry, bool locked) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      child: Column(
+        children: [
+          for (var i = 0; i < entries.length; i++) ...[
+            if (i > 0)
+              Divider(
+                height: 1,
+                indent: 72,
+                endIndent: AppSpacing.lg,
+                color: context.palette.line,
+              ),
+            _MoreTile(
+              entry: entries[i],
+              selected: entries[i].route == selectedRoute,
+              onOpen: onOpen,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -149,32 +264,60 @@ class _MoreTile extends ConsumerWidget {
         ? MenuStatus.available
         : ref.watch(menuStatusProvider(entry.menu!));
     final locked = status == MenuStatus.locked;
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
 
-    return ListTile(
+    return Semantics(
+      button: true,
       selected: selected,
-      selectedTileColor: scheme.primaryContainer.withValues(alpha: 0.4),
-      leading: Icon(entry.icon, color: locked ? scheme.onSurfaceVariant : null),
-      title: Text(
-        entry.label,
-        style: locked ? TextStyle(color: scheme.onSurfaceVariant) : null,
-      ),
-      trailing: _trailing(context, locked),
-      onTap: () => onOpen(entry, locked),
-    );
-  }
-
-  Widget _trailing(BuildContext context, bool locked) {
-    if (locked) return const Icon(Icons.lock_outline, size: 18);
-    if (entry.phase != null) {
-      return Text(
-        entry.phase!,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+      child: Material(
+        color: selected ? palette.tint : Colors.transparent,
+        child: InkWell(
+          onTap: () => onOpen(entry, locked),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minHeight: AppSpacing.minTouchTarget + 8,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.sm,
+              ),
+              child: Row(
+                children: [
+                  IconTile(
+                    icon: entry.icon,
+                    size: 40,
+                    tint: locked ? palette.subtle : null,
+                    color: locked ? palette.faint : null,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Text(
+                      entry.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodyStrong.copyWith(
+                        fontSize: 15,
+                        color: locked ? palette.muted : palette.ink,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  if (locked)
+                    Icon(
+                      Icons.lock_outline_rounded,
+                      size: 18,
+                      color: palette.faint,
+                    )
+                  else
+                    Icon(Icons.chevron_right_rounded, color: palette.faint),
+                ],
+              ),
+            ),
+          ),
         ),
-      );
-    }
-    return const Icon(Icons.chevron_right);
+      ),
+    );
   }
 }
 
@@ -182,39 +325,49 @@ void showLockedMoreEntry(BuildContext context, MoreEntry entry) {
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
-    builder: (_) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.xl,
-          AppSpacing.sm,
-          AppSpacing.xl,
-          AppSpacing.xl,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              entry.icon,
-              size: 32,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              '${entry.label} isn\'t available',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'This feature is turned off for the current workspace. A '
-              'workspace owner can change what\'s available on the web app.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+    builder: (sheetContext) {
+      final palette = sheetContext.palette;
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.sm,
+            AppSpacing.xl,
+            AppSpacing.xl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              IconTile(
+                icon: entry.icon,
+                size: 48,
+                tint: palette.subtle,
+                color: palette.muted,
               ),
-            ),
-          ],
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                "${entry.label} isn't available",
+                style: AppTypography.title.copyWith(color: palette.ink),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'This feature is turned off for the current workspace. A '
+                "workspace owner can change what's available on the web app.",
+                style: AppTypography.body.copyWith(color: palette.muted),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(),
+                  child: const Text('Got it'),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }

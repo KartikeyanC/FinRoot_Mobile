@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:decimal/decimal.dart';
 import 'package:finroot_mobile/core/money/money.dart';
 import 'package:finroot_mobile/core/providers/providers.dart';
@@ -42,6 +40,8 @@ import 'package:finroot_mobile/features/transactions/presentation/transactions_s
 import 'package:finroot_mobile/features/workspace/application/workspace_providers.dart';
 import 'package:finroot_mobile/features/workspace/domain/membership.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -130,7 +130,6 @@ TransactionEntity _t(
   category: category,
   occurredAt: DateTime.now().subtract(Duration(hours: hoursAgo)),
   description: note,
-  syncState: LocalSyncStatus.synced,
 );
 
 final _sampleTxns = [

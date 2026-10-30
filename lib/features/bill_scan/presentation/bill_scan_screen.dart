@@ -26,9 +26,8 @@ class BillScanScreen extends ConsumerWidget {
         ref.watch(menuStatusProvider(FeatureMenu.billScan)) ==
         MenuStatus.locked;
     if (locked) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Bill scan')),
-        body: const MenuLockedView(
+      return const Scaffold(
+        body: MenuLockedView(
           feature: 'Bill scan',
           icon: Icons.document_scanner_outlined,
         ),
@@ -38,14 +37,14 @@ class BillScanScreen extends ConsumerWidget {
     final state = ref.watch(billScanControllerProvider);
     final c = ref.read(billScanControllerProvider.notifier);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Bill scan'),
-        actions: [
-          if (state.images.isNotEmpty || state.result != null)
-            TextButton(onPressed: c.reset, child: const Text('Start over')),
-        ],
-      ),
+    return AppPage(
+      title: 'Bill scan',
+      subtitle: 'Photograph a receipt, review, log',
+      actions: [
+        if (state.images.isNotEmpty || state.result != null)
+          TextButton(onPressed: c.reset, child: const Text('Start over')),
+      ],
+      padBody: false,
       body: switch (state.phase) {
         BillScanPhase.scanning => const _Scanning(),
         BillScanPhase.review => _Review(state: state),
@@ -77,11 +76,24 @@ class _Staging extends ConsumerWidget {
         AppSpacing.huge,
       ),
       children: [
-        Text(
-          'Photograph a receipt — a long bill shot in a few parts works too. '
-          'AI pulls out the merchant, items and total; you review before it is '
-          'logged.',
-          style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        AppCard(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const IconTile(icon: Icons.document_scanner_rounded),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  'Photograph a receipt — a long bill shot in a few parts '
+                  'works too. AI pulls out the merchant, items and total; you '
+                  'review before it is logged.',
+                  style: AppTypography.body.copyWith(
+                    color: context.palette.muted,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: AppSpacing.lg),
         Row(
@@ -116,15 +128,15 @@ class _Staging extends ConsumerWidget {
         const SizedBox(height: AppSpacing.lg),
         if (state.images.isEmpty)
           const Padding(
-            padding: EdgeInsets.only(top: AppSpacing.xl),
-            child: EmptyView(
-              icon: Icons.receipt_long_outlined,
+            padding: EdgeInsets.only(top: AppSpacing.sm),
+            child: CardEmpty(
+              icon: Icons.receipt_long_rounded,
               title: 'No photo yet',
               message: 'Add up to 5 photos of one receipt.',
             ),
           )
         else ...[
-          Text('${state.images.length} of 5 photos', style: tt.labelMedium),
+          SectionTitle('${state.images.length} of 5 photos'),
           const SizedBox(height: AppSpacing.sm),
           Wrap(
             spacing: AppSpacing.sm,
@@ -179,12 +191,10 @@ class _Thumb extends StatelessWidget {
         Positioned(
           top: -6,
           right: -6,
-          child: IconButton(
-            icon: const Icon(Icons.cancel, size: 20),
+          child: RoundIconButton(
+            icon: Icons.close_rounded,
             tooltip: 'Remove photo',
-            style: IconButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.surface,
-            ),
+            size: 28,
             onPressed: onRemove,
           ),
         ),
@@ -217,8 +227,6 @@ class _Review extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = ref.read(billScanControllerProvider.notifier);
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
     final result = state.result!;
     final parts = partitionRows(state.rows);
     final approval = state.approval;
@@ -235,23 +243,37 @@ class _Review extends ConsumerWidget {
               AppSpacing.xxl,
             ),
             children: [
-              Text(result.merchant.isEmpty ? 'Receipt' : result.merchant,
-                  style: tt.titleMedium),
-              if (result.date != null)
-                Text(
-                  '${result.date!.day}/${result.date!.month}/${result.date!.year}',
-                  style: tt.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: 4,
+                  bottom: AppSpacing.sm,
                 ),
+                child: Text(
+                  result.merchant.isEmpty ? 'Receipt' : result.merchant,
+                  style: AppTypography.title.copyWith(
+                    color: context.palette.ink,
+                  ),
+                ),
+              ),
+              MetricCard(
+                eyebrow: 'Receipt total',
+                figure: approval == null
+                    ? '—'
+                    : approval.amount.format(),
+                figureSuffix: result.date == null
+                    ? null
+                    : '${result.date!.day}/${result.date!.month}/${result.date!.year}',
+                status: '${parts.items.length} '
+                    '${parts.items.length == 1 ? 'item' : 'items'} to review',
+              ),
               const SizedBox(height: AppSpacing.md),
-              SegmentedButton<ScanMode>(
-                segments: const [
-                  ButtonSegment(value: ScanMode.lumpsum, label: Text('Whole bill')),
-                  ButtonSegment(
-                      value: ScanMode.lineItem, label: Text('Line items')),
+              FilterPills<ScanMode>(
+                options: const [
+                  FilterPill(ScanMode.lumpsum, 'Whole bill'),
+                  FilterPill(ScanMode.lineItem, 'Line items'),
                 ],
-                selected: {state.mode},
-                onSelectionChanged: (s) => c.setMode(s.first),
+                selected: state.mode,
+                onSelected: c.setMode,
               ),
               const SizedBox(height: AppSpacing.md),
               if (recon != null && !recon.matches)
@@ -318,35 +340,23 @@ class _ItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: AppCard(
+      child: ListRow(
+        icon: Icons.receipt_long_rounded,
+        title: row.name,
+        titleMaxLines: 2,
+        subtitle: row.category,
         onTap: onEdit,
-        child: Row(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(row.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.bodyLarge),
-                  Text(
-                    row.category,
-                    style: tt.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
             AmountText.money(row.amount, signed: false),
+            const SizedBox(width: 4),
             IconButton(
               tooltip: 'Remove item',
-              icon: const Icon(Icons.close, size: 20),
+              icon: const Icon(Icons.close_rounded, size: 20),
+              visualDensity: VisualDensity.compact,
               onPressed: onRemove,
             ),
           ],

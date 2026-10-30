@@ -9,6 +9,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// emulator run). Back now returns to the sign-in form.
 void main() {
   Future<void> pump(WidgetTester tester) async {
+    // A phone-sized, tall surface so the roomier layout fits without scrolling.
+    tester.view.physicalSize = const Size(430, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(theme: AppTheme.light, home: const AuthScreen()),

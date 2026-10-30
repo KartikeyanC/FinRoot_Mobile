@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../design/design.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../application/goal_editor_controller.dart';
 import '../domain/goal.dart';
 import '../domain/goal_draft.dart';
@@ -72,88 +73,51 @@ class _ContributeSheetState extends ConsumerState<_ContributeSheet> {
     if (r.reached && r.capped) {
       return 'Goal reached — only ${r.applied.formatShort()} was needed.';
     }
-    if (r.reached) return 'Goal reached 🎉';
+    if (r.reached) return 'Goal reached';
     if (_withdraw) return '${r.applied.abs.formatShort()} taken back';
     return '${r.applied.formatShort()} added';
   }
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppSpacing.xl,
-        right: AppSpacing.xl,
-        top: AppSpacing.sm,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(widget.goal.title, style: tt.titleLarge),
-            Text(
-              '${widget.goal.current.formatShort()} of '
-              '${widget.goal.target.formatShort()} saved',
-              style: tt.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('Add')),
-                ButtonSegment(value: true, label: Text('Take back')),
-              ],
-              selected: {_withdraw},
-              onSelectionChanged: _busy
-                  ? null
-                  : (s) => setState(() => _withdraw = s.first),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            TextFormField(
-              controller: _amount,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                prefixIcon: Icon(Icons.currency_rupee),
-              ),
-              validator: GoalValidators.contribution,
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  borderRadius: AppRadius.field,
-                ),
-                child: Text(
-                  _error!.message,
-                  style: tt.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                ),
-              ),
+    return SheetFrame(
+      formKey: _formKey,
+      title: widget.goal.title,
+      subtitle:
+          '${widget.goal.current.formatShort()} of '
+          '${widget.goal.target.formatShort()} saved',
+      primaryLabel: _withdraw ? 'Take back' : 'Add funds',
+      onPrimary: _submit,
+      busy: _busy,
+      error: _error?.message,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('Add')),
+              ButtonSegment(value: true, label: Text('Take back')),
             ],
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton(
-              onPressed: _busy ? null : _submit,
-              child: _busy
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(_withdraw ? 'Take back' : 'Add funds'),
-            ),
-          ],
+            selected: {_withdraw},
+            onSelectionChanged: _busy
+                ? null
+                : (s) => setState(() => _withdraw = s.first),
+          ),
         ),
-      ),
+        LabeledField(
+          label: 'Amount',
+          child: TextFormField(
+            controller: _amount,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              hintText: '0',
+              prefixIcon: Icon(Icons.currency_rupee),
+            ),
+            validator: GoalValidators.contribution,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -85,78 +85,138 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     ];
     final txns = ref.watch(searchTransactionsProvider(q)).value ?? const <TransactionEntity>[];
     final none = accounts.isEmpty && trackers.isEmpty && goals.isEmpty && txns.isEmpty;
-    final tt = Theme.of(context).textTheme;
+    final palette = context.palette;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: TextField(
-          controller: _box,
-          autofocus: true,
-          onChanged: _changed,
-          textInputAction: TextInputAction.search,
-          decoration: const InputDecoration(
-            hintText: 'Search notes, categories, accounts…',
-            border: InputBorder.none,
+    final field = Container(
+      decoration: BoxDecoration(
+        color: palette.card,
+        borderRadius: AppRadius.chip,
+        border: Border.all(color: palette.line),
+      ),
+      padding: const EdgeInsets.only(left: AppSpacing.lg, right: AppSpacing.xs),
+      child: Row(
+        children: [
+          Icon(Icons.search_rounded, color: palette.muted),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: TextField(
+              controller: _box,
+              autofocus: true,
+              onChanged: (v) {
+                setState(() {});
+                _changed(v);
+              },
+              textInputAction: TextInputAction.search,
+              style: AppTypography.body.copyWith(color: palette.ink, fontSize: 15),
+              decoration: InputDecoration(
+                hintText: 'Search notes, categories, accounts…',
+                hintStyle: AppTypography.body.copyWith(color: palette.faint, fontSize: 15),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
           ),
-        ),
-        actions: [
           if (_box.text.isNotEmpty)
             IconButton(
               tooltip: 'Clear',
-              icon: const Icon(Icons.close),
+              icon: Icon(Icons.close_rounded, color: palette.muted),
               onPressed: () {
                 _box.clear();
                 _changed('');
+                setState(() {});
               },
             ),
         ],
       ),
+    );
+
+    return AppPage(
+      title: 'Search',
+      header: field,
+      padBody: false,
       body: q.isEmpty
-          ? const _Hint('Type to search transactions, accounts, trackers and goals.')
+          ? const _Hint(
+              icon: Icons.search_rounded,
+              title: 'Search your workspace',
+              message: 'Type to search transactions, accounts, trackers and goals.',
+            )
           : none
-              ? _Hint('Nothing matches "$q".')
+              ? _Hint(
+                  icon: Icons.search_off_rounded,
+                  title: 'No matches',
+                  message: 'Nothing matches "$q". Try another word.',
+                )
               : ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenGutter),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenGutter,
+                    0,
+                    AppSpacing.screenGutter,
+                    AppSpacing.huge,
+                  ),
                   children: [
                     if (accounts.isNotEmpty) ...[
                       _Heading('Accounts', accounts.length),
                       for (final a in accounts)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.account_balance_wallet_outlined),
-                          title: Text(a.name),
-                          subtitle: Text(a.typeLabel),
-                          onTap: () => context.push('/accounts'),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: ListRow(
+                            icon: Icons.account_balance_wallet_outlined,
+                            title: a.name,
+                            subtitle: a.typeLabel,
+                            chevron: true,
+                            onTap: () => context.push('/accounts'),
+                          ),
                         ),
                     ],
                     if (trackers.isNotEmpty) ...[
                       _Heading('Trackers', trackers.length),
                       for (final t in trackers)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.track_changes_outlined),
-                          title: Text(t.name),
-                          subtitle: Text(t.status == 'active' ? t.type : '${t.type} · ${t.status}'),
-                          onTap: () => context.push('/tracker/${t.id}'),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: ListRow(
+                            icon: Icons.track_changes_outlined,
+                            title: t.name,
+                            subtitle: t.status == 'active' ? t.type : '${t.type} · ${t.status}',
+                            chevron: true,
+                            onTap: () => context.push('/tracker/${t.id}'),
+                          ),
                         ),
                     ],
                     if (goals.isNotEmpty) ...[
                       _Heading('Goals', goals.length),
                       for (final g in goals)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.flag_outlined),
-                          title: Text(g.title),
-                          subtitle: g.category == null ? null : Text(g.category!),
-                          onTap: () => context.push('/goals'),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: ListRow(
+                            icon: Icons.flag_outlined,
+                            title: g.title,
+                            subtitle: g.category,
+                            chevron: true,
+                            onTap: () => context.push('/goals'),
+                          ),
                         ),
                     ],
                     if (txns.isNotEmpty) ...[
                       _Heading('Transactions', txns.length, more: txns.length >= 50),
-                      for (final t in txns)
-                        TransactionTile(t, onTap: () => openTransactionDetail(context, t.id)),
+                      AppCard(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < txns.length; i++) ...[
+                              if (i > 0) Divider(height: 1, color: palette.line),
+                              TransactionTile(
+                                txns[i],
+                                onTap: () => openTransactionDetail(context, txns[i].id),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ],
-                    SizedBox(height: tt.bodyMedium?.fontSize ?? AppSpacing.lg),
                   ],
                 ),
     );
@@ -170,28 +230,23 @@ class _Heading extends StatelessWidget {
   final bool more;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: AppSpacing.xs),
-        child: Text(
-          '$label · ${more ? 'latest $count' : count}',
-          style: Theme.of(context).textTheme.titleSmall,
+  Widget build(BuildContext context) => SectionTitle(
+        label,
+        trailing: StatusPill(
+          more ? 'latest $count' : '$count',
+          background: context.palette.tint,
+          foreground: context.palette.accentText,
         ),
       );
 }
 
 class _Hint extends StatelessWidget {
-  const _Hint(this.text);
-  final String text;
+  const _Hint({required this.icon, required this.title, required this.message});
+  final IconData icon;
+  final String title;
+  final String message;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Text(
-            text,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-        ),
-      );
+  Widget build(BuildContext context) =>
+      EmptyView(icon: icon, title: title, message: message);
 }

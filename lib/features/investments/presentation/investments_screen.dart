@@ -7,10 +7,12 @@ import 'package:go_router/go_router.dart';
 import '../../../core/error/failure.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../../menus/application/menu_providers.dart';
 import '../../menus/presentation/menu_locked_view.dart';
 import '../../price_alerts/application/price_alerts_providers.dart';
-import '../../price_alerts/domain/price_alert.dart' show alertLabelFor, formatPrice;
+import '../../price_alerts/domain/price_alert.dart'
+    show alertLabelFor, formatPrice;
 import '../../price_alerts/presentation/price_alerts_screen.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/investment_editor_controller.dart';
@@ -18,6 +20,7 @@ import '../application/investments_providers.dart';
 import '../domain/investment.dart';
 import '../domain/live_price.dart';
 import '../domain/stock_lots.dart';
+import 'holding_card.dart';
 import 'investment_form_sheet.dart';
 import 'stock_group_tile.dart';
 
@@ -33,35 +36,24 @@ class InvestmentsScreen extends ConsumerWidget {
         ref.watch(menuStatusProvider(FeatureMenu.investments)) ==
         MenuStatus.locked;
     if (locked) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Investments')),
-        body: const MenuLockedView(
-          feature: 'Investments',
-          icon: Icons.trending_up,
-        ),
+      return const AppPage(
+        title: 'Investments',
+        body: MenuLockedView(feature: 'Investments', icon: Icons.trending_up),
       );
     }
 
     final records = ref.watch(investmentsProvider);
     final summary = ref.watch(portfolioSummaryProvider);
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
+    final hasHoldings = records.value?.isNotEmpty ?? false;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Investments'),
-        actions: [
-          IconButton(
-            tooltip: 'Price alerts',
-            icon: const Icon(Icons.notifications_active_outlined),
-            onPressed: () => context.push(priceAlertsPath),
-          ),
-        ],
-      ),
-      floatingActionButton: canWrite
-          ? GradientExtendedFab(
+    return AppPage(
+      title: 'Investments',
+      padBody: false,
+      floatingActionButton: canWrite && hasHoldings
+          ? AddFab(
+              label: 'Holding',
               onPressed: () => openInvestmentForm(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Holding'),
             )
           : null,
       body: RefreshIndicator(
@@ -80,14 +72,16 @@ class InvestmentsScreen extends ConsumerWidget {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(
                     AppSpacing.screenGutter,
-                    AppSpacing.lg,
+                    AppSpacing.xs,
                     AppSpacing.screenGutter,
-                    AppSpacing.huge,
+                    96,
                   ),
                   children: [
                     const _LivePriceTicker(),
                     _SummaryCard(summary: summary),
-                    const SizedBox(height: AppSpacing.lg),
+                    const SizedBox(height: AppSpacing.md),
+                    const _AlertsPill(),
+                    const SectionTitle('Holdings'),
                     // Several purchases of one stock show as one holding.
                     for (final item in groupPortfolio(list))
                       switch (item) {
@@ -109,51 +103,64 @@ class InvestmentsScreen extends ConsumerWidget {
   }
 }
 
+class _AlertsPill extends ConsumerWidget {
+  const _AlertsPill();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final alerts = ref.watch(priceAlertsProvider).value ?? const [];
+    final watching = alerts.where((a) => a.isActive).length;
+    return InfoPill(
+      icon: Icons.notifications_active_outlined,
+      text: 'Price alerts',
+      detail: watching == 0 ? 'Set a buy price' : '$watching watching',
+      onTap: () => context.push(priceAlertsPath),
+    );
+  }
+}
+
+Tone _toneForAsset(BuildContext c, String asset) => switch (asset) {
+  'stocks' => Tones.sky(c),
+  'mutual_funds' => Tones.violet(c),
+  'bonds' => Tones.teal(c),
+  'fd' || 'rd' => Tones.butter(c),
+  'pf' => Tones.mint(c),
+  'gold' => Tones.butter(c),
+  'real_estate' => Tones.rose(c),
+  'crypto' => Tones.violet(c),
+  _ => Tones.accent(c),
+};
+
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({required this.summary});
   final PortfolioSummary summary;
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
     final finance = context.finance;
     final up = summary.gain.amount.sign >= 0;
+    final colors = [
+      for (final e in summary.byAsset) _toneForAsset(context, e.key).fg,
+    ];
 
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Current value',
-            style: tt.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: AppSpacing.xxs),
-          AmountText.money(
-            summary.current,
-            size: AmountSize.hero,
-            signed: false,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              Text(
-                'Invested ${summary.invested.formatShort()}',
-                style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Text(
-                '${up ? '+' : ''}${summary.gain.formatShort()} '
-                '(${summary.returnPct.toStringAsFixed(1)}%)',
-                style: tt.bodySmall?.copyWith(
-                  color: up ? finance.income : finance.expense,
-                  fontWeight: FontWeight.w600,
+    return MetricCard(
+      eyebrow: 'Current value',
+      figure: summary.current.formatShort(),
+      figureSuffix: 'invested ${summary.invested.formatShort()}',
+      status:
+          '${up ? '+' : ''}${summary.gain.formatShort()} '
+          '(${summary.returnPct.toStringAsFixed(1)}%) overall',
+      statusColor: up ? finance.income : finance.expense,
+      child: summary.byAsset.length > 1
+          ? SplitBar([
+              for (var i = 0; i < summary.byAsset.length; i++)
+                BarSegment(
+                  assetLabel(summary.byAsset[i].key),
+                  summary.byAsset[i].value.amount.toDouble(),
+                  colors[i],
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
+            ])
+          : null,
     );
   }
 }
@@ -165,126 +172,64 @@ class _HoldingTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    final finance = context.finance;
     final up = record.gain.amount.sign >= 0;
     final prices = ref.watch(holdingPricesProvider).value ?? const {};
     final live = liveFor(record, prices);
+    final liveValue = live?.value;
     final symbol = resolveLiveSymbol(record)?.symbol;
     final lot = toLot(record);
     final alerts = ref.watch(priceAlertsProvider).value ?? const [];
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: AppCard(
-        onTap: canWrite
-            ? () => openInvestmentForm(context, editing: record)
-            : null,
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: scheme.secondaryContainer,
-              child: Icon(
-                assetIcon(record.asset),
-                size: 20,
-                color: scheme.onSecondaryContainer,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    record.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    assetLabel(record.asset),
-                    style: tt.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  if (live != null && symbol != null)
-                    Text(
-                      'Live ${formatPrice(symbol, live.unitPrice)} · $symbol',
-                      style: tt.labelSmall?.copyWith(
-                        color: finance.income,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  if (record.asset == 'stocks')
-                    HoldingFacts(
-                      avgPrice: lot.price > 0 && symbol != null
-                          ? formatPrice(symbol, lot.price)
-                          : null,
-                      alert: symbol == null ? null : alertLabelFor(symbol, alerts),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (live?.value case final v?)
-                  Text(
-                    formatPrice(symbol ?? '', v),
-                    style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
-                  )
-                else
-                  AmountText.money(record.current, signed: false),
-                Text(
-                  '${up ? '+' : ''}${record.gain.formatShort()}',
-                  style: tt.labelSmall?.copyWith(
-                    color: up ? finance.income : finance.expense,
-                  ),
-                ),
+    final avg = lot.price > 0 && symbol != null
+        ? formatPrice(symbol, lot.price)
+        : null;
+    final alert = symbol == null ? null : alertLabelFor(symbol, alerts);
+    final facts = record.asset == 'stocks' && (avg != null || alert != null)
+        ? HoldingFacts(avgPrice: avg, alert: alert)
+        : null;
+
+    return HoldingCard(
+      icon: assetIcon(record.asset),
+      tone: _toneForAsset(context, record.asset),
+      title: record.name,
+      subtitle: assetLabel(record.asset),
+      live: live != null && symbol != null
+          ? 'Live ${formatPrice(symbol, live.unitPrice)} · $symbol'
+          : null,
+      facts: facts,
+      value: liveValue != null
+          ? formatPrice(symbol ?? '', liveValue)
+          : record.current.formatShort(),
+      gainLabel: '${up ? '+' : ''}${record.gain.formatShort()}',
+      up: up,
+      onTap: canWrite
+          ? () => openInvestmentForm(context, editing: record)
+          : null,
+      menu: canWrite
+          ? RowMenu(
+              onSelected: (v) {
+                if (v == 'edit') {
+                  openInvestmentForm(context, editing: record);
+                } else if (v == 'delete') {
+                  _confirmDelete(context, ref);
+                }
+              },
+              items: const [
+                PopupMenuItem(value: 'edit', child: Text('Edit')),
+                PopupMenuItem(value: 'delete', child: Text('Delete')),
               ],
-            ),
-            if (canWrite)
-              PopupMenuButton<String>(
-                onSelected: (v) {
-                  if (v == 'edit') {
-                    openInvestmentForm(context, editing: record);
-                  } else if (v == 'delete') {
-                    _confirmDelete(context, ref);
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  PopupMenuItem(value: 'delete', child: Text('Delete')),
-                ],
-              ),
-          ],
-        ),
-      ),
+            )
+          : null,
     );
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Delete "${record.name}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: AppButtonStyles.destructive,
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final ok = await confirmDestructive(
+      context,
+      title: 'Delete "${record.name}"?',
     );
-    if (ok != true) return;
+    if (!ok) return;
     try {
       await ref.read(investmentEditorControllerProvider).delete(record.id);
       messenger.showSnackBar(const SnackBar(content: Text('Holding deleted')));
@@ -300,23 +245,18 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        const SizedBox(height: AppSpacing.huge),
-        EmptyView(
-          icon: Icons.trending_up,
-          title: 'No holdings yet',
-          message:
-              'Track what you have invested and what it is worth now — stocks, '
-              'funds, gold, deposits.',
-          action: canWrite
-              ? FilledButton(
-                  onPressed: () => openInvestmentForm(context),
-                  child: const Text('Add a holding'),
-                )
-              : null,
-        ),
-      ],
+    return EmptyView(
+      icon: Icons.trending_up,
+      title: 'No holdings yet',
+      message:
+          'Track what you have invested and what it is worth now — stocks, '
+          'funds, gold, deposits.',
+      action: canWrite
+          ? FilledButton(
+              onPressed: () => openInvestmentForm(context),
+              child: const Text('Add a holding'),
+            )
+          : null,
     );
   }
 }

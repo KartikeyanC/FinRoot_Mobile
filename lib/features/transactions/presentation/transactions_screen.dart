@@ -1,6 +1,8 @@
+import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/money/money_format.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../../navigation/pane_selection.dart';
@@ -45,7 +47,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final twoPane = AppBreakpoints.of(context).showsTwoPane;
     final filter = ref.watch(ledgerFilterProvider);
     final ledger = ref.watch(ledgerProvider);
-    final t = Theme.of(context).textTheme;
     final selectedId = twoPane
         ? ref.watch(selectedTransactionIdProvider)
         : null;
@@ -58,84 +59,55 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       }
     }
 
-    final list = Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenGutter,
-            AppSpacing.md,
-            AppSpacing.screenGutter,
-            AppSpacing.sm,
+    final list = AppPage(
+      title: 'Transactions',
+      subtitle: ledger.value == null || ledger.value!.isEmpty
+          ? null
+          : '${ledger.value!.length} ${ledger.value!.length == 1 ? 'entry' : 'entries'}${filter.isActive ? ' match' : ''}',
+      header: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SearchField(
+            controller: _search,
+            onChanged: (v) =>
+                ref.read(ledgerFilterProvider.notifier).setSearch(v),
+            onClear: () {
+              _search.clear();
+              ref.read(ledgerFilterProvider.notifier).setSearch('');
+            },
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Transactions', style: t.headlineSmall),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: _search,
-                onChanged: (v) =>
-                    ref.read(ledgerFilterProvider.notifier).setSearch(v),
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  hintText: 'Search notes and categories',
-                  prefixIcon: const Icon(Icons.search),
-                  isDense: true,
-                  suffixIcon: _search.text.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Clear search',
-                          icon: const Icon(Icons.close),
-                          onPressed: () {
-                            _search.clear();
-                            ref
-                                .read(ledgerFilterProvider.notifier)
-                                .setSearch('');
-                          },
-                        ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              _TypeChips(
-                selected: filter.type,
-                onSelected: (type) =>
-                    ref.read(ledgerFilterProvider.notifier).setType(type),
-              ),
-              if (filter.accountId != null)
-                _AccountFilterBanner(accountId: filter.accountId!),
-            ],
+          const SizedBox(height: AppSpacing.md),
+          _TypeChips(
+            selected: filter.type,
+            onSelected: (type) =>
+                ref.read(ledgerFilterProvider.notifier).setType(type),
           ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: SwipeTabs(
-            index: _typeOrder.indexOf(filter.type),
-            count: _typeOrder.length,
-            onChanged: (i) =>
-                ref.read(ledgerFilterProvider.notifier).setType(_typeOrder[i]),
-            child: RefreshIndicator(
-              onRefresh: () =>
-                  ref.read(syncEngineProvider.notifier).syncNow(force: true),
-              child: ledger.when(
-                loading: () => const LoadingView(),
-                error: (e, _) => ErrorView(e),
-                data: (txns) => txns.isEmpty
-                    ? _EmptyLedger(filtered: filter.isActive)
-                    : _LedgerList(
-                        groups: groupByDay(txns),
-                        selectedId: selectedId,
-                        onTapRow: openRow,
-                      ),
-              ),
+        ],
+      ),
+      padBody: false,
+      body: SwipeTabs(
+        index: _typeOrder.indexOf(filter.type),
+        count: _typeOrder.length,
+        onChanged: (i) =>
+            ref.read(ledgerFilterProvider.notifier).setType(_typeOrder[i]),
+        child: RefreshIndicator(
+          onRefresh: () =>
+              ref.read(syncEngineProvider.notifier).syncNow(force: true),
+          child: ledger.when(
+            loading: () => const LoadingView(),
+            error: (e, _) => ErrorView(e),
+            data: (txns) => _LedgerList(
+              txns: txns,
+              filter: filter,
+              selectedId: selectedId,
+              onTapRow: openRow,
             ),
           ),
         ),
-      ],
+      ),
     );
 
-    if (!twoPane) {
-      return Scaffold(body: SafeArea(bottom: false, child: list));
-    }
+    if (!twoPane) return list;
 
     return Scaffold(
       body: SafeArea(
@@ -159,6 +131,55 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 }
 
+class _SearchField extends StatelessWidget {
+  const _SearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    OutlineInputBorder border(Color c) => OutlineInputBorder(
+      borderRadius: AppRadius.chip,
+      borderSide: BorderSide(color: c),
+    );
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) => TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Search notes and categories',
+          prefixIcon: const Icon(Icons.search_rounded),
+          filled: true,
+          fillColor: palette.card,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: 12,
+          ),
+          enabledBorder: border(palette.line),
+          focusedBorder: border(palette.accent),
+          border: border(palette.line),
+          suffixIcon: controller.text.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear search',
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: onClear,
+                ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Chip order, which is also the swipe order (null = All).
 const _typeOrder = <TxnType?>[
   null,
@@ -174,28 +195,15 @@ class _TypeChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget chip(String label, TxnType? value) => Padding(
-      padding: const EdgeInsets.only(right: AppSpacing.sm),
-      child: RevealWhenSelected(
-        selected: selected == value,
-        child: ChoiceChip(
-          label: Text(label),
-          selected: selected == value,
-          onSelected: (_) => onSelected(value),
-        ),
-      ),
-    );
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          chip('All', null),
-          chip('Income', TxnType.income),
-          chip('Expense', TxnType.expense),
-          chip('Transfer', TxnType.transfer),
-        ],
-      ),
+    return FilterPills<TxnType?>(
+      options: const [
+        FilterPill<TxnType?>(null, 'All'),
+        FilterPill<TxnType?>(TxnType.income, 'Income'),
+        FilterPill<TxnType?>(TxnType.expense, 'Expense'),
+        FilterPill<TxnType?>(TxnType.transfer, 'Transfer'),
+      ],
+      selected: selected,
+      onSelected: onSelected,
     );
   }
 }
@@ -207,102 +215,89 @@ class _AccountFilterBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final account = ref.watch(accountByIdProvider(accountId));
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.sm),
-      child: Row(
-        children: [
-          Icon(
-            Icons.filter_alt_outlined,
-            size: 16,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          Expanded(
-            child: Text(
-              account?.name ?? 'Account',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-          ),
-          TextButton(
-            onPressed: () =>
-                ref.read(ledgerFilterProvider.notifier).setAccount(null),
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
+    return InfoPill(
+      icon: Icons.filter_alt_rounded,
+      text: account?.name ?? 'Account',
+      detail: 'Filtered by account',
+      onClose: () => ref.read(ledgerFilterProvider.notifier).setAccount(null),
     );
   }
 }
 
 class _LedgerList extends StatelessWidget {
   const _LedgerList({
-    required this.groups,
+    required this.txns,
+    required this.filter,
     required this.selectedId,
     required this.onTapRow,
   });
 
-  final List<DayGroup> groups;
+  final List<TransactionEntity> txns;
+  final LedgerFilter filter;
   final String? selectedId;
   final ValueChanged<String> onTapRow;
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
+    final groups = groupByDay(txns);
+    var income = Decimal.zero;
+    var expense = Decimal.zero;
+    for (final t in txns) {
+      if (t.type == TxnType.income) income += t.amount.toInrMoney().amount;
+      if (t.type == TxnType.expense) expense += t.amount.toInrMoney().amount;
+    }
+    final net = income - expense;
+    final finance = context.finance;
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.screenGutter,
-        AppSpacing.sm,
+        AppSpacing.xs,
         AppSpacing.screenGutter,
-        AppSpacing.huge,
+        96,
       ),
-      itemCount: groups.length,
-      itemBuilder: (context, i) {
-        final group = groups[i];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            DayGroupHeader(day: group.day),
-            AppCard(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: Column(
-                children: [
-                  for (var j = 0; j < group.items.length; j++) ...[
-                    if (j > 0) const Divider(height: 1),
-                    _Tile(
-                      txn: group.items[j],
-                      selected: group.items[j].id == selectedId,
-                      onTap: () => onTapRow(group.items[j].id),
-                    ),
-                  ],
-                ],
-              ),
+      children: [
+        if (filter.accountId != null) ...[
+          _AccountFilterBanner(accountId: filter.accountId!),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        if (txns.isEmpty)
+          _EmptyLedger(filtered: filter.isActive)
+        else ...[
+          StatStrip([
+            Stat(
+              MoneyFormat.short(income.toDouble()),
+              'In',
+              color: finance.income,
             ),
-            const SizedBox(height: AppSpacing.sm),
+            Stat(
+              MoneyFormat.short(expense.toDouble()),
+              'Out',
+              color: finance.expense,
+            ),
+            Stat(
+              MoneyFormat.short(net.toDouble()),
+              'Net',
+              color: net < Decimal.zero ? finance.expense : null,
+            ),
+          ]),
+          for (final group in groups) ...[
+            DayGroupHeader(day: group.day),
+            for (final txn in group.items)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: TransactionTile(
+                  txn,
+                  showDay: false,
+                  card: true,
+                  selected: txn.id == selectedId,
+                  onTap: () => onTapRow(txn.id),
+                ),
+              ),
           ],
-        );
-      },
-    );
-  }
-}
-
-class _Tile extends StatelessWidget {
-  const _Tile({required this.txn, required this.selected, required this.onTap});
-
-  final TransactionEntity txn;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final row = TransactionTile(txn, showDay: false, onTap: onTap);
-    if (!selected) return row;
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer
-            .withValues(alpha: 0.4),
-        borderRadius: AppRadius.card,
-      ),
-      child: row,
+        ],
+      ],
     );
   }
 }
@@ -313,17 +308,15 @@ class _EmptyLedger extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        const SizedBox(height: AppSpacing.huge),
-        EmptyView(
-          icon: filtered ? Icons.search_off : Icons.receipt_long_outlined,
-          title: filtered ? 'No matches' : 'No transactions yet',
-          message: filtered
-              ? 'Try a different search or filter.'
-              : 'Tap + to record your first one.',
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.xl),
+      child: CardEmpty(
+        icon: filtered ? Icons.search_off_rounded : Icons.receipt_long_rounded,
+        title: filtered ? 'No matches' : 'No transactions yet',
+        message: filtered
+            ? 'Try a different search or filter.'
+            : 'Tap + to record your first one.',
+      ),
     );
   }
 }

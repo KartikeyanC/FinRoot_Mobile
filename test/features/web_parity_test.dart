@@ -188,7 +188,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('HDFC Savings'), findsOneWidget);
     expect(find.text('Cash'), findsNothing);
-    expect(find.textContaining('Transactions · 1'), findsOneWidget);
+    // The section heading is a title plus a count pill (one account, one
+    // transaction match), not a single "Transactions · 1" string.
+    expect(find.text('Transactions'), findsOneWidget);
+    expect(find.text('HDFC card fee'), findsOneWidget);
     expect(matchesQuery('HDFC Savings', ' hdfc '), isTrue);
   });
 }

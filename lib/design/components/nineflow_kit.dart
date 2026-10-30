@@ -432,6 +432,7 @@ class SegmentedBar extends StatelessWidget {
             child: ColoredBox(
               color: palette.line,
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (final s in segments)
                     if (s.value > 0)

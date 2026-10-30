@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
-import '../../../design/design.dart';
 import '../application/account_editor_controller.dart';
 import '../domain/account.dart';
 import '../domain/account_draft.dart';
+import 'wealth_kit.dart';
 
 /// Opens the create / edit account sheet.
 Future<void> openAccountForm(BuildContext context, {AccountEntity? editing}) {
@@ -95,92 +95,62 @@ class _AccountFormSheetState extends ConsumerState<_AccountFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppSpacing.xl,
-        right: AppSpacing.xl,
-        top: AppSpacing.sm,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(_isEditing ? 'Edit account' : 'Add account', style: t.titleLarge),
-            const SizedBox(height: AppSpacing.lg),
-            TextFormField(
-              controller: _name,
-              autofocus: !_isEditing,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Account name',
-                prefixIcon: Icon(Icons.account_balance_outlined),
-              ),
-              validator: AccountValidators.name,
+    return SheetFrame(
+      formKey: _formKey,
+      title: _isEditing ? 'Edit account' : 'Add account',
+      primaryLabel: _isEditing ? 'Save changes' : 'Add account',
+      onPrimary: _submit,
+      busy: _busy,
+      error: _error?.message,
+      children: [
+        LabeledField(
+          label: 'Account name',
+          child: TextFormField(
+            controller: _name,
+            autofocus: !_isEditing,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              hintText: 'Account name',
+              prefixIcon: Icon(Icons.account_balance_outlined),
             ),
-            const SizedBox(height: AppSpacing.md),
-            DropdownButtonFormField<String>(
-              initialValue: _type,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Type',
-                prefixIcon: Icon(Icons.category_outlined),
-              ),
-              items: [
-                for (final type in kAccountTypes)
-                  DropdownMenuItem(
-                    value: type,
-                    child: Text(accountTypeLabel(type)),
-                  ),
-              ],
-              onChanged: (v) => setState(() => _type = v ?? _type),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            TextFormField(
-              controller: _opening,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-                signed: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Opening balance (optional)',
-                prefixIcon: Icon(Icons.currency_rupee),
-                helperText: 'As of today. Change the date on the web app.',
-              ),
-              validator: AccountValidators.openingBalance,
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  borderRadius: AppRadius.field,
-                ),
-                child: Text(
-                  _error!.message,
-                  style: t.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton(
-              onPressed: _busy ? null : _submit,
-              child: _busy
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(_isEditing ? 'Save changes' : 'Add account'),
-            ),
-          ],
+            validator: AccountValidators.name,
+          ),
         ),
-      ),
+        LabeledField(
+          label: 'Type',
+          child: DropdownButtonFormField<String>(
+            initialValue: _type,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.category_outlined),
+            ),
+            items: [
+              for (final type in kAccountTypes)
+                DropdownMenuItem(
+                  value: type,
+                  child: Text(accountTypeLabel(type)),
+                ),
+            ],
+            onChanged: (v) => setState(() => _type = v ?? _type),
+          ),
+        ),
+        LabeledField(
+          label: 'Opening balance (optional)',
+          child: TextFormField(
+            controller: _opening,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: true,
+            ),
+            decoration: const InputDecoration(
+              hintText: '0',
+              prefixIcon: Icon(Icons.currency_rupee),
+              helperText: 'As of today. Change the date on the web app.',
+            ),
+            validator: AccountValidators.openingBalance,
+          ),
+        ),
+      ],
     );
   }
 }

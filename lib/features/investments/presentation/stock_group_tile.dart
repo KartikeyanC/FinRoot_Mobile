@@ -6,12 +6,14 @@ import 'package:intl/intl.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../design/design.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../../price_alerts/application/price_alerts_providers.dart';
 import '../../price_alerts/domain/price_alert.dart' show alertLabelFor;
 import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
 import '../domain/live_price.dart';
 import '../domain/stock_lots.dart';
+import 'holding_card.dart';
 import 'investment_form_sheet.dart';
 
 String _money(double v, String currency) =>
@@ -40,9 +42,7 @@ class _StockGroupTileState extends ConsumerState<StockGroupTile> {
   @override
   Widget build(BuildContext context) {
     final g = widget.group;
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    final finance = context.finance;
+    final palette = context.palette;
     final prices = ref.watch(holdingPricesProvider).value ?? const {};
     final current = groupCurrent(g, prices);
     final gain = current - g.invested;
@@ -59,112 +59,82 @@ class _StockGroupTileState extends ConsumerState<StockGroupTile> {
     final alerts = ref.watch(priceAlertsProvider).value ?? const [];
     final alert = symbol == null ? null : alertLabelFor(symbol, alerts);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: AppCard(
-        onTap: () => setState(() => _open = !_open),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+    return HoldingCard(
+      icon: Icons.stacked_line_chart,
+      tone: Tones.sky(context),
+      title: g.name,
+      subtitle: summary,
+      live: live != null ? 'Live ${_money(live.unitPrice, g.currency)}' : null,
+      facts: (g.avgPrice > 0 || alert != null)
+          ? HoldingFacts(
+              avgPrice: g.avgPrice > 0 ? _money(g.avgPrice, g.currency) : null,
+              alert: alert,
+            )
+          : null,
+      value: _money(current, g.currency),
+      gainLabel: '${up ? '+' : ''}${_money(gain, g.currency)}',
+      up: up,
+      onTap: () => setState(() => _open = !_open),
+      chevron: Icon(
+        _open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+        color: palette.faint,
+      ),
+      expanded: _open
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                CircleAvatar(
-                  backgroundColor: scheme.secondaryContainer,
-                  child: Icon(
-                    Icons.stacked_line_chart,
-                    size: 20,
-                    color: scheme.onSecondaryContainer,
+                Divider(height: AppSpacing.xl, color: palette.line),
+                for (final l in g.lots)
+                  _LotRow(
+                    lot: l,
+                    currency: g.currency,
+                    canWrite: widget.canWrite,
                   ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        g.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                      Text(
-                        summary,
-                        style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                      ),
-                      if (live != null)
-                        Text(
-                          'Live ${_money(live.unitPrice, g.currency)}',
-                          style: tt.labelSmall?.copyWith(
-                            color: finance.income,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      HoldingFacts(
-                        avgPrice: g.avgPrice > 0 ? _money(g.avgPrice, g.currency) : null,
-                        alert: alert,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                Divider(height: AppSpacing.xl, color: palette.line),
+                Row(
                   children: [
-                    Text(
-                      _money(current, g.currency),
-                      style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                    Expanded(
+                      child: Text(
+                        'Total',
+                        style: AppTypography.bodyStrong.copyWith(
+                          color: palette.ink,
+                        ),
+                      ),
                     ),
-                    Text(
-                      '${up ? '+' : ''}${_money(gain, g.currency)}',
-                      style: tt.labelSmall?.copyWith(
-                        color: up ? finance.income : finance.expense,
+                    Flexible(
+                      child: Text(
+                        [
+                          if (g.qty > 0) '${_qty(g.qty)} sh',
+                          'invested ${_money(g.invested, g.currency)}',
+                        ].join(' · '),
+                        textAlign: TextAlign.end,
+                        style: AppTypography.bodyStrong.copyWith(
+                          color: palette.ink,
+                        ),
                       ),
                     ),
                   ],
                 ),
-                Icon(_open ? Icons.expand_less : Icons.expand_more),
               ],
-            ),
-            if (_open) ...[
-              const Divider(height: AppSpacing.lg),
-              for (final l in g.lots)
-                _LotRow(lot: l, currency: g.currency, canWrite: widget.canWrite),
-              const Divider(height: AppSpacing.md),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Total',
-                      style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  Text(
-                    [
-                      if (g.qty > 0) '${_qty(g.qty)} sh',
-                      'invested ${_money(g.invested, g.currency)}',
-                    ].join(' · '),
-                    style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
+            )
+          : null,
     );
   }
 }
 
 class _LotRow extends ConsumerWidget {
-  const _LotRow({required this.lot, required this.currency, required this.canWrite});
+  const _LotRow({
+    required this.lot,
+    required this.currency,
+    required this.canWrite,
+  });
   final Lot lot;
   final String currency;
   final bool canWrite;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
     final when = lot.date == null ? 'Date not set' : _date.format(lot.date!);
     final detail = lot.qty > 0
         ? '${_qty(lot.qty)} × ${_money(lot.price, currency)}'
@@ -178,22 +148,31 @@ class _LotRow extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(when, style: tt.bodyMedium),
+                Text(
+                  when,
+                  style: AppTypography.bodyStrong.copyWith(color: palette.ink),
+                ),
                 Text(
                   detail,
-                  style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  style: AppTypography.label.copyWith(
+                    color: palette.muted,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
           ),
-          Text(_money(lot.invested, currency), style: tt.bodyMedium),
+          Text(
+            _money(lot.invested, currency),
+            style: AppTypography.body.copyWith(color: palette.ink),
+          ),
           if (canWrite)
-            PopupMenuButton<String>(
+            RowMenu(
               tooltip: 'Purchase on $when',
               onSelected: (v) => v == 'edit'
                   ? openInvestmentForm(context, editing: lot.record)
                   : _confirmDelete(context, ref, when),
-              itemBuilder: (_) => const [
+              items: const [
                 PopupMenuItem(value: 'edit', child: Text('Edit')),
                 PopupMenuItem(value: 'delete', child: Text('Delete')),
               ],
@@ -203,26 +182,17 @@ class _LotRow extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, String when) async {
+  Future<void> _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    String when,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Delete the purchase on $when?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: AppButtonStyles.destructive,
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final ok = await confirmDestructive(
+      context,
+      title: 'Delete the purchase on $when?',
     );
-    if (ok != true) return;
+    if (!ok) return;
     try {
       await ref.read(investmentEditorControllerProvider).delete(lot.record.id);
       messenger.showSnackBar(const SnackBar(content: Text('Purchase deleted')));
@@ -242,37 +212,39 @@ class HoldingFacts extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (avgPrice == null && alert == null) return const SizedBox.shrink();
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
     Widget fact(String label, String value, Color color) => Text.rich(
       TextSpan(
         children: [
           TextSpan(
             text: '$label ',
-            style: tt.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+            style: AppTypography.label.copyWith(
+              color: palette.muted,
+              fontWeight: FontWeight.w500,
+            ),
           ),
           TextSpan(
             text: value,
-            style: tt.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w700),
+            style: AppTypography.label.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
     );
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.xxs),
-      child: Wrap(
-        spacing: AppSpacing.md,
-        runSpacing: AppSpacing.xxs,
-        children: [
-          if (avgPrice != null) fact('Avg price', avgPrice!, scheme.onSurface),
-          if (alert != null)
-            fact(
-              'Price alert',
-              alert!.text,
-              alert!.triggered ? context.finance.income : scheme.primary,
-            ),
-        ],
-      ),
+    return Wrap(
+      spacing: AppSpacing.lg,
+      runSpacing: AppSpacing.xxs,
+      children: [
+        if (avgPrice != null) fact('Avg price', avgPrice!, palette.ink),
+        if (alert != null)
+          fact(
+            'Price alert',
+            alert!.text,
+            alert!.triggered ? context.finance.income : palette.accentText,
+          ),
+      ],
     );
   }
 }

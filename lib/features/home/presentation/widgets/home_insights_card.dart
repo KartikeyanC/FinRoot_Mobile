@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../design/design.dart';
 import '../../../insights/application/insights_providers.dart';
 import '../../../insights/presentation/insight_tile.dart';
+import 'home_parts.dart';
 
 /// Home "Insights" — the top few derived observations (M15). Reads the
 /// on-device rule engine; hides itself when there is nothing to say.
@@ -17,32 +18,26 @@ class HomeInsightsCard extends ConsumerWidget {
     if (insights.isEmpty) return const SizedBox.shrink();
 
     final all = ref.watch(insightsProvider);
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
 
-    return AppCard(
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
+      child: HomeSection(
+      title: 'Insights',
+      trailing: all.length > insights.length
+          ? HomeSeeAll(
+              label: 'All ${all.length}',
+              onPressed: () => context.push('/insights'),
+            )
+          : null,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.insights_rounded, size: 20,
-                  color: scheme.onSurfaceVariant),
-              const SizedBox(width: AppSpacing.sm),
-              Text('Insights', style: tt.titleSmall),
-              const Spacer(),
-              if (all.length > insights.length)
-                TextButton(
-                  onPressed: () => context.push('/insights'),
-                  child: Text('All ${all.length}'),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          for (final insight in insights)
-            InsightTile(insight: insight, dense: true),
+          for (var i = 0; i < insights.length; i++) ...[
+            if (i > 0) const HomeDivider(),
+            InsightTile(insight: insights[i], dense: true),
+          ],
         ],
       ),
+    ),
     );
   }
 }

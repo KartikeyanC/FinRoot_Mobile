@@ -70,62 +70,89 @@ class _RowEditSheetState extends ConsumerState<_RowEditSheet> {
       padding: EdgeInsets.only(
         left: AppSpacing.xl,
         right: AppSpacing.xl,
-        top: AppSpacing.sm,
+        top: AppSpacing.xs,
         bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
       ),
       child: Form(
         key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Edit line', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: AppSpacing.lg),
-            TextFormField(
-              controller: _name,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                prefixIcon: Icon(Icons.label_outline),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Edit line',
+                style: AppTypography.title.copyWith(
+                  color: context.palette.ink,
+                ),
               ),
-              validator: (v) =>
-                  (v ?? '').trim().isEmpty ? 'Enter a description' : null,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            DropdownButtonFormField<String>(
-              initialValue: _category,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Category',
-                prefixIcon: Icon(Icons.sell_outlined),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Description'),
+              TextFormField(
+                controller: _name,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.label_outline),
+                ),
+                validator: (v) =>
+                    (v ?? '').trim().isEmpty ? 'Enter a description' : null,
               ),
-              items: [
-                for (final cat in kExpenseCategories)
-                  DropdownMenuItem(value: cat, child: Text(cat)),
-              ],
-              onChanged: (v) => setState(() => _category = v ?? _category),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            TextFormField(
-              controller: _amount,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                prefixIcon: Icon(Icons.currency_rupee),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Category'),
+              DropdownButtonFormField<String>(
+                initialValue: _category,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.sell_outlined),
+                ),
+                items: [
+                  for (final cat in kExpenseCategories)
+                    DropdownMenuItem(value: cat, child: Text(cat)),
+                ],
+                onChanged: (v) => setState(() => _category = v ?? _category),
               ),
-              validator: (v) {
-                final m = Money.tryParse(v ?? '');
-                if (m == null) return 'Enter an amount';
-                if (m.isNegative) return 'Amount cannot be negative';
-                return null;
-              },
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton(onPressed: _save, child: const Text('Save line')),
-          ],
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Amount'),
+              TextFormField(
+                controller: _amount,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.currency_rupee),
+                ),
+                validator: (v) {
+                  final m = Money.tryParse(v ?? '');
+                  if (m == null) return 'Enter an amount';
+                  if (m.isNegative) return 'Amount cannot be negative';
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              FilledButton(onPressed: _save, child: const Text('Save line')),
+              const SizedBox(height: AppSpacing.sm),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _Label extends StatelessWidget {
+  const _Label(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: AppTypography.label.copyWith(color: context.palette.muted),
+    ),
+  );
 }

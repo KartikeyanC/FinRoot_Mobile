@@ -162,7 +162,7 @@ class _RecurringFormSheetState extends ConsumerState<_RecurringFormSheet> {
             children: [
               Text(
                 _isEditing ? 'Edit recurring item' : 'New recurring item',
-                style: tt.titleLarge,
+                style: AppTypography.title.copyWith(color: context.palette.ink),
               ),
               const SizedBox(height: AppSpacing.lg),
               if (!_isEditing)
@@ -328,6 +328,11 @@ class _RecurringFormSheetState extends ConsumerState<_RecurringFormSheet> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? 'Save changes' : 'Add item'),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              OutlinedButton(
+                onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
               ),
             ],
           ),

@@ -12,6 +12,7 @@ import '../application/reminders_editor_controller.dart';
 import '../application/reminders_providers.dart';
 import '../domain/reminder.dart';
 import 'reminder_form_sheet.dart';
+import 'status_tones.dart';
 
 /// Standalone reminders (M12) — a chronological list of scheduled money events
 /// (bills, buffers, maturities). Menu-gated (`reminders`), online-only, not
@@ -26,9 +27,9 @@ class RemindersScreen extends ConsumerWidget {
         ref.watch(menuStatusProvider(FeatureMenu.reminders)) ==
         MenuStatus.locked;
     if (locked) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Reminders')),
-        body: const MenuLockedView(
+      return const AppPage(
+        title: 'Reminders',
+        body: MenuLockedView(
           feature: 'Reminders',
           icon: Icons.notifications_none,
         ),
@@ -37,14 +38,18 @@ class RemindersScreen extends ConsumerWidget {
 
     final reminders = ref.watch(remindersProvider);
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
+    final hasAny = reminders.value?.isNotEmpty ?? false;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Reminders')),
-      floatingActionButton: canWrite
-          ? GradientExtendedFab(
+    return AppPage(
+      title: 'Reminders',
+      subtitle: 'Bills, buffers and maturities',
+      padBody: false,
+      // The empty state carries its own add action; the FAB only appears once
+      // there is something in the list.
+      floatingActionButton: canWrite && hasAny
+          ? AddFab(
+              label: 'Reminder',
               onPressed: () => openReminderForm(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Reminder'),
             )
           : null,
       body: RefreshIndicator(
@@ -55,27 +60,66 @@ class RemindersScreen extends ConsumerWidget {
               ErrorView(e, onRetry: () => ref.invalidate(remindersProvider)),
           data: (list) {
             if (list.isEmpty) return _Empty(canWrite: canWrite);
-            final sorted = [...list]..sort((a, b) {
-              if (a.isCompleted != b.isCompleted) {
-                return a.isCompleted ? 1 : -1;
-              }
-              return a.dueDate.compareTo(b.dueDate);
-            });
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenGutter,
-                AppSpacing.lg,
-                AppSpacing.screenGutter,
-                AppSpacing.huge,
-              ),
-              children: [
-                for (final r in sorted)
-                  _ReminderCard(reminder: r, canWrite: canWrite),
-              ],
-            );
+            return _RemindersList(list: list, canWrite: canWrite);
           },
         ),
       ),
+    );
+  }
+}
+
+class _RemindersList extends StatelessWidget {
+  const _RemindersList({required this.list, required this.canWrite});
+  final List<Reminder> list;
+  final bool canWrite;
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = [...list]..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+    final open = sorted.where((r) => !r.isCompleted).toList();
+    final overdue = open.where((r) => r.daysUntilDue() < 0).toList();
+    final week = open.where((r) {
+      final d = r.daysUntilDue();
+      return d >= 0 && d <= 7;
+    }).toList();
+    final later = open.where((r) => r.daysUntilDue() > 7).toList();
+    final done = sorted.where((r) => r.isCompleted).toList();
+    final finance = context.finance;
+
+    Widget group(String title, List<Reminder> items) => items.isEmpty
+        ? const SizedBox.shrink()
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SectionTitle(title),
+              for (final r in items)
+                _ReminderCard(reminder: r, canWrite: canWrite),
+            ],
+          );
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenGutter,
+        AppSpacing.sm,
+        AppSpacing.screenGutter,
+        96,
+      ),
+      children: [
+        StatStrip([
+          Stat('${week.length}', 'Due this week'),
+          Stat(
+            '${overdue.length}',
+            'Overdue',
+            color: overdue.isEmpty ? null : finance.expense,
+          ),
+          Stat('${later.length}', 'Upcoming'),
+        ]),
+        group('Overdue', overdue),
+        group('This week', week),
+        group('Later', later),
+        group('Done', done),
+      ],
     );
   }
 }
@@ -85,19 +129,35 @@ class _ReminderCard extends ConsumerWidget {
   final Reminder reminder;
   final bool canWrite;
 
+  static final ButtonStyle _compact = ButtonStyle(
+    minimumSize: WidgetStateProperty.all(const Size(0, 36)),
+    padding: WidgetStateProperty.all(
+      const EdgeInsets.symmetric(horizontal: 14),
+    ),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    final finance = context.finance;
+    final palette = context.palette;
     final done = reminder.isCompleted;
     final days = reminder.daysUntilDue();
+    final tone = done
+        ? StatusTone.mint(context)
+        : StatusTone.forDays(context, days);
+    final pill = done
+        ? tone.pill('Completed', dot: true)
+        : tone.pill(dueLabel(days));
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Opacity(
-        opacity: done ? 0.55 : 1,
+        opacity: done ? 0.7 : 1,
         child: AppCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
           onTap: canWrite && !done
               ? () => openReminderForm(context, editing: reminder)
               : null,
@@ -106,83 +166,92 @@ class _ReminderCard extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  Icon(reminder.context.icon, size: 18,
-                      color: scheme.onSurfaceVariant),
-                  const SizedBox(width: AppSpacing.sm),
+                  IconTile(
+                    icon: reminder.context.icon,
+                    tint: tone.background,
+                    color: tone.foreground,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
                   Expanded(
-                    child: Text(
-                      reminder.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        decoration: done ? TextDecoration.lineThrough : null,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          reminder.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.bodyStrong.copyWith(
+                            color: palette.ink,
+                            fontSize: 15,
+                            decoration: done
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${DateFormat('EEE, d MMM').format(reminder.dueDate)}'
+                          ' · ${reminder.context.label}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.label.copyWith(
+                            color: palette.muted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  if (reminder.amount != null)
+                  if (reminder.amount != null) ...[
+                    const SizedBox(width: AppSpacing.md),
                     AmountText.money(reminder.amount!, signed: false),
+                  ],
                 ],
               ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                '${DateFormat('EEE, d MMM yyyy').format(reminder.dueDate)} · '
-                '${reminder.context.label}',
-                style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                done
-                    ? 'Completed'
-                    : switch (days) {
-                        < 0 => '${-days}d overdue',
-                        0 => 'Due today',
-                        1 => 'Due tomorrow',
-                        _ => 'Due in ${days}d',
-                      },
-                style: tt.labelMedium?.copyWith(
-                  color: !done && days <= 2 ? finance.expense
-                      : scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (canWrite) ...[
-                const Divider(height: AppSpacing.xl),
-                Row(
-                  children: [
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  pill,
+                  const Spacer(),
+                  if (canWrite) ...[
                     if (!done)
-                      Expanded(
-                        child: FilledButton.tonalIcon(
-                          style: AppButtonStyles.noGradient,
-                          onPressed: () => _act(context, ref,
-                              () => ref
-                                  .read(remindersEditorControllerProvider)
-                                  .complete(reminder.id),
-                              'Marked done'),
-                          icon: const Icon(Icons.check_circle_outline, size: 18),
-                          label: const Text('Done'),
+                      OutlinedButton.icon(
+                        style: _compact,
+                        onPressed: () => _act(
+                          context,
+                          ref,
+                          () => ref
+                              .read(remindersEditorControllerProvider)
+                              .complete(reminder.id),
+                          'Marked done',
                         ),
+                        icon: const Icon(Icons.check_rounded, size: 18),
+                        label: const Text('Done'),
                       )
                     else
-                      Expanded(
-                        child: TextButton.icon(
-                          onPressed: () => _act(context, ref,
-                              () => ref
-                                  .read(remindersEditorControllerProvider)
-                                  .reopen(reminder.id),
-                              'Reopened'),
-                          icon: const Icon(Icons.undo, size: 18),
-                          label: const Text('Reopen'),
+                      TextButton.icon(
+                        style: _compact,
+                        onPressed: () => _act(
+                          context,
+                          ref,
+                          () => ref
+                              .read(remindersEditorControllerProvider)
+                              .reopen(reminder.id),
+                          'Reopened',
                         ),
+                        icon: const Icon(Icons.undo_rounded, size: 18),
+                        label: const Text('Reopen'),
                       ),
-                    IconButton(
+                    const SizedBox(width: AppSpacing.sm),
+                    RoundIconButton(
+                      icon: Icons.delete_outline_rounded,
                       tooltip: 'Delete',
-                      icon: const Icon(Icons.delete_outline, size: 20),
+                      size: 36,
                       onPressed: () => _confirmDelete(context, ref),
                     ),
                   ],
-                ),
-              ],
+                ],
+              ),
             ],
           ),
         ),
@@ -190,8 +259,12 @@ class _ReminderCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _act(BuildContext context, WidgetRef ref,
-      Future<void> Function() action, String ok) async {
+  Future<void> _act(
+    BuildContext context,
+    WidgetRef ref,
+    Future<void> Function() action,
+    String ok,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await action();
@@ -237,20 +310,22 @@ class _Empty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenGutter,
+        AppSpacing.sm,
+        AppSpacing.screenGutter,
+        AppSpacing.huge,
+      ),
       children: [
-        const SizedBox(height: AppSpacing.huge),
-        EmptyView(
-          icon: Icons.notifications_none,
+        CardEmpty(
+          icon: Icons.notifications_none_rounded,
           title: 'No reminders yet',
           message:
-              'Schedule a bill, a buffer check before a SIP debits, or a '
-              'deposit maturity — the app nudges you before each one.',
-          action: canWrite
-              ? FilledButton(
-                  onPressed: () => openReminderForm(context),
-                  child: const Text('Add a reminder'),
-                )
-              : null,
+              'Start with a bill, like your credit card due on the 5th. '
+              'FinRoot nudges you before it is due.',
+          actionLabel: canWrite ? 'Add reminder' : null,
+          onAction: canWrite ? () => openReminderForm(context) : null,
         ),
       ],
     );

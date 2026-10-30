@@ -1,73 +1,63 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/providers/providers.dart';
 import '../../../../design/design.dart';
 import '../../../profile/profile_providers.dart';
 import '../../../sync/presentation/sync_status_widgets.dart';
 import '../../../workspace/application/workspace_providers.dart';
+import '../../../workspace/domain/membership.dart';
+import '../../../workspace/presentation/workspace_switcher_sheet.dart';
 
-/// The feed's opening line: a time-of-day greeting, who you are, which workspace
-/// you're in, and the sync state — the first thing a person should be able to
-/// trust on a finance app.
+/// The top of Home, NineFlow style: a round workspace pill (avatar, name,
+/// chevron) with the sync state beside it, then a big bold greeting with
+/// today's date in muted text under it.
 class HomeGreeting extends ConsumerWidget {
   const HomeGreeting({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
 
     final profile = ref.watch(profileProvider).value;
     final email = ref.watch(currentUserProvider)?.email;
     final name = _firstName(profile?.displayName) ?? _localPart(email);
     final workspace = ref.watch(currentMembershipProvider)?.name;
+    final count = (ref.watch(membershipsProvider).value ?? const <Membership>[])
+        .where((m) => m.isUsable)
+        .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _timeGreeting(),
-          style: t.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-        ),
-        const SizedBox(height: AppSpacing.xxs),
-        Text(
-          name ?? 'Welcome back',
-          style: t.headlineSmall,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        const SizedBox(height: AppSpacing.sm),
         Row(
           children: [
-            if (workspace != null) ...[
-              Icon(
-                Icons.workspaces_outline,
-                size: 14,
-                color: scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: AppSpacing.xs),
+            if (workspace != null)
               Flexible(
-                child: Text(
-                  workspace,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+                child: _WorkspacePill(
+                  name: workspace,
+                  onTap: count > 1 ? () => showWorkspaceSwitcher(context) : null,
                 ),
               ),
-              const SizedBox(width: AppSpacing.md),
-              Container(
-                width: 3,
-                height: 3,
-                decoration: BoxDecoration(
-                  color: scheme.onSurfaceVariant,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-            ],
+            const SizedBox(width: AppSpacing.md),
             const Flexible(child: SyncStatusChip()),
           ],
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        Semantics(
+          header: true,
+          child: Text(
+            name == null ? 'Welcome back' : '${_timeGreeting()}, $name',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.display.copyWith(color: palette.ink),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          DateFormat('EEEE, d MMMM').format(DateTime.now()),
+          style: AppTypography.body.copyWith(color: palette.muted),
         ),
       ],
     );
@@ -89,5 +79,70 @@ class HomeGreeting extends ConsumerWidget {
   String? _localPart(String? email) {
     if (email == null || !email.contains('@')) return null;
     return email.split('@').first;
+  }
+}
+
+class _WorkspacePill extends StatelessWidget {
+  const _WorkspacePill({required this.name, required this.onTap});
+
+  final String name;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    return Semantics(
+      button: onTap != null,
+      label: 'Workspace $name',
+      child: Material(
+        color: palette.card,
+        shape: StadiumBorder(side: BorderSide(color: palette.line)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: palette.gradient,
+                  ),
+                  child: Text(
+                    initial,
+                    style: AppTypography.label.copyWith(color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Flexible(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodyStrong.copyWith(
+                      color: palette.ink,
+                    ),
+                  ),
+                ),
+                if (onTap != null) ...[
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: palette.muted,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

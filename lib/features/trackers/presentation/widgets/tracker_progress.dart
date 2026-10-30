@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../../../design/design.dart';
 import '../../domain/tracker_spend.dart';
+import 'tracker_bar.dart';
 
-/// The spend-against-budget bar. Used on the list, the detail header and Home.
-/// No budget → a plain "spent so far" line, never a full or empty bar
-/// (absent is not spent-in-full).
+/// The spend-against-budget figure and bar. Used on the list, the detail
+/// header and Home. No budget -> a plain "spent so far" line, never a full or
+/// empty bar (absent is not spent-in-full).
 class TrackerProgress extends StatelessWidget {
   const TrackerProgress(this.t, {super.key, this.compact = false});
 
@@ -14,16 +15,15 @@ class TrackerProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
     final finance = context.finance;
-    final tt = Theme.of(context).textTheme;
 
     if (!t.hasBudget) {
       return Row(
         children: [
           Text(
             'Spent',
-            style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            style: AppTypography.body.copyWith(color: palette.muted),
           ),
           const Spacer(),
           AmountText.money(t.spent, signed: false),
@@ -31,67 +31,63 @@ class TrackerProgress extends StatelessWidget {
       );
     }
 
-    final fraction = (t.utilization / 100).clamp(0.0, 1.0);
     final barColor = t.isOverBudget
         ? finance.expense
-        : (t.utilization >= 85 ? finance.warning : scheme.primary);
-    // The bar is a fill (brand green); the % label is text, so on-track uses
-    // the contrast-safe brandText instead.
-    final labelColor = barColor == scheme.primary
-        ? finance.brandText
-        : barColor;
+        : (t.utilization >= 85 ? finance.warning : palette.accent);
+    final labelColor = barColor == palette.accent ? palette.accentText : barColor;
+    final budget = t.tracker.budget!.amount.toDouble();
+    final spent = t.spent.amount.toDouble();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
             Flexible(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(child: AmountText.money(t.spent, signed: false)),
-                  Flexible(
-                    child: Text(
-                      ' of ${t.tracker.budget!.formatShort()}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
+              child: Text.rich(
+                TextSpan(
+                  text: t.spent.formatShort(),
+                  style: AppTypography.display.copyWith(
+                    fontSize: compact ? 20 : 24,
+                    height: 1.2,
+                    color: palette.ink,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
-                ],
+                  children: [
+                    TextSpan(
+                      text: '  of ${t.tracker.budget!.formatShort()}',
+                      style: AppTypography.body.copyWith(color: palette.muted),
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
             Text(
               '${t.utilization}%',
-              style: tt.labelMedium?.copyWith(color: labelColor),
+              style: AppTypography.bodyStrong.copyWith(color: labelColor),
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.xs),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.pill),
-          child: LinearProgressIndicator(
-            value: fraction,
-            minHeight: compact ? 5 : 7,
-            backgroundColor: scheme.surfaceContainerHighest,
-            valueColor: AlwaysStoppedAnimation(barColor),
-            // The real utilisation goes in the label (it can exceed 100% when
-            // over budget); `semanticsValue` must parse as a 0–100% progress.
-            semanticsLabel: 'Spent ${t.utilization}% of budget',
+        const SizedBox(height: AppSpacing.sm),
+        Semantics(
+          label: 'Spent ${t.utilization}% of budget',
+          child: ExcludeSemantics(
+            child: TrackerBar(fraction: spent / budget, color: barColor),
           ),
         ),
         if (!compact) ...[
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             t.isOverBudget
                 ? '${t.remaining!.abs.formatShort()} over budget'
                 : '${t.remaining!.formatShort()} left',
-            style: tt.bodySmall?.copyWith(
-              color: t.isOverBudget ? finance.expense : scheme.onSurfaceVariant,
+            style: AppTypography.bodyStrong.copyWith(
+              color: t.isOverBudget ? finance.expense : palette.muted,
             ),
           ),
         ],

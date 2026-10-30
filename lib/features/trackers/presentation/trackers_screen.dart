@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/money/money.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../../navigation/pane_selection.dart';
@@ -16,8 +17,9 @@ import '../domain/tracker_spend.dart';
 import 'tracker_detail_screen.dart';
 import 'tracker_form_sheet.dart';
 import 'widgets/tracker_progress.dart';
+import 'widgets/tracker_status_pill.dart';
 
-/// Trackers (M9) — an optional contextual dimension on a transaction, never a
+//// Trackers (M9) — an optional contextual dimension on a transaction, never a
 /// ledger (ADR-0010). The `trackers` menu is a real paywall (ADR-0002); when
 /// it is not in the workspace's effective menus this tab shows a locked state.
 ///
@@ -54,7 +56,7 @@ class TrackersScreen extends ConsumerWidget {
       }
     }
 
-    // Swipe order matches the chip row. With several statuses ticked, the
+    // Swipe order matches the pill row. With several statuses ticked, the
     // swipe starts from the first one and narrows to a single status.
     const order = [
       TrackerStatus.active,
@@ -65,89 +67,56 @@ class TrackersScreen extends ConsumerWidget {
         .indexWhere((s) => statuses.contains(s.name))
         .clamp(0, order.length - 1);
 
-    final listPane = Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenGutter,
-            AppSpacing.md,
-            AppSpacing.screenGutter,
-            AppSpacing.sm,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Trackers',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              _StatusChips(
-                selected: statuses,
-                onToggle: (s) =>
-                    ref.read(trackerStatusFilterProvider.notifier).toggle(s),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: SwipeTabs(
-            index: swipeIndex,
-            count: order.length,
-            onChanged: (i) => ref
-                .read(trackerStatusFilterProvider.notifier)
-                .only({order[i].name}),
-            child: RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(trackerSpendRowsProvider);
-                await ref
-                    .read(syncEngineProvider.notifier)
-                    .syncNow(force: true);
-              },
-              child: list.when(
-                loading: () => const LoadingView(),
-                error: (e, _) => ErrorView(e),
-                data: (trackers) => trackers.isEmpty
-                    ? _EmptyTrackers(canWrite: canWrite)
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.screenGutter,
-                          AppSpacing.sm,
-                          AppSpacing.screenGutter,
-                          AppSpacing.huge,
-                        ),
-                        itemCount: trackers.length,
-                        itemBuilder: (_, i) => _TrackerCard(
-                          trackers[i],
-                          selected: trackers[i].tracker.id == selectedId,
-                          onTap: () => openTracker(trackers[i].tracker.id),
-                        ),
-                      ),
-              ),
-            ),
+    final trackers = list.value;
+    // The empty state already offers "Create a tracker"; never show two adds.
+    final showFab =
+        canWrite && (trackers == null || trackers.isNotEmpty);
+
+    final listPane = AppPage(
+      title: 'Trackers',
+      subtitle: 'Totals for projects and trips, without moving money',
+      floatingActionButton: showFab
+          ? AddFab(label: 'Tracker', onPressed: () => openTrackerForm(context))
+          : null,
+      header: FilterPills<TrackerStatus>(
+        options: [
+          for (final s in order) FilterPill<TrackerStatus>(s, s.label),
+        ],
+        selected: order[swipeIndex],
+        onSelected: (s) => ref
+            .read(trackerStatusFilterProvider.notifier)
+            .only({s.name}),
+      ),
+      padBody: false,
+      body: SwipeTabs(
+        index: swipeIndex,
+        count: order.length,
+        onChanged: (i) => ref
+            .read(trackerStatusFilterProvider.notifier)
+            .only({order[i].name}),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(trackerSpendRowsProvider);
+            await ref.read(syncEngineProvider.notifier).syncNow(force: true);
+          },
+          child: list.when(
+            loading: () => const LoadingView(),
+            error: (e, _) => ErrorView(e),
+            data: (trackers) => trackers.isEmpty
+                ? _EmptyTrackers(canWrite: canWrite, status: order[swipeIndex])
+                : _TrackerList(
+                    trackers: trackers,
+                    selectedId: selectedId,
+                    onOpen: openTracker,
+                  ),
           ),
         ),
-      ],
+      ),
     );
 
-    final fab = canWrite
-        ? GradientExtendedFab(
-            onPressed: () => openTrackerForm(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Tracker'),
-          )
-        : null;
-
-    if (!twoPane) {
-      return Scaffold(
-        floatingActionButton: fab,
-        body: SafeArea(bottom: false, child: listPane),
-      );
-    }
+    if (!twoPane) return listPane;
 
     return Scaffold(
-      floatingActionButton: fab,
       body: SafeArea(
         bottom: false,
         child: TwoPane(
@@ -171,87 +140,117 @@ class TrackersScreen extends ConsumerWidget {
   }
 }
 
-class _StatusChips extends StatelessWidget {
-  const _StatusChips({required this.selected, required this.onToggle});
-  final Set<String> selected;
-  final ValueChanged<String> onToggle;
+class _TrackerList extends StatelessWidget {
+  const _TrackerList({
+    required this.trackers,
+    required this.selectedId,
+    required this.onOpen,
+  });
+
+  final List<TrackerWithSpend> trackers;
+  final String? selectedId;
+  final ValueChanged<String> onOpen;
 
   @override
   Widget build(BuildContext context) {
-    Widget chip(TrackerStatus s) => Padding(
-      padding: const EdgeInsets.only(right: AppSpacing.sm),
-      child: RevealWhenSelected(
-        selected: selected.contains(s.name),
-        child: FilterChip(
-          label: Text(s.label),
-          selected: selected.contains(s.name),
-          onSelected: (_) => onToggle(s.name),
-        ),
+    var spent = Money.zero();
+    var budget = Money.zero();
+    for (final t in trackers) {
+      spent += t.spent;
+      if (t.hasBudget) budget += t.tracker.budget!;
+    }
+    final palette = context.palette;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenGutter,
+        AppSpacing.xs,
+        AppSpacing.screenGutter,
+        96,
       ),
-    );
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          chip(TrackerStatus.active),
-          chip(TrackerStatus.completed),
-          chip(TrackerStatus.archived),
-        ],
-      ),
+      children: [
+        StatStrip([
+          Stat('${trackers.length}', 'Count'),
+          Stat(spent.formatShort(), 'Spent'),
+          Stat(budget.isZero ? '—' : budget.formatShort(), 'Budget'),
+        ]),
+        const SizedBox(height: AppSpacing.md),
+        for (final t in trackers)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: _TrackerCard(
+              t,
+              selected: t.tracker.id == selectedId,
+              borderColor: palette.accent,
+              onTap: () => onOpen(t.tracker.id),
+            ),
+          ),
+      ],
     );
   }
 }
 
 class _TrackerCard extends StatelessWidget {
-  const _TrackerCard(this.t, {required this.selected, required this.onTap});
+  const _TrackerCard(
+    this.t, {
+    required this.selected,
+    required this.borderColor,
+    required this.onTap,
+  });
   final TrackerWithSpend t;
   final bool selected;
+  final Color borderColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+    final palette = context.palette;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.card,
+        border: selected ? Border.all(color: borderColor, width: 1.5) : null,
+      ),
       child: AppCard(
         onTap: onTap,
-        color: selected ? scheme.primaryContainer.withValues(alpha: 0.4) : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Icon(
-                  trackerTypeIcon(t.tracker.type),
-                  size: 18,
-                  color: context.finance.brandText,
+                IconTile(icon: trackerTypeIcon(t.tracker.type)),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        trackerDisplayLabel(t.tracker.name),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.title.copyWith(
+                          color: palette.ink,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        t.txnCount == 1
+                            ? '1 transaction'
+                            : '${t.txnCount} transactions',
+                        style: AppTypography.label.copyWith(
+                          color: palette.muted,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    trackerDisplayLabel(t.tracker.name),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: tt.titleMedium,
-                  ),
-                ),
-                if (t.tracker.status != 'active')
-                  Text(
-                    TrackerStatus.fromWire(t.tracker.status).label,
-                    style: tt.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
+                TrackerStatusPill(t),
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: AppSpacing.lg),
             TrackerProgress(t, compact: true),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              t.txnCount == 1 ? '1 transaction' : '${t.txnCount} transactions',
-              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
           ],
         ),
       ),
@@ -260,21 +259,29 @@ class _TrackerCard extends StatelessWidget {
 }
 
 class _EmptyTrackers extends StatelessWidget {
-  const _EmptyTrackers({required this.canWrite});
+  const _EmptyTrackers({required this.canWrite, required this.status});
   final bool canWrite;
+  final TrackerStatus status;
 
   @override
   Widget build(BuildContext context) {
+    final active = status == TrackerStatus.active;
     return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenGutter,
+        AppSpacing.xl,
+        AppSpacing.screenGutter,
+        AppSpacing.huge,
+      ),
       children: [
-        const SizedBox(height: AppSpacing.huge),
         EmptyView(
           icon: Icons.donut_large_outlined,
           title: 'No trackers here',
-          message:
-              'A tracker totals what a project or trip costs, without moving '
-              'money out of your accounts.',
-          action: canWrite
+          message: active
+              ? 'A tracker totals what a project or trip costs, without '
+                    'moving money out of your accounts.'
+              : 'No ${status.label.toLowerCase()} trackers yet.',
+          action: canWrite && active
               ? FilledButton(
                   onPressed: () => openTrackerForm(context),
                   child: const Text('Create a tracker'),

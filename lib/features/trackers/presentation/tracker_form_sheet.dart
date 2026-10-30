@@ -131,12 +131,12 @@ class _TrackerFormSheetState extends ConsumerState<_TrackerFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
+    final palette = context.palette;
     return Padding(
       padding: EdgeInsets.only(
         left: AppSpacing.xl,
         right: AppSpacing.xl,
-        top: AppSpacing.sm,
+        top: AppSpacing.xs,
         bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
       ),
       child: Form(
@@ -148,25 +148,26 @@ class _TrackerFormSheetState extends ConsumerState<_TrackerFormSheet> {
             children: [
               Text(
                 _isEditing ? 'Edit tracker' : 'New tracker',
-                style: tt.titleLarge,
+                style: AppTypography.title.copyWith(color: palette.ink),
               ),
               const SizedBox(height: AppSpacing.lg),
+              const _Label('Name'),
               TextFormField(
                 controller: _name,
                 autofocus: !_isEditing,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
-                  labelText: 'Name',
+                  hintText: 'Dubai trip, Home build…',
                   prefixIcon: Icon(Icons.label_outline),
                 ),
                 validator: TrackerValidators.name,
               ),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Type'),
               DropdownButtonFormField<String>(
                 initialValue: kTrackerTypes.contains(_type) ? _type : 'Custom',
                 isExpanded: true,
                 decoration: const InputDecoration(
-                  labelText: 'Type',
                   prefixIcon: Icon(Icons.category_outlined),
                 ),
                 items: [
@@ -184,8 +185,9 @@ class _TrackerFormSheetState extends ConsumerState<_TrackerFormSheet> {
                 ],
                 onChanged: (v) => setState(() => _type = v ?? _type),
               ),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: AppSpacing.lg),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: _DateField(
@@ -209,26 +211,28 @@ class _TrackerFormSheetState extends ConsumerState<_TrackerFormSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Budget (optional)'),
               TextFormField(
                 controller: _budget,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
                 decoration: const InputDecoration(
-                  labelText: 'Budget (optional)',
+                  hintText: '0',
                   prefixIcon: Icon(Icons.currency_rupee),
                 ),
                 validator: TrackerValidators.budget,
               ),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: AppSpacing.lg),
+              const _Label('Description (optional)'),
               TextFormField(
                 controller: _description,
                 maxLength: 500,
                 minLines: 1,
                 maxLines: 3,
                 decoration: const InputDecoration(
-                  labelText: 'Description (optional)',
+                  hintText: 'What is this tracker for?',
                   prefixIcon: Icon(Icons.notes_rounded),
                   counterText: '',
                 ),
@@ -244,13 +248,13 @@ class _TrackerFormSheetState extends ConsumerState<_TrackerFormSheet> {
                   ),
                   child: Text(
                     _error!.message,
-                    style: tt.bodyMedium?.copyWith(
+                    style: AppTypography.body.copyWith(
                       color: Theme.of(context).colorScheme.onErrorContainer,
                     ),
                   ),
                 ),
               ],
-              const SizedBox(height: AppSpacing.lg),
+              const SizedBox(height: AppSpacing.xl),
               FilledButton(
                 onPressed: _busy ? null : _submit,
                 child: _busy
@@ -260,12 +264,32 @@ class _TrackerFormSheetState extends ConsumerState<_TrackerFormSheet> {
                       )
                     : Text(_isEditing ? 'Save changes' : 'Create tracker'),
               ),
+              const SizedBox(height: AppSpacing.sm),
+              OutlinedButton(
+                onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// 12px semibold muted label above a field.
+class _Label extends StatelessWidget {
+  const _Label(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: AppTypography.label.copyWith(color: context.palette.muted),
+    ),
+  );
 }
 
 class _DateField extends StatelessWidget {
@@ -283,23 +307,28 @@ class _DateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: AppRadius.field,
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: const Icon(Icons.event_outlined),
-          suffixIcon: onClear == null
-              ? null
-              : IconButton(
-                  tooltip: 'Clear date',
-                  icon: const Icon(Icons.close),
-                  onPressed: onClear,
-                ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Label(label),
+        InkWell(
+          onTap: onTap,
+          borderRadius: AppRadius.field,
+          child: InputDecorator(
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.event_outlined),
+              suffixIcon: onClear == null
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear date',
+                      icon: const Icon(Icons.close),
+                      onPressed: onClear,
+                    ),
+            ),
+            child: Text(value, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
         ),
-        child: Text(value),
-      ),
+      ],
     );
   }
 }

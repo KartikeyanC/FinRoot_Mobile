@@ -82,113 +82,168 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     final s = ref.watch(driveBackupProvider);
     final sync = ref.watch(syncEngineProvider);
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? false;
-    final tt = Theme.of(context).textTheme;
+    final palette = context.palette;
+    final finance = context.finance;
+    final lastBackup = s.lastBackupAt;
+    final age = lastBackup == null
+        ? null
+        : DateTime.now().difference(lastBackup.toLocal());
+    final stale = age == null || age.inDays >= 7;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Sync & backup')),
+    return AppPage(
+      title: 'Sync & backup',
+      subtitle: 'Keep your data safe and in step',
+      padBody: false,
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenGutter, AppSpacing.lg, AppSpacing.screenGutter, AppSpacing.huge,
+          AppSpacing.screenGutter,
+          AppSpacing.sm,
+          AppSpacing.screenGutter,
+          AppSpacing.huge,
         ),
         children: [
+          MetricCard(
+            eyebrow: 'Last backup to Google Drive',
+            figure: lastBackup == null
+                ? 'Never'
+                : RelativeTime.short(lastBackup),
+            status: lastBackup == null
+                ? 'No backup from this phone yet.'
+                : _stamp.format(lastBackup.toLocal()),
+            statusColor: stale ? finance.warning : finance.income,
+            action: PillButton(
+              label: s.busy ? 'Working…' : 'Back up now',
+              icon: Icons.cloud_upload_outlined,
+              onPressed: s.busy ? null : _backUp,
+              expand: true,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          AppCard(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.xs,
+            ),
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                'Back up once a day',
+                style: AppTypography.bodyStrong.copyWith(color: palette.ink),
+              ),
+              subtitle: const Text(
+                'When you open FinRoot and the last backup is over a day old.',
+              ),
+              value: s.autoEnabled,
+              onChanged: (v) =>
+                  ref.read(driveBackupProvider.notifier).setAuto(v),
+            ),
+          ),
+          const SectionTitle('Live sync'),
           AppCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  const Icon(Icons.sync),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(child: Text('Live sync (FinRoot cloud)', style: tt.titleMedium)),
-                ]),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  'Keeps this phone and the web dashboard in step, all the time. '
-                  '${sync.lastSyncedAt == null ? 'Not synced yet.' : 'Last synced ${RelativeTime.short(sync.lastSyncedAt!)}.'}',
-                  style: tt.bodyMedium,
+                Row(
+                  children: [
+                    const IconTile(icon: Icons.sync_rounded),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'FinRoot cloud',
+                            style: AppTypography.bodyStrong.copyWith(
+                              color: palette.ink,
+                              fontSize: 15,
+                            ),
+                          ),
+                          Text(
+                            sync.lastSyncedAt == null
+                                ? 'Not synced yet'
+                                : 'Last synced ${RelativeTime.short(sync.lastSyncedAt!)}',
+                            style: AppTypography.label.copyWith(
+                              color: palette.muted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Keeps this phone and the web dashboard in step, all the time.',
+                  style: AppTypography.body.copyWith(color: palette.muted),
+                ),
+                const SizedBox(height: AppSpacing.md),
                 OutlinedButton.icon(
-                  onPressed: () => ref.read(syncEngineProvider.notifier).syncNow(full: true, force: true),
-                  icon: const Icon(Icons.refresh),
+                  onPressed: () => ref
+                      .read(syncEngineProvider.notifier)
+                      .syncNow(full: true, force: true),
+                  icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Sync now'),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  const Icon(Icons.add_to_drive),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(child: Text('Google Drive backup', style: tt.titleMedium)),
-                ]),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  'A copy of everything in this workspace, saved as a file in the '
-                  '"$backupFolderName" folder of your own Google Drive. FinRoot can '
-                  'only see the files it makes there.',
-                  style: tt.bodyMedium,
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  s.lastBackupAt == null
-                      ? 'No backup from this phone yet.'
-                      : 'Last backup ${_stamp.format(s.lastBackupAt!.toLocal())}.',
-                  style: tt.bodySmall,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                FilledButton.icon(
-                  onPressed: s.busy ? null : _backUp,
-                  icon: s.busy
-                      ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.cloud_upload_outlined),
-                  label: Text(s.busy ? 'Working…' : 'Back up now'),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Back up once a day'),
-                  subtitle: const Text('When you open FinRoot and the last backup is over a day old.'),
-                  value: s.autoEnabled,
-                  onChanged: (v) => ref.read(driveBackupProvider.notifier).setAuto(v),
-                ),
-              ],
+          const SectionTitle('Backups in Google Drive'),
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md, left: 4),
+            child: Text(
+              'A copy of everything in this workspace, saved in the '
+              '"$backupFolderName" folder of your own Google Drive. FinRoot '
+              'can only see the files it makes there.',
+              style: AppTypography.body.copyWith(color: palette.muted),
             ),
           ),
-          const SectionHeader('Backups in Google Drive'),
           if (_files == null)
             Align(
               alignment: Alignment.centerLeft,
-              child: TextButton.icon(
+              child: OutlinedButton.icon(
                 onPressed: s.busy ? null : _load,
                 icon: const Icon(Icons.folder_open_outlined),
                 label: const Text('Show my backups'),
               ),
             )
           else if (_files!.isEmpty)
-            Text('No backups yet.', style: tt.bodyMedium)
+            const CardEmpty(
+              icon: Icons.cloud_off_outlined,
+              title: 'No backups yet',
+              message: 'Tap Back up now above to make your first one.',
+            )
           else
             for (final f in _files!)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.description_outlined),
-                title: Text(_stamp.format(f.modified.toLocal())),
-                subtitle: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: canWrite
-                    ? TextButton(onPressed: s.busy ? null : () => _restore(f), child: const Text('Restore'))
-                    : null,
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: ListRow(
+                  icon: Icons.description_outlined,
+                  title: _stamp.format(f.modified.toLocal()),
+                  subtitle: f.name,
+                  trailing: canWrite
+                      ? OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 36),
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                          ),
+                          onPressed: s.busy ? null : () => _restore(f),
+                          child: const Text('Restore'),
+                        )
+                      : null,
+                ),
               ),
           const SizedBox(height: AppSpacing.lg),
-          TextButton(
-            onPressed: s.busy
-                ? null
-                : () => _guard(() async {
+          Center(
+            child: TextButton(
+              onPressed: s.busy
+                  ? null
+                  : () => _guard(() async {
                       await ref.read(driveBackupProvider.notifier).disconnect();
                       if (mounted) setState(() => _files = null);
                     }),
-            child: const Text('Disconnect Google Drive'),
+              child: const Text('Disconnect Google Drive'),
+            ),
           ),
         ],
       ),

@@ -10,6 +10,7 @@ import '../../../trackers/application/trackers_providers.dart';
 import '../../../trackers/domain/tracker_draft.dart';
 import '../../../trackers/domain/tracker_spend.dart';
 import '../../../trackers/presentation/widgets/tracker_progress.dart';
+import 'home_parts.dart';
 
 /// Active trackers on the feed, with spend against budget. Hidden when the
 /// trackers menu is locked (the tab owns that state) or when there are none —
@@ -31,28 +32,26 @@ class HomeTrackersSection extends ConsumerWidget {
         .toList();
     if (active.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionHeader(
-          'Trackers',
-          action: TextButton(
-            onPressed: () => context.go(AppDestination.trackers.path),
-            child: const Text('See all'),
-          ),
-        ),
-        AppCard(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          child: Column(
-            children: [
-              for (var i = 0; i < active.length; i++) ...[
-                if (i > 0) const Divider(height: 1),
-                _TrackerRow(active[i]),
-              ],
-            ],
-          ),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
+      child: HomeSection(
+      title: 'Trackers',
+      trailing: HomeSeeAll(
+        onPressed: () => context.go(AppDestination.trackers.path),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < active.length; i++) ...[
+            if (i > 0)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                child: HomeDivider(),
+              ),
+            _TrackerRow(active[i]),
+          ],
+        ],
+      ),
+    ),
     );
   }
 }
@@ -63,37 +62,34 @@ class _TrackerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
+    final palette = context.palette;
 
     return InkWell(
       onTap: () => context.push('/tracker/${t.tracker.id}'),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  trackerTypeIcon(t.tracker.type),
-                  size: 18,
-                  color: context.finance.brandText,
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    trackerDisplayLabel(t.tracker.name),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+      borderRadius: AppRadius.tile,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              IconTile(icon: trackerTypeIcon(t.tracker.type), size: 36),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  trackerDisplayLabel(t.tracker.name),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.bodyStrong.copyWith(
+                    color: palette.ink,
+                    fontSize: 15,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            TrackerProgress(t, compact: true),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TrackerProgress(t, compact: true),
+        ],
       ),
     );
   }

@@ -8,6 +8,7 @@ import '../../core/providers/providers.dart';
 import '../../data/local/cached_rows.dart';
 import '../../design/design.dart';
 import '../../domain/constants.dart';
+import '../accounts/presentation/wealth_kit.dart';
 import '../menus/application/menu_providers.dart';
 import '../menus/presentation/menu_locked_view.dart';
 import '../sync/application/sync_engine.dart';
@@ -74,90 +75,210 @@ final insuranceProvider = FutureProvider<List<InsurancePolicy>>((ref) async {
 
 final _date = DateFormat('d MMM yyyy');
 
+IconData _iconFor(String category) {
+  final c = category.toLowerCase();
+  if (c.contains('health') || c.contains('medical')) {
+    return Icons.health_and_safety_outlined;
+  }
+  if (c.contains('life') || c.contains('term')) return Icons.favorite_border;
+  if (c.contains('vehicle') || c.contains('car') || c.contains('motor')) {
+    return Icons.directions_car_outlined;
+  }
+  if (c.contains('home') || c.contains('property')) return Icons.home_outlined;
+  if (c.contains('travel')) return Icons.flight_takeoff_rounded;
+  return Icons.verified_user_outlined;
+}
+
 class InsuranceScreen extends ConsumerWidget {
   const InsuranceScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(menuStatusProvider(FeatureMenu.insurance)) == MenuStatus.locked) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Insurance')),
-        body: const MenuLockedView(feature: 'Insurance', icon: Icons.health_and_safety_outlined),
+    if (ref.watch(menuStatusProvider(FeatureMenu.insurance)) ==
+        MenuStatus.locked) {
+      return const AppPage(
+        title: 'Insurance',
+        body: MenuLockedView(
+          feature: 'Insurance',
+          icon: Icons.health_and_safety_outlined,
+        ),
       );
     }
     final policies = ref.watch(insuranceProvider);
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Insurance')),
+    return AppPage(
+      title: 'Insurance',
+      padBody: false,
       body: RefreshIndicator(
-        onRefresh: () => ref.read(syncEngineProvider.notifier).syncNow(force: true),
+        onRefresh: () =>
+            ref.read(syncEngineProvider.notifier).syncNow(force: true),
         child: policies.when(
           loading: () => const LoadingView(),
           error: (e, _) => ErrorView(e),
           data: (list) {
             if (list.isEmpty) {
-              return ListView(children: const [
-                SizedBox(height: AppSpacing.huge),
-                EmptyView(
-                  title: 'No policies',
-                  message: 'Policies you add on the web dashboard show up here.',
-                  icon: Icons.health_and_safety_outlined,
-                ),
-              ]);
+              return const EmptyView(
+                title: 'No policies',
+                message:
+                    'Policies you add on the web dashboard show up here, with '
+                    'their cover and the next premium due.',
+                icon: Icons.health_and_safety_outlined,
+              );
             }
             final cover = list.fold<double>(0, (s, p) => s + p.sumInsured);
             final premiums = list.fold<double>(0, (s, p) => s + p.premium);
+            final dueSoon = list
+                .where(
+                  (p) =>
+                      p.due != null &&
+                      p.due!.difference(DateTime.now()).inDays <= 15,
+                )
+                .length;
             return ListView(
               padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenGutter, AppSpacing.lg, AppSpacing.screenGutter, AppSpacing.huge,
+                AppSpacing.screenGutter,
+                AppSpacing.xs,
+                AppSpacing.screenGutter,
+                AppSpacing.huge,
               ),
               children: [
-                AppCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Total cover', style: tt.labelMedium),
-                      Text(MoneyFormat.money(cover), style: tt.headlineSmall),
-                      Text('${list.length} policies · ${MoneyFormat.money(premiums)} in premiums',
-                          style: tt.bodySmall),
-                    ],
-                  ),
+                MetricCard(
+                  eyebrow: 'Total cover',
+                  figure: MoneyFormat.short(cover),
+                  figureSuffix:
+                      '${list.length} ${list.length == 1 ? 'policy' : 'policies'}',
+                  status: dueSoon > 0
+                      ? '$dueSoon premium${dueSoon == 1 ? '' : 's'} due soon'
+                      : '${MoneyFormat.money(premiums)} in premiums',
+                  statusColor: dueSoon > 0
+                      ? context.finance.expense
+                      : context.palette.muted,
                 ),
-                const SizedBox(height: AppSpacing.md),
-                for (final p in list) ...[
-                  AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(p.name, style: tt.titleMedium),
-                        Text(
-                          [p.category, if (p.provider?.isNotEmpty == true) p.provider!].join(' · '),
-                          style: tt.bodySmall,
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        Text('Cover ${MoneyFormat.money(p.sumInsured)} · '
-                            'premium ${MoneyFormat.money(p.premium)}'
-                            '${p.frequency?.isNotEmpty == true ? ' (${p.frequency})' : ''}'),
-                        if (p.due != null)
-                          Text(
-                            'Due ${_date.format(p.due!)}',
-                            style: tt.bodyMedium?.copyWith(
-                              color: p.due!.difference(DateTime.now()).inDays <= 15 ? scheme.error : null,
-                            ),
-                          ),
-                        if (p.policyNumber?.isNotEmpty == true)
-                          Text('Policy no. ${p.policyNumber}', style: tt.bodySmall),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
+                const SectionTitle('Policies'),
+                for (var i = 0; i < list.length; i++) ...[
+                  _PolicyCard(list[i], index: i),
+                  const SizedBox(height: AppSpacing.sm),
                 ],
               ],
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _PolicyCard extends StatelessWidget {
+  const _PolicyCard(this.p, {required this.index});
+  final InsurancePolicy p;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final days = p.due?.difference(DateTime.now()).inDays;
+    final soon = days != null && days <= 15;
+    final Widget? duePill = p.due == null
+        ? null
+        : TonePill(
+            'Due ${_date.format(p.due!)}',
+            soon ? Tones.coral(context) : Tones.mint(context),
+          );
+    Widget fact(String label, String value) => Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: AppTypography.label.copyWith(
+              color: palette.muted,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.bodyStrong.copyWith(color: palette.ink),
+          ),
+        ],
+      ),
+    );
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              ToneTile(
+                icon: _iconFor(p.category),
+                tone: Tones.byIndex(context, index),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      p.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodyStrong.copyWith(
+                        color: palette.ink,
+                        fontSize: 15,
+                      ),
+                    ),
+                    Text(
+                      [
+                        p.category,
+                        if (p.provider?.isNotEmpty == true) p.provider!,
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.label.copyWith(
+                        color: palette.muted,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              fact('Cover', MoneyFormat.money(p.sumInsured)),
+              fact(
+                p.frequency?.isNotEmpty == true
+                    ? 'Premium (${p.frequency})'
+                    : 'Premium',
+                MoneyFormat.money(p.premium),
+              ),
+            ],
+          ),
+          if (duePill != null || p.policyNumber?.isNotEmpty == true) ...[
+            const SizedBox(height: AppSpacing.md),
+            Wrap(
+              spacing: AppSpacing.md,
+              runSpacing: AppSpacing.xs,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ?duePill,
+                if (p.policyNumber?.isNotEmpty == true)
+                  Text(
+                    'Policy no. ${p.policyNumber}',
+                    style: AppTypography.label.copyWith(
+                      color: palette.muted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../../../../navigation/destinations.dart';
 import '../../../transactions/domain/transaction.dart';
 import '../../../transactions/presentation/widgets/transaction_tile.dart';
 import '../../application/home_providers.dart';
+import 'home_parts.dart';
 
 /// The feed's "Recent activity" — the last handful of transactions from the
 /// cache, newest first, with a link to the full ledger (M8).
@@ -17,34 +18,27 @@ class HomeRecentActivity extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final recent = ref.watch(recentTransactionsProvider);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionHeader(
-          'Recent activity',
-          action: recent.value?.isNotEmpty == true
-              ? TextButton(
-                  onPressed: () =>
-                      context.go(AppDestination.transactions.path),
-                  child: const Text('See all'),
-                )
-              : null,
+    return HomeSection(
+      title: 'Recent activity',
+      trailing: recent.value?.isNotEmpty == true
+          ? HomeSeeAll(
+              onPressed: () => context.go(AppDestination.transactions.path),
+            )
+          : null,
+      child: recent.when(
+        loading: () => const _RecentSkeleton(),
+        error: (error, stack) => Text(
+          "Recent activity couldn't load right now.",
+          style: AppTypography.body.copyWith(color: context.palette.muted),
         ),
-        recent.when(
-          loading: () => const _RecentSkeleton(),
-          error: (error, stack) => AppCard(
-            child: Text(
-              'Recent activity couldn\'t load right now.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          data: (txns) => txns.isEmpty
-              ? const _RecentEmpty()
-              : _RecentList(txns: txns),
-        ),
-      ],
+        data: (txns) => txns.isEmpty
+            ? const HomeEmpty(
+                icon: Icons.receipt_long_outlined,
+                title: 'Nothing recorded yet',
+                message: 'Tap the + button to record your first expense.',
+              )
+            : _RecentList(txns: txns),
+      ),
     );
   }
 }
@@ -55,52 +49,13 @@ class _RecentList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: Column(
-        children: [
-          for (var i = 0; i < txns.length; i++) ...[
-            if (i > 0) const Divider(height: 1),
-            TransactionTile(txns[i]),
-          ],
+    return Column(
+      children: [
+        for (var i = 0; i < txns.length; i++) ...[
+          if (i > 0) const HomeDivider(),
+          TransactionTile(txns[i]),
         ],
-      ),
-    );
-  }
-}
-
-class _RecentEmpty extends StatelessWidget {
-  const _RecentEmpty();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    return AppCard(
-      child: Row(
-        children: [
-          Icon(Icons.receipt_long_outlined, color: scheme.onSurfaceVariant),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Nothing recorded yet',
-                  style: t.titleSmall,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Tap the + button to record your first expense.',
-                  style: t.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -110,32 +65,30 @@ class _RecentSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = Theme.of(context).colorScheme.surfaceContainerHighest;
-    return AppCard(
-      child: Column(
-        children: [
-          for (var i = 0; i < 3; i++) ...[
-            if (i > 0) const SizedBox(height: AppSpacing.lg),
-            Row(
-              children: [
-                _Bar(width: 40, height: 40, color: base, radius: 20),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _Bar(width: 140, height: 12, color: base),
-                      const SizedBox(height: AppSpacing.sm),
-                      _Bar(width: 90, height: 10, color: base),
-                    ],
-                  ),
+    final base = context.palette.subtle;
+    return Column(
+      children: [
+        for (var i = 0; i < 3; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              _Bar(width: 40, height: 40, color: base, radius: 20),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Bar(width: 140, height: 12, color: base),
+                    const SizedBox(height: AppSpacing.sm),
+                    _Bar(width: 90, height: 10, color: base),
+                  ],
                 ),
-                _Bar(width: 56, height: 12, color: base),
-              ],
-            ),
-          ],
+              ),
+              _Bar(width: 56, height: 12, color: base),
+            ],
+          ),
         ],
-      ),
+      ],
     );
   }
 }

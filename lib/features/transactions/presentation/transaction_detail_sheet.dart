@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/error/failure.dart';
+import '../../../core/money/money_format.dart';
 import '../../../core/time/relative_time.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
@@ -16,6 +17,7 @@ import '../../trackers/presentation/tracker_picker_sheet.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/transactions_providers.dart';
 import '../domain/transaction.dart';
+import 'widgets/category_style.dart';
 
 /// Opens the transaction detail the right way for the window size (M1 audit
 /// §11): a bottom sheet on a phone, a centred dialog on a tablet. The
@@ -48,7 +50,7 @@ Future<void> openTransactionDetail(BuildContext context, String id) {
   );
 }
 
-/// The transaction detail body — amount, meta rows, edit / delete. A bottom
+//// The transaction detail body — amount, meta rows, edit / delete. A bottom
 /// sheet and a tablet dialog wrap it (via [openTransactionDetail]); the
 /// Transactions two-pane layout drops it straight into its detail pane.
 /// [onClose] runs after a successful delete — pop the sheet, or clear the
@@ -62,7 +64,8 @@ class TransactionDetailView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final txn = ref.watch(transactionByIdProvider(id)).value;
-    final t = Theme.of(context).textTheme;
+    final palette = context.palette;
+    final finance = context.finance;
 
     if (txn == null) {
       return const Padding(
@@ -73,64 +76,146 @@ class TransactionDetailView extends ConsumerWidget {
 
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
     final isTransfer = txn.type == TxnType.transfer;
+    final style = CategoryStyle.of(context, txn.category, txn.type);
+    final amountColor = switch (txn.type) {
+      TxnType.income => finance.income,
+      TxnType.expense => finance.expense,
+      TxnType.transfer => finance.transfer,
+    };
+    final magnitude = txn.amount.toInrMoney().amount.toDouble().abs();
+    final shown = MoneyFormat.money(magnitude, currency: txn.amount.currency);
+    final sign = switch (txn.type) {
+      TxnType.income => '+',
+      TxnType.expense => '-',
+      TxnType.transfer => '',
+    };
+    final typeLabel = switch (txn.type) {
+      TxnType.income => 'Income',
+      TxnType.expense => 'Expense',
+      TxnType.transfer => 'Transfer',
+    };
+    final tracker = txn.trackerId == null
+        ? null
+        : ref.watch(trackerByIdProvider(txn.trackerId!)).value;
 
     return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: AppSpacing.xl,
         right: AppSpacing.xl,
-        top: AppSpacing.lg,
+        top: AppSpacing.xs,
         bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Center(
-            child: AmountText.money(
-              txn.amount,
-              type: txn.type,
-              size: AmountSize.hero,
+          Row(
+            children: [
+              IconTile(
+                icon: style.icon,
+                tint: style.tint,
+                color: style.color,
+                size: 48,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Eyebrow(typeLabel),
+                    const SizedBox(height: 2),
+                    Text(
+                      isTransfer ? 'Transfer' : txn.category,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.title.copyWith(color: palette.ink),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Semantics(
+            label: '$typeLabel ${MoneyFormat.money(magnitude, currency: txn.amount.currency)}',
+            excludeSemantics: true,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '$sign$shown',
+                maxLines: 1,
+                style: AppTypography.moneyHero.copyWith(color: amountColor),
+              ),
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
-          Center(
-            child: Text(
-              isTransfer ? 'Transfer' : txn.category,
-              style: t.titleMedium,
-            ),
+          Text(
+            '${RelativeTime.dayLabel(txn.occurredAt)} · '
+            '${TimeOfDay.fromDateTime(txn.occurredAt.toLocal()).format(context)}',
+            style: AppTypography.body.copyWith(color: palette.muted),
           ),
-          if (txn.isPending || txn.hasFailedSync) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Center(
-              child: Text(
-                txn.hasFailedSync ? 'Not synced yet' : 'Pending sync',
-                style: t.labelSmall?.copyWith(
-                  color: txn.hasFailedSync
-                      ? Theme.of(context).colorScheme.error
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
+          const SizedBox(height: AppSpacing.md),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              if (!isTransfer)
+                StatusPill(
+                  txn.category,
+                  background: style.tint,
+                  foreground: style.color,
                 ),
-              ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.lg),
-          _Row(
-            label: 'Date',
-            value:
-                '${RelativeTime.dayLabel(txn.occurredAt)} · '
-                '${TimeOfDay.fromDateTime(txn.occurredAt.toLocal()).format(context)}',
+              if (tracker != null)
+                InkWell(
+                  borderRadius: AppRadius.chip,
+                  onTap: () => context.push('/tracker/${txn.trackerId}'),
+                  child: StatusPill(
+                    trackerDisplayLabel(tracker.name),
+                    icon: Icons.donut_large_rounded,
+                    background: palette.tint,
+                    foreground: palette.accentText,
+                  ),
+                ),
+              if (txn.hasFailedSync)
+                StatusPill(
+                  'Not synced yet',
+                  icon: Icons.sync_problem_rounded,
+                  background: _coral(context).$1,
+                  foreground: _coral(context).$2,
+                )
+              else if (txn.isPending)
+                StatusPill(
+                  'Pending sync',
+                  icon: Icons.schedule_rounded,
+                  background: finance.warningContainer,
+                  foreground: finance.warning,
+                ),
+            ],
           ),
-          if (!isTransfer && txn.paymentMode != null)
-            _Row(label: 'Payment mode', value: txn.paymentMode!),
-          if (isTransfer) ...[
-            _AccountRow(label: 'From', accountId: txn.accountId),
-            _AccountRow(label: 'To', accountId: txn.transferToAccountId),
-          ] else
-            _AccountRow(label: 'Account', accountId: txn.accountId),
-          if (!isTransfer) _TrackerRow(txn: txn, canWrite: canWrite),
-          if ((txn.description ?? '').trim().isNotEmpty)
-            _Row(label: 'Note', value: txn.description!.trim()),
           const SizedBox(height: AppSpacing.lg),
-          if (canWrite)
+          AppCard(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.xs,
+            ),
+            child: Column(
+              children: [
+                if (!isTransfer && txn.paymentMode != null)
+                  _Row(label: 'Payment mode', value: txn.paymentMode!),
+                if (isTransfer) ...[
+                  _AccountRow(label: 'From', accountId: txn.accountId),
+                  _AccountRow(label: 'To', accountId: txn.transferToAccountId),
+                ] else
+                  _AccountRow(label: 'Account', accountId: txn.accountId),
+                if (!isTransfer) _TrackerRow(txn: txn, canWrite: canWrite),
+                if ((txn.description ?? '').trim().isNotEmpty)
+                  _Row(label: 'Note', value: txn.description!.trim()),
+              ],
+            ),
+          ),
+          if (canWrite) ...[
+            const SizedBox(height: AppSpacing.lg),
             Row(
               children: [
                 Expanded(
@@ -151,14 +236,23 @@ class TransactionDetailView extends ConsumerWidget {
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('Delete'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: finance.danger,
                     ),
                   ),
                 ),
               ],
             ),
+          ],
         ],
       ),
+    );
+  }
+
+  static (Color, Color) _coral(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return (
+      dark ? AppColors.coralDark : AppColors.coralLight,
+      dark ? AppColors.coralFgDark : AppColors.coralFgLight,
     );
   }
 
@@ -208,23 +302,24 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 110,
+            width: 104,
             child: Text(
               label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
+              style: AppTypography.body.copyWith(color: palette.muted),
             ),
           ),
           Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+            child: Text(
+              value,
+              style: AppTypography.bodyStrong.copyWith(color: palette.ink),
+            ),
           ),
         ],
       ),
@@ -257,7 +352,7 @@ class _TrackerRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
     final messenger = ScaffoldMessenger.of(context);
 
     Future<void> run(Future<void> Function() action) async {
@@ -291,17 +386,14 @@ class _TrackerRow extends ConsumerWidget {
 
     final tracker = ref.watch(trackerByIdProvider(txn.trackerId!)).value;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 110,
+            width: 104,
             child: Text(
               'Tracker',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
+              style: AppTypography.body.copyWith(color: palette.muted),
             ),
           ),
           Expanded(
@@ -313,8 +405,8 @@ class _TrackerRow extends ConsumerWidget {
                 tracker == null
                     ? 'Assigned'
                     : trackerDisplayLabel(tracker.name),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: tracker == null ? null : context.finance.brandText,
+                style: AppTypography.bodyStrong.copyWith(
+                  color: tracker == null ? palette.ink : palette.accentText,
                 ),
               ),
             ),

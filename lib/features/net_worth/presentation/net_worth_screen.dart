@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure.dart';
+import '../../../core/money/money.dart';
 import '../../../core/time/relative_time.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../../menus/application/menu_providers.dart';
 import '../../menus/presentation/menu_locked_view.dart';
 import '../../workspace/application/workspace_providers.dart';
@@ -25,9 +29,9 @@ class NetWorthScreen extends ConsumerWidget {
         ref.watch(menuStatusProvider(FeatureMenu.netWorth)) ==
         MenuStatus.locked;
     if (locked) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Net worth')),
-        body: const MenuLockedView(
+      return const AppPage(
+        title: 'Net worth',
+        body: MenuLockedView(
           feature: 'Net worth',
           icon: Icons.balance_outlined,
         ),
@@ -38,14 +42,15 @@ class NetWorthScreen extends ConsumerWidget {
     final totals = ref.watch(netWorthTotalsProvider);
     final history = ref.watch(netWorthHistoryProvider);
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
+    final hasEntries = entries.value?.isNotEmpty ?? false;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Net worth')),
-      floatingActionButton: canWrite
-          ? GradientExtendedFab(
+    return AppPage(
+      title: 'Net worth',
+      padBody: false,
+      floatingActionButton: canWrite && hasEntries
+          ? AddFab(
+              label: 'Item',
               onPressed: () => openNetWorthEntryForm(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Item'),
             )
           : null,
       body: RefreshIndicator(
@@ -62,24 +67,28 @@ class NetWorthScreen extends ConsumerWidget {
           data: (list) => ListView(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.screenGutter,
-              AppSpacing.lg,
+              AppSpacing.xs,
               AppSpacing.screenGutter,
-              AppSpacing.huge,
+              96,
             ),
             children: [
-              _HeadlineCard(totals: totals),
-              _TrendLine(history: history.value ?? const []),
               if (list.isEmpty)
                 _Empty(canWrite: canWrite)
               else ...[
+                _HeadlineCard(
+                  totals: totals,
+                  history: history.value ?? const [],
+                ),
                 _GroupSection(
                   title: 'Assets',
                   entries: list.where((e) => e.isAsset).toList(),
+                  total: totals.assets,
                   canWrite: canWrite,
                 ),
                 _GroupSection(
                   title: 'Liabilities',
                   entries: list.where((e) => !e.isAsset).toList(),
+                  total: totals.liabilities,
                   canWrite: canWrite,
                 ),
               ],
@@ -92,99 +101,173 @@ class NetWorthScreen extends ConsumerWidget {
 }
 
 class _HeadlineCard extends StatelessWidget {
-  const _HeadlineCard({required this.totals});
+  const _HeadlineCard({required this.totals, required this.history});
   final NetWorthTotals totals;
+  final List<NetWorthPoint> history;
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    return AppCard(
+    final palette = context.palette;
+    final finance = context.finance;
+
+    String? status;
+    var up = true;
+    if (history.length >= 2) {
+      final delta = history.last.netWorth - history.first.netWorth;
+      up = delta.amount.sign >= 0;
+      status =
+          '${up ? '+' : '-'}${delta.abs.formatShort()} since '
+          '${RelativeTime.dayLabel(history.first.capturedOn)}';
+    }
+
+    return MetricCard(
+      eyebrow: 'Net worth',
+      figure: totals.netWorth.formatShort(),
+      status: status ?? 'Assets minus liabilities',
+      statusColor: status == null
+          ? palette.muted
+          : (up ? finance.income : finance.expense),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Net worth',
-            style: tt.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: AppSpacing.xxs),
-          AmountText.money(totals.netWorth, size: AmountSize.hero),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              Text(
-                'Assets ${totals.assets.formatShort()}',
-                style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Text(
-                'Liabilities ${totals.liabilities.formatShort()}',
-                style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-            ],
-          ),
+          if (history.length >= 2) ...[
+            _Sparkline(
+              values: [
+                for (final p in history) p.netWorth.amount.toDouble(),
+              ],
+              color: up ? finance.income : finance.expense,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          SplitBar([
+            BarSegment(
+              'Assets',
+              totals.assets.amount.toDouble(),
+              palette.accent,
+              amountLabel: totals.assets.formatShort(),
+            ),
+            BarSegment(
+              'Liabilities',
+              totals.liabilities.amount.toDouble(),
+              Tones.coral(context).fg,
+              amountLabel: totals.liabilities.formatShort(),
+            ),
+          ]),
         ],
       ),
     );
   }
 }
 
-class _TrendLine extends StatelessWidget {
-  const _TrendLine({required this.history});
-  final List<NetWorthPoint> history;
+/// A tiny history line under the headline figure (net worth per snapshot).
+class _Sparkline extends StatelessWidget {
+  const _Sparkline({required this.values, required this.color});
+  final List<double> values;
+  final Color color;
 
   @override
-  Widget build(BuildContext context) {
-    if (history.length < 2) return const SizedBox.shrink();
-    final first = history.first.netWorth;
-    final last = history.last.netWorth;
-    final delta = last - first;
-    final up = delta.amount.sign >= 0;
-    final finance = context.finance;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.sm, left: AppSpacing.xs),
-      child: Text(
-        '${up ? '▲' : '▼'} ${delta.abs.formatShort()} since '
-        '${RelativeTime.dayLabel(history.first.capturedOn)} '
-        '(${history.length} snapshots)',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: up ? finance.income : finance.expense,
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+    height: 56,
+    child: CustomPaint(
+      painter: _SparklinePainter(values, color),
+      size: Size.infinite,
+    ),
+  );
 }
+
+class _SparklinePainter extends CustomPainter {
+  _SparklinePainter(this.values, this.color);
+  final List<double> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.length < 2) return;
+    final lo = values.reduce((a, b) => a < b ? a : b);
+    final hi = values.reduce((a, b) => a > b ? a : b);
+    final span = (hi - lo).abs() < 1e-9 ? 1.0 : hi - lo;
+    const pad = 4.0;
+    Offset at(int i) => Offset(
+      pad + (size.width - 2 * pad) * i / (values.length - 1),
+      pad + (size.height - 2 * pad) * (1 - (values[i] - lo) / span),
+    );
+    final line = Path()..moveTo(at(0).dx, at(0).dy);
+    for (var i = 1; i < values.length; i++) {
+      line.lineTo(at(i).dx, at(i).dy);
+    }
+    final fill = Path.from(line)
+      ..lineTo(at(values.length - 1).dx, size.height)
+      ..lineTo(at(0).dx, size.height)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color.withValues(alpha: 0.22), color.withValues(alpha: 0)],
+        ).createShader(Offset.zero & size),
+    );
+    canvas.drawPath(
+      line,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.drawCircle(at(values.length - 1), 4, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_SparklinePainter old) =>
+      old.values != values || old.color != color;
+}
+
+IconData _iconForGroup(String group) => switch (group) {
+  'liquid' => Icons.payments_outlined,
+  'bank' => Icons.account_balance_outlined,
+  'mutual_funds' => Icons.pie_chart_outline,
+  'stocks' => Icons.show_chart,
+  'credit_card' => Icons.credit_card_outlined,
+  'car_loan' => Icons.directions_car_outlined,
+  'home_loan' => Icons.home_outlined,
+  'personal_loan' => Icons.person_outline,
+  'other_liability' => Icons.receipt_long_outlined,
+  _ => Icons.category_outlined,
+};
 
 class _GroupSection extends StatelessWidget {
   const _GroupSection({
     required this.title,
     required this.entries,
+    required this.total,
     required this.canWrite,
   });
 
   final String title;
   final List<NetWorthEntry> entries;
+  final Money total;
   final bool canWrite;
 
   @override
   Widget build(BuildContext context) {
     if (entries.isEmpty) return const SizedBox.shrink();
+    final isAsset = entries.first.isAsset;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionHeader(title),
-        AppCard(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          child: Column(
-            children: [
-              for (var i = 0; i < entries.length; i++) ...[
-                if (i > 0) const Divider(height: 1),
-                _EntryRow(entry: entries[i], canWrite: canWrite),
-              ],
-            ],
+        SectionTitle(
+          title,
+          trailing: Text(
+            total.formatShort(),
+            style: AppTypography.bodyStrong.copyWith(
+              color: isAsset ? context.palette.ink : context.finance.expense,
+            ),
           ),
         ),
+        for (final e in entries) _EntryRow(entry: e, canWrite: canWrite),
       ],
     );
   }
@@ -197,60 +280,57 @@ class _EntryRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-
-    return InkWell(
-      onTap: canWrite
-          ? () => openNetWorthEntryForm(context, editing: entry)
-          : null,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          minHeight: AppSpacing.minTouchTarget,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.bodyLarge,
-                    ),
-                    Text(
-                      groupLabel(entry.group),
-                      style: tt.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              AmountText.money(entry.amount, signed: false),
-              if (canWrite)
-                IconButton(
-                  tooltip: 'Delete entry',
-                  icon: const Icon(Icons.delete_outline, size: 20),
-                  onPressed: () async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    try {
-                      await ref
-                          .read(netWorthEditorControllerProvider)
-                          .delete(entry.id);
-                    } on Failure catch (f) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text(f.message)),
-                      );
-                    }
-                  },
-                ),
-            ],
+    final tone = entry.isAsset ? Tones.mint(context) : Tones.coral(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: ListRow(
+        onTap: canWrite
+            ? () => openNetWorthEntryForm(context, editing: entry)
+            : null,
+        leading: ToneTile(icon: _iconForGroup(entry.group), tone: tone),
+        title: entry.name,
+        subtitle: groupLabel(entry.group),
+        trailing: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.5,
           ),
+          child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: AmountText(
+                entry.amount.amount.toDouble(),
+                currency: entry.amount.currency,
+                signed: false,
+                color: entry.isAsset ? null : context.finance.expense,
+              ),
+            ),
+            if (canWrite)
+              RowMenu(
+                tooltip: 'Entry actions',
+                onSelected: (v) async {
+                  if (v == 'edit') {
+                    unawaited(
+                      openNetWorthEntryForm(context, editing: entry),
+                    );
+                    return;
+                  }
+                  final messenger = ScaffoldMessenger.of(context);
+                  try {
+                    await ref
+                        .read(netWorthEditorControllerProvider)
+                        .delete(entry.id);
+                  } on Failure catch (f) {
+                    messenger.showSnackBar(SnackBar(content: Text(f.message)));
+                  }
+                },
+                items: const [
+                  PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                ],
+              ),
+          ],
+        ),
         ),
       ),
     );
@@ -265,18 +345,14 @@ class _Empty extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.xl),
-      child: EmptyView(
+      child: CardEmpty(
         icon: Icons.balance_outlined,
         title: 'Build the picture',
         message:
             'Add what you own and what you owe — the difference is your net '
             'worth, and the app tracks it over time.',
-        action: canWrite
-            ? FilledButton(
-                onPressed: () => openNetWorthEntryForm(context),
-                child: const Text('Add an item'),
-              )
-            : null,
+        actionLabel: canWrite ? 'Add an item' : null,
+        onAction: canWrite ? () => openNetWorthEntryForm(context) : null,
       ),
     );
   }

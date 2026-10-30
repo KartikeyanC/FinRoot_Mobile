@@ -6,6 +6,7 @@ import '../../../core/money/money.dart';
 import '../../../core/time/relative_time.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../application/goal_editor_controller.dart';
 import '../domain/goal.dart';
 import '../domain/goal_draft.dart';
@@ -94,124 +95,90 @@ class _GoalFormSheetState extends ConsumerState<_GoalFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppSpacing.xl,
-        right: AppSpacing.xl,
-        top: AppSpacing.sm,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
-      ),
-      child: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(_isEditing ? 'Edit goal' : 'New goal', style: tt.titleLarge),
-              const SizedBox(height: AppSpacing.lg),
-              TextFormField(
-                controller: _title,
-                autofocus: !_isEditing,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'What are you saving for?',
-                  prefixIcon: Icon(Icons.flag_outlined),
-                ),
-                validator: GoalValidators.title,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextFormField(
-                controller: _target,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Target amount',
-                  prefixIcon: Icon(Icons.currency_rupee),
-                ),
-                validator: GoalValidators.target,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              DropdownButtonFormField<String>(
-                initialValue: _category,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Category (optional)',
-                  prefixIcon: Icon(Icons.sell_outlined),
-                ),
-                items: [
-                  const DropdownMenuItem<String>(child: Text('Not set')),
-                  for (final c in kGoalCategories)
-                    DropdownMenuItem(value: c, child: Text(c)),
-                ],
-                onChanged: (v) => setState(() => _category = v),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              InkWell(
-                onTap: () async {
-                  FocusScope.of(context).unfocus();
-                  final now = DateTime.now();
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: _targetDate ?? now,
-                    firstDate: DateTime(now.year - 1),
-                    lastDate: DateTime(now.year + 30),
-                  );
-                  if (picked != null) setState(() => _targetDate = picked);
-                },
-                borderRadius: AppRadius.field,
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Target date (optional)',
-                    prefixIcon: const Icon(Icons.event_outlined),
-                    suffixIcon: _targetDate == null
-                        ? null
-                        : IconButton(
-                            tooltip: 'Clear target date',
-                            icon: const Icon(Icons.close),
-                            onPressed: () =>
-                                setState(() => _targetDate = null),
-                          ),
-                  ),
-                  child: Text(
-                    _targetDate == null
-                        ? 'No date'
-                        : RelativeTime.dayLabel(_targetDate!),
-                  ),
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: AppSpacing.md),
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    borderRadius: AppRadius.field,
-                  ),
-                  child: Text(
-                    _error!.message,
-                    style: tt.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: AppSpacing.lg),
-              FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(_isEditing ? 'Save changes' : 'Add goal'),
-              ),
-            ],
+    return SheetFrame(
+      formKey: _formKey,
+      title: _isEditing ? 'Edit goal' : 'New goal',
+      primaryLabel: _isEditing ? 'Save changes' : 'Add goal',
+      onPrimary: _submit,
+      busy: _busy,
+      error: _error?.message,
+      children: [
+        LabeledField(
+          label: 'What are you saving for?',
+          child: TextFormField(
+            controller: _title,
+            autofocus: !_isEditing,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'Emergency fund',
+              prefixIcon: Icon(Icons.flag_outlined),
+            ),
+            validator: GoalValidators.title,
           ),
         ),
-      ),
+        LabeledField(
+          label: 'Target amount',
+          child: TextFormField(
+            controller: _target,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              hintText: '0',
+              prefixIcon: Icon(Icons.currency_rupee),
+            ),
+            validator: GoalValidators.target,
+          ),
+        ),
+        LabeledField(
+          label: 'Category (optional)',
+          child: DropdownButtonFormField<String>(
+            initialValue: _category,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.sell_outlined),
+            ),
+            items: [
+              const DropdownMenuItem<String>(child: Text('Not set')),
+              for (final c in kGoalCategories)
+                DropdownMenuItem(value: c, child: Text(c)),
+            ],
+            onChanged: (v) => setState(() => _category = v),
+          ),
+        ),
+        LabeledField(
+          label: 'Target date (optional)',
+          child: InkWell(
+            onTap: () async {
+              FocusScope.of(context).unfocus();
+              final now = DateTime.now();
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _targetDate ?? now,
+                firstDate: DateTime(now.year - 1),
+                lastDate: DateTime(now.year + 30),
+              );
+              if (picked != null) setState(() => _targetDate = picked);
+            },
+            borderRadius: AppRadius.field,
+            child: InputDecorator(
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.event_outlined),
+                suffixIcon: _targetDate == null
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear target date',
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() => _targetDate = null),
+                      ),
+              ),
+              child: Text(
+                _targetDate == null
+                    ? 'No date'
+                    : RelativeTime.dayLabel(_targetDate!),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

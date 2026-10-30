@@ -16,23 +16,27 @@ class NoWorkspaceScreen extends ConsumerWidget {
     final memberships = ref.watch(membershipsProvider);
     final retrying = memberships.isLoading;
 
+    final palette = context.palette;
     return Scaffold(
+      backgroundColor: palette.page,
       body: SafeArea(
         child: Center(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.xxl),
-            child: Column(
+            child: AppCard(
+              padding: const EdgeInsets.all(AppSpacing.xxl),
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.workspaces_outline,
-                  size: 48,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(height: AppSpacing.lg),
+                const IconTile(icon: Icons.workspaces_outline, size: 56),
+                const SizedBox(height: AppSpacing.xl),
                 Text(
                   'No workspace found',
-                  style: Theme.of(context).textTheme.headlineSmall,
+                  style: AppTypography.display.copyWith(
+                    color: palette.ink,
+                    fontSize: 24,
+                    height: 32 / 24,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppSpacing.sm),
@@ -41,9 +45,7 @@ class NoWorkspaceScreen extends ConsumerWidget {
                   'unusual — retrying usually fixes it. If it keeps happening, '
                   'open FinRoot on the web once, then try again here.',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                  style: AppTypography.body.copyWith(color: palette.muted),
                 ),
                 const SizedBox(height: AppSpacing.xl),
                 FilledButton.icon(
@@ -67,6 +69,7 @@ class NoWorkspaceScreen extends ConsumerWidget {
                   child: const Text('Sign out'),
                 ),
               ],
+            ),
             ),
           ),
         ),

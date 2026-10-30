@@ -8,6 +8,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// on the website, and not under Forgot password (nothing to continue to).
 void main() {
   Future<void> pump(WidgetTester tester) async {
+    // A phone-sized, tall surface so the roomier layout fits without scrolling.
+    tester.view.physicalSize = const Size(430, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     tester.view.physicalSize = const Size(400, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

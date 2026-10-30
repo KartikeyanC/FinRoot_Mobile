@@ -173,13 +173,13 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
   Widget build(BuildContext context) {
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
     final accounts = ref.watch(workspaceAccountsProvider).value ?? const [];
-    final t = Theme.of(context).textTheme;
+    final palette = context.palette;
 
     return Padding(
       padding: EdgeInsets.only(
         left: AppSpacing.xl,
         right: AppSpacing.xl,
-        top: AppSpacing.sm,
+        top: AppSpacing.xs,
         bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
       ),
       child: Column(
@@ -190,42 +190,16 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
             widget.isEditing
                 ? 'Edit ${_kind.label.toLowerCase()}'
                 : 'Add ${_kind.label.toLowerCase()}',
-            style: t.titleLarge,
+            style: AppTypography.title.copyWith(color: palette.ink),
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.md),
           if (!canWrite)
             _ViewOnlyNote()
           else ...[
             if (!widget.isEditing) ...[
-              SegmentedButton<QuickAddKind>(
-                // Three icon + label segments must fit a 360dp phone: the
-                // filled segment already shows the choice, so drop the extra
-                // check mark, and tighten the side padding.
-                showSelectedIcon: false,
-                style: SegmentedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
-                  ),
-                ),
-                segments: const [
-                  ButtonSegment(
-                    value: QuickAddKind.expense,
-                    label: _SegmentLabel('Expense'),
-                    icon: Icon(Icons.south_west_rounded),
-                  ),
-                  ButtonSegment(
-                    value: QuickAddKind.income,
-                    label: _SegmentLabel('Income'),
-                    icon: Icon(Icons.north_east_rounded),
-                  ),
-                  ButtonSegment(
-                    value: QuickAddKind.transfer,
-                    label: _SegmentLabel('Transfer'),
-                    icon: Icon(Icons.swap_horiz_rounded),
-                  ),
-                ],
-                selected: {_kind},
-                onSelectionChanged: _busy ? null : (s) => _selectKind(s.first),
+              _KindSwitch(
+                kind: _kind,
+                onChanged: _busy ? null : _selectKind,
               ),
               const SizedBox(height: AppSpacing.xl),
             ],
@@ -283,6 +257,11 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
                           ? 'Save changes'
                           : 'Save ${_kind.label.toLowerCase()}',
                     ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            OutlinedButton(
+              onPressed: _busy ? null : () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
             ),
           ],
         ],
@@ -353,56 +332,65 @@ class _EntryForm extends StatelessWidget {
           validator: QuickAddValidators.amount,
         ),
         const SizedBox(height: AppSpacing.xxl),
-        DropdownButtonFormField<String>(
+        const _Label('Category'),
+        FormField<String>(
           initialValue: category,
-          isExpanded: true,
-          style: _valueStyle(context),
-          decoration: _fieldDecoration(
-            'Category',
-            Icons.sell_outlined,
-            hint: 'Choose a category',
+          validator: (v) => QuickAddValidators.category(
+            category,
+            required: true,
           ),
-          items: [
-            for (final c in {
-              ...kind.categories,
-              ...customCategories,
-              // An edited row keeps a category this list doesn't know (e.g.
-              // one since removed on the web) instead of breaking the picker.
-              ?category,
-            })
-              DropdownMenuItem(value: c, child: Text(c)),
-          ],
-          onChanged: onCategory,
-          validator: (v) => QuickAddValidators.category(v, required: true),
+          builder: (field) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PillWrap(
+                options: [
+                  for (final c in {
+                    ...kind.categories,
+                    ...customCategories,
+                    // An edited row keeps a category this list doesn't know
+                    // (e.g. one since removed on the web) instead of breaking
+                    // the picker.
+                    ?category,
+                  })
+                    c,
+                ],
+                selected: category,
+                onSelected: (v) {
+                  onCategory(v);
+                  field.didChange(v);
+                },
+              ),
+              if (field.hasError)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 4),
+                  child: Text(
+                    field.errorText!,
+                    style: AppTypography.label.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: AppSpacing.lg),
-        DropdownButtonFormField<String>(
-          initialValue: paymentMode,
-          isExpanded: true,
-          style: _valueStyle(context),
-          decoration: _fieldDecoration(
-            'Payment mode (optional)',
-            Icons.account_balance_wallet_outlined,
-          ),
-          items: [
-            const DropdownMenuItem<String>(child: Text('Not set')),
-            for (final m in kPaymentModes)
-              DropdownMenuItem(value: m, child: Text(m)),
-          ],
-          onChanged: onPaymentMode,
+        const _Label('Payment mode (optional)'),
+        _PillWrap(
+          options: kPaymentModes,
+          selected: paymentMode,
+          // Tapping the chosen mode again clears it ("Not set").
+          onSelected: (v) => onPaymentMode(v == paymentMode ? null : v),
         ),
         if (accounts.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.lg),
+          const _Label('Account (optional)'),
           DropdownButtonFormField<String>(
             initialValue: accounts.any((a) => a.id == accountId)
                 ? accountId
                 : null,
             isExpanded: true,
             style: _valueStyle(context),
-            decoration: _fieldDecoration(
-              'Account (optional)',
-              Icons.account_balance_outlined,
-            ),
+            decoration: _fieldDecoration(Icons.account_balance_outlined),
             items: [
               const DropdownMenuItem<String>(child: Text('Not set')),
               for (final a in accounts)
@@ -480,12 +468,12 @@ class _TransferForm extends StatelessWidget {
           validator: QuickAddValidators.amount,
         ),
         const SizedBox(height: AppSpacing.xxl),
+        const _Label('From'),
         DropdownButtonFormField<String>(
           initialValue: accounts.any((a) => a.id == fromId) ? fromId : null,
           isExpanded: true,
           style: _valueStyle(context),
           decoration: _fieldDecoration(
-            'From',
             Icons.logout_rounded,
             hint: 'Choose an account',
           ),
@@ -494,12 +482,12 @@ class _TransferForm extends StatelessWidget {
           validator: (_) => fromId == null ? 'Choose an account' : null,
         ),
         const SizedBox(height: AppSpacing.lg),
+        const _Label('To'),
         DropdownButtonFormField<String>(
           initialValue: accounts.any((a) => a.id == toId) ? toId : null,
           isExpanded: true,
           style: _valueStyle(context),
           decoration: _fieldDecoration(
-            'To',
             Icons.login_rounded,
             hint: 'Choose an account',
           ),
@@ -517,16 +505,167 @@ class _TransferForm extends StatelessWidget {
   }
 }
 
-/// Every field in the sheet keeps its label on the border, filled or not, so
-/// the labels line up down the form instead of some sitting inside the box
-/// (empty) and some on the border (with a value).
-InputDecoration _fieldDecoration(String label, IconData icon, {String? hint}) =>
-    InputDecoration(
-      labelText: label,
-      hintText: hint,
-      prefixIcon: Icon(icon),
-      floatingLabelBehavior: FloatingLabelBehavior.always,
+/// Fields carry no floating label: the 12px semibold [_Label] sits above them
+/// so the labels line up down the form.
+InputDecoration _fieldDecoration(IconData icon, {String? hint}) =>
+    InputDecoration(hintText: hint, prefixIcon: Icon(icon));
+
+/// 12px semibold muted label above a field.
+class _Label extends StatelessWidget {
+  const _Label(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: AppTypography.label.copyWith(color: context.palette.muted),
+    ),
+  );
+}
+
+/// The Expense / Income / Transfer switch: one round track, the chosen
+/// segment carries the brand gradient.
+class _KindSwitch extends StatelessWidget {
+  const _KindSwitch({required this.kind, required this.onChanged});
+  final QuickAddKind kind;
+  final ValueChanged<QuickAddKind>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    const items = [
+      (QuickAddKind.expense, 'Expense', Icons.south_west_rounded),
+      (QuickAddKind.income, 'Income', Icons.north_east_rounded),
+      (QuickAddKind.transfer, 'Transfer', Icons.swap_horiz_rounded),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: ShapeDecoration(
+        color: palette.subtle,
+        shape: StadiumBorder(side: BorderSide(color: palette.line)),
+      ),
+      child: Row(
+        children: [
+          for (final (value, label, icon) in items)
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: kind == value,
+                child: Material(
+                  color: Colors.transparent,
+                  shape: const StadiumBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: Ink(
+                    decoration: kind == value
+                        ? ShapeDecoration(
+                            shape: const StadiumBorder(),
+                            gradient: palette.gradient,
+                          )
+                        : null,
+                    child: InkWell(
+                      onTap: onChanged == null ? null : () => onChanged!(value),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                          horizontal: 4,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              icon,
+                              size: 16,
+                              color: kind == value
+                                  ? Colors.white
+                                  : palette.muted,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: _SegmentLabel(
+                                label,
+                                color: kind == value
+                                    ? Colors.white
+                                    : palette.ink,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
+  }
+}
+
+/// A wrapping grid of round pills; the chosen one carries the gradient.
+class _PillWrap extends StatelessWidget {
+  const _PillWrap({
+    required this.options,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<String> options;
+  final String? selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: [
+        for (final o in options)
+          Semantics(
+            button: true,
+            selected: o == selected,
+            label: o,
+            excludeSemantics: true,
+            child: Material(
+              color: o == selected ? Colors.transparent : palette.card,
+              shape: StadiumBorder(
+                side: BorderSide(
+                  color: o == selected ? Colors.transparent : palette.line,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Ink(
+                decoration: o == selected
+                    ? ShapeDecoration(
+                        shape: const StadiumBorder(),
+                        gradient: palette.gradient,
+                      )
+                    : null,
+                child: InkWell(
+                  onTap: () => onSelected(o),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                      vertical: 9,
+                    ),
+                    child: Text(
+                      o,
+                      style: AppTypography.bodyStrong.copyWith(
+                        color: o == selected ? Colors.white : palette.ink,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
 
 /// One value style for every field — dropdowns default to the heavier
 /// titleMedium, the date and note to bodyLarge, which also left the date box
@@ -537,13 +676,19 @@ TextStyle? _valueStyle(BuildContext context) =>
 /// A segment label that stays on one line, scaling down rather than wrapping
 /// ("Transfe / r") on a narrow phone or with large system text.
 class _SegmentLabel extends StatelessWidget {
-  const _SegmentLabel(this.text);
+  const _SegmentLabel(this.text, {required this.color});
   final String text;
+  final Color color;
 
   @override
   Widget build(BuildContext context) => FittedBox(
     fit: BoxFit.scaleDown,
-    child: Text(text, maxLines: 1, softWrap: false),
+    child: Text(
+      text,
+      maxLines: 1,
+      softWrap: false,
+      style: AppTypography.bodyStrong.copyWith(color: color),
+    ),
   );
 }
 
@@ -554,16 +699,22 @@ class _DateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: AppRadius.field,
-      child: InputDecorator(
-        decoration: _fieldDecoration('Date', Icons.event_outlined),
-        child: Text(
-          RelativeTime.dayLabel(occurredAt),
-          style: _valueStyle(context),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _Label('Date'),
+        InkWell(
+          onTap: onTap,
+          borderRadius: AppRadius.field,
+          child: InputDecorator(
+            decoration: _fieldDecoration(Icons.event_outlined),
+            child: Text(
+              RelativeTime.dayLabel(occurredAt),
+              style: _valueStyle(context),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -574,16 +725,21 @@ class _NoteField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      maxLength: 400,
-      textCapitalization: TextCapitalization.sentences,
-      decoration: _fieldDecoration(
-        'Note (optional)',
-        Icons.notes_rounded,
-        hint: 'Add a note',
-      ).copyWith(counterText: ''),
-      validator: QuickAddValidators.note,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _Label('Note (optional)'),
+        TextFormField(
+          controller: controller,
+          maxLength: 400,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: _fieldDecoration(
+            Icons.notes_rounded,
+            hint: 'Add a note',
+          ).copyWith(counterText: ''),
+          validator: QuickAddValidators.note,
+        ),
+      ],
     );
   }
 }

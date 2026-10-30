@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../design/design.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../application/net_worth_editor_controller.dart';
 import '../domain/net_worth.dart';
 
@@ -106,100 +107,67 @@ class _EntryFormSheetState extends ConsumerState<_EntryFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppSpacing.xl,
-        right: AppSpacing.xl,
-        top: AppSpacing.sm,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              _isEditing ? 'Edit item' : 'Add to net worth',
-              style: tt.titleLarge,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            if (!_isEditing)
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'asset', label: Text('Asset')),
-                  ButtonSegment(value: 'liability', label: Text('Liability')),
-                ],
-                selected: {_kind},
-                onSelectionChanged: _busy ? null : (s) => _setKind(s.first),
-              ),
-            const SizedBox(height: AppSpacing.md),
-            DropdownButtonFormField<String>(
-              initialValue: _group,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Group',
-                prefixIcon: Icon(Icons.folder_open_outlined),
-              ),
-              items: [
-                for (final g in _groups)
-                  DropdownMenuItem(value: g.id, child: Text(g.label)),
+    return SheetFrame(
+      formKey: _formKey,
+      title: _isEditing ? 'Edit item' : 'Add to net worth',
+      primaryLabel: _isEditing ? 'Save changes' : 'Add item',
+      onPrimary: _submit,
+      busy: _busy,
+      error: _error?.message,
+      children: [
+        if (!_isEditing)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'asset', label: Text('Asset')),
+                ButtonSegment(value: 'liability', label: Text('Liability')),
               ],
-              onChanged: (v) => setState(() => _group = v ?? _group),
+              selected: {_kind},
+              onSelectionChanged: _busy ? null : (s) => _setKind(s.first),
             ),
-            const SizedBox(height: AppSpacing.md),
-            TextFormField(
-              controller: _name,
-              autofocus: !_isEditing,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                prefixIcon: Icon(Icons.label_outline),
-              ),
-              validator: NetWorthValidators.name,
+          ),
+        LabeledField(
+          label: 'Group',
+          child: DropdownButtonFormField<String>(
+            initialValue: _group,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.folder_open_outlined),
             ),
-            const SizedBox(height: AppSpacing.md),
-            TextFormField(
-              controller: _amount,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                prefixIcon: Icon(Icons.currency_rupee),
-              ),
-              validator: NetWorthValidators.amount,
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  borderRadius: AppRadius.field,
-                ),
-                child: Text(
-                  _error!.message,
-                  style: tt.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                ),
-              ),
+            items: [
+              for (final g in _groups)
+                DropdownMenuItem(value: g.id, child: Text(g.label)),
             ],
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton(
-              onPressed: _busy ? null : _submit,
-              child: _busy
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(_isEditing ? 'Save changes' : 'Add item'),
-            ),
-          ],
+            onChanged: (v) => setState(() => _group = v ?? _group),
+          ),
         ),
-      ),
+        LabeledField(
+          label: 'Name',
+          child: TextFormField(
+            controller: _name,
+            autofocus: !_isEditing,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              hintText: 'HDFC savings, Car loan…',
+              prefixIcon: Icon(Icons.label_outline),
+            ),
+            validator: NetWorthValidators.name,
+          ),
+        ),
+        LabeledField(
+          label: 'Amount',
+          child: TextFormField(
+            controller: _amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              hintText: '0',
+              prefixIcon: Icon(Icons.currency_rupee),
+            ),
+            validator: NetWorthValidators.amount,
+          ),
+        ),
+      ],
     );
   }
 }

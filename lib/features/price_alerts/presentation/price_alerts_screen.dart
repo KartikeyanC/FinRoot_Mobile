@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../design/design.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../../investments/data/live_price_gateway.dart';
 import '../../investments/domain/live_price.dart';
 import '../../notifications/data/notification_service.dart';
@@ -49,14 +50,16 @@ class _PriceAlertsScreenState extends ConsumerState<PriceAlertsScreen> {
     final alerts = ref.watch(priceAlertsProvider);
     final prices = ref.watch(alertPricesProvider).value ?? const {};
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
+    final hasAlerts = alerts.value?.isNotEmpty ?? false;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Price alerts')),
-      floatingActionButton: canWrite
-          ? GradientExtendedFab(
+    return AppPage(
+      title: 'Price alerts',
+      padBody: false,
+      floatingActionButton: canWrite && hasAlerts
+          ? AddFab(
+              label: 'Alert',
+              icon: Icons.add_alert_outlined,
               onPressed: () => _openAddSheet(context),
-              icon: const Icon(Icons.add_alert_outlined),
-              label: const Text('Alert'),
             )
           : null,
       body: RefreshIndicator(
@@ -70,47 +73,63 @@ class _PriceAlertsScreenState extends ConsumerState<PriceAlertsScreen> {
             e,
             onRetry: () => ref.invalidate(priceAlertsProvider),
           ),
-          data: (list) => list.isEmpty
-              ? ListView(
-                  children: const [
-                    SizedBox(height: AppSpacing.huge),
-                    EmptyView(
-                      icon: Icons.notifications_active_outlined,
-                      title: 'No price alerts yet',
-                      message:
-                          'Pick a stock you like but find too expensive today, '
-                          'set the price you would be happy to pay, and you '
-                          'will get a notification when it reaches it.',
-                    ),
-                  ],
-                )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenGutter,
-                    AppSpacing.lg,
-                    AppSpacing.screenGutter,
-                    AppSpacing.huge,
+          data: (list) {
+            if (list.isEmpty) {
+              return EmptyView(
+                icon: Icons.notifications_active_outlined,
+                title: 'No price alerts yet',
+                message:
+                    'Pick a stock you like but find too expensive today, '
+                    'set the price you would be happy to pay, and you '
+                    'will get a notification when it reaches it.',
+                action: canWrite
+                    ? FilledButton(
+                        onPressed: () => _openAddSheet(context),
+                        child: const Text('Add an alert'),
+                      )
+                    : null,
+              );
+            }
+            final watching = list.where((a) => a.isActive).toList();
+            final triggered = list.where((a) => !a.isActive).toList();
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenGutter,
+                AppSpacing.xs,
+                AppSpacing.screenGutter,
+                96,
+              ),
+              children: [
+                StatStrip([
+                  Stat('${watching.length}', 'Watching'),
+                  Stat(
+                    '${triggered.length}',
+                    'Triggered',
+                    color: triggered.isEmpty ? null : context.finance.income,
                   ),
-                  children: [
-                    Text(
-                      'Checked every minute while FinRoot is open, and about '
-                      'once an hour in the background.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    for (final a in [
-                      ...list.where((a) => a.isActive),
-                      ...list.where((a) => !a.isActive),
-                    ])
-                      _AlertTile(
-                        alert: a,
-                        price: prices[a.priceKey],
-                        canWrite: canWrite,
-                      ),
-                  ],
+                ]),
+                const SizedBox(height: AppSpacing.md),
+                const InfoPill(
+                  icon: Icons.schedule_rounded,
+                  text: 'Checked every minute while open',
                 ),
+                if (watching.isNotEmpty) const SectionTitle('Watching'),
+                for (final a in watching)
+                  _AlertTile(
+                    alert: a,
+                    price: prices[a.priceKey],
+                    canWrite: canWrite,
+                  ),
+                if (triggered.isNotEmpty) const SectionTitle('Triggered'),
+                for (final a in triggered)
+                  _AlertTile(
+                    alert: a,
+                    price: prices[a.priceKey],
+                    canWrite: canWrite,
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -140,45 +159,48 @@ class _AlertTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    final finance = context.finance;
+    final palette = context.palette;
     final active = alert.isActive;
     final gap = price == null ? double.nan : distanceToTarget(alert, price!);
 
     final String trailingTop;
-    final String trailingBottom;
+    final String pillLabel;
+    final Tone pillTone;
     if (active) {
       trailingTop = price == null ? '…' : formatPrice(alert.symbol, price!);
-      trailingBottom = price == null
-          ? 'Waiting for a price'
-          : (gap.isFinite && gap > 0
-                ? '${gap.toStringAsFixed(1)}% to go'
-                : 'At target');
+      if (price == null) {
+        pillLabel = 'Waiting for a price';
+        pillTone = Tones.accent(context);
+      } else if (gap.isFinite && gap > 0) {
+        pillLabel = '${gap.toStringAsFixed(1)}% to go';
+        pillTone = Tones.sky(context);
+      } else {
+        pillLabel = 'At target';
+        pillTone = Tones.mint(context);
+      }
     } else {
       trailingTop = formatPrice(
         alert.symbol,
         alert.triggeredPrice ?? alert.target,
       );
-      trailingBottom = 'Triggered';
+      pillLabel = 'Triggered';
+      pillTone = Tones.mint(context);
     }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
         child: Row(
           children: [
-            CircleAvatar(
-              backgroundColor: active
-                  ? scheme.secondaryContainer
-                  : finance.income.withValues(alpha: 0.15),
-              child: Icon(
-                active
-                    ? Icons.notifications_active_outlined
-                    : Icons.check_circle_outline,
-                size: 20,
-                color: active ? scheme.onSecondaryContainer : finance.income,
-              ),
+            ToneTile(
+              icon: active
+                  ? Icons.notifications_active_outlined
+                  : Icons.check_circle_outline,
+              tone: active ? Tones.accent(context) : Tones.mint(context),
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
@@ -189,12 +211,19 @@ class _AlertTile extends ConsumerWidget {
                     alert.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                    style: AppTypography.bodyStrong.copyWith(
+                      color: palette.ink,
+                      fontSize: 15,
+                    ),
                   ),
                   Text(
                     '${alert.symbol} · ${describeAlert(alert).replaceFirst('${alert.name} ', '')}',
                     maxLines: 2,
-                    style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.label.copyWith(
+                      color: palette.muted,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
@@ -205,20 +234,19 @@ class _AlertTile extends ConsumerWidget {
               children: [
                 Text(
                   trailingTop,
-                  style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  trailingBottom,
-                  style: tt.labelSmall?.copyWith(
-                    color: active ? scheme.onSurfaceVariant : finance.income,
+                  style: AppTypography.bodyStrong.copyWith(
+                    color: palette.ink,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
+                const SizedBox(height: 4),
+                TonePill(pillLabel, pillTone, dot: false),
               ],
             ),
             if (canWrite)
-              PopupMenuButton<String>(
+              RowMenu(
                 onSelected: (v) => _act(context, ref, v),
-                itemBuilder: (_) => [
+                items: [
                   if (!active)
                     const PopupMenuItem(
                       value: 'rearm',
@@ -328,39 +356,31 @@ class _AddAlertSheetState extends ConsumerState<_AddAlertSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
     final sym = normaliseSymbol(_symbol.text);
     final cur = sym.isEmpty ? '' : currencySymbol(sym);
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.screenGutter,
-        0,
-        AppSpacing.screenGutter,
-        MediaQuery.viewInsetsOf(context).bottom + AppSpacing.lg,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('New price alert', style: tt.titleLarge),
-          const SizedBox(height: AppSpacing.xxs),
-          Text(
-            'Use the Yahoo ticker: RELIANCE.NS or ITC.NS for NSE, AAPL for US.',
-            style: tt.bodySmall,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          TextField(
+    return SheetFrame(
+      title: 'New price alert',
+      subtitle: 'Use the Yahoo ticker: RELIANCE.NS or ITC.NS for NSE, AAPL for US.',
+      primaryLabel: _saving ? 'Saving…' : 'Create alert',
+      onPrimary: _save,
+      busy: _saving,
+      error: _error,
+      children: [
+        LabeledField(
+          label: 'Ticker',
+          child: TextField(
             controller: _symbol,
             textCapitalization: TextCapitalization.characters,
             decoration: InputDecoration(
-              labelText: 'Ticker',
               hintText: 'ITC.NS',
               helperText: _looking
                   ? 'Looking up the price…'
                   : (_now != null
                         ? 'Now ${formatPrice(sym, _now!)}'
-                        : (sym.length >= 2 ? 'Tap the search icon for the live price' : null)),
+                        : (sym.length >= 2
+                              ? 'Tap the search icon for the live price'
+                              : null)),
               suffixIcon: IconButton(
                 tooltip: 'Look up the live price',
                 icon: const Icon(Icons.search),
@@ -373,17 +393,18 @@ class _AddAlertSheetState extends ConsumerState<_AddAlertSheet> {
             }),
             onSubmitted: (_) => _lookUp(),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          TextField(
+        ),
+        LabeledField(
+          label: 'Name (optional)',
+          child: TextField(
             controller: _name,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Name (optional)',
-              hintText: 'ITC Limited',
-            ),
+            decoration: const InputDecoration(hintText: 'ITC Limited'),
           ),
-          const SizedBox(height: AppSpacing.md),
-          SegmentedButton<AlertDirection>(
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+          child: SegmentedButton<AlertDirection>(
             segments: const [
               ButtonSegment(
                 value: AlertDirection.below,
@@ -399,12 +420,14 @@ class _AddAlertSheetState extends ConsumerState<_AddAlertSheet> {
             selected: {_direction},
             onSelectionChanged: (s) => setState(() => _direction = s.first),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          TextField(
+        ),
+        LabeledField(
+          label: 'Price',
+          child: TextField(
             controller: _target,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              labelText: 'Price',
+              hintText: '0',
               prefixText: cur.isEmpty ? null : '$cur ',
               helperText: _direction == AlertDirection.below
                   ? 'Alert when the price is at or below this (a buy level)'
@@ -412,22 +435,8 @@ class _AddAlertSheetState extends ConsumerState<_AddAlertSheet> {
             ),
             onChanged: (_) => setState(() => _error = null),
           ),
-          if (_error != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              _error!,
-              style: tt.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.error,
-              ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.lg),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Create alert'),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -5,6 +5,7 @@ import '../../../design/design.dart';
 import '../../recurring/application/recurring_providers.dart';
 import '../../summary/application/summary_providers.dart';
 import '../application/insights_providers.dart';
+import '../domain/insight.dart';
 import 'insight_tile.dart';
 
 /// Insights (M15) — every derived observation about the workspace's money,
@@ -16,11 +17,16 @@ class InsightsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final insights = ref.watch(insightsProvider);
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final finance = context.finance;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Insights')),
+    int count(InsightKind k) => insights.where((i) => i.kind == k).length;
+
+    return AppPage(
+      title: 'Insights',
+      subtitle:
+          'Patterns from your income, spending, budgets and goals, worked '
+          'out on this device.',
+      padBody: false,
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(workspaceSummaryProvider);
@@ -29,20 +35,40 @@ class InsightsScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.screenGutter,
-            AppSpacing.lg,
+            AppSpacing.sm,
             AppSpacing.screenGutter,
             AppSpacing.huge,
           ),
           children: [
-            Text(
-              'Patterns from your income, spending, budgets and goals — worked '
-              'out on this device.',
-              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            for (var i = 0; i < insights.length; i++) ...[
-              if (i > 0) const Divider(height: 1),
-              InsightTile(insight: insights[i]),
+            if (insights.isNotEmpty) ...[
+              StatStrip([
+                Stat(
+                  '${count(InsightKind.alert)}',
+                  'Needs attention',
+                  color: finance.expense,
+                ),
+                Stat(
+                  '${count(InsightKind.watch)}',
+                  'Worth a look',
+                  color: finance.warning,
+                ),
+                Stat(
+                  '${count(InsightKind.positive)}',
+                  'Going well',
+                  color: finance.income,
+                ),
+              ]),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+            for (final insight in insights) ...[
+              AppCard(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.xs,
+                ),
+                child: InsightTile(insight: insight),
+              ),
+              const SizedBox(height: AppSpacing.sm),
             ],
           ],
         ),

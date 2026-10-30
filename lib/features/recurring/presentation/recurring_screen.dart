@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure.dart';
+import '../../../core/money/money_format.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
+import '../../reminders/presentation/status_tones.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/recurring_editor_controller.dart';
 import '../application/recurring_providers.dart';
@@ -27,41 +29,121 @@ class RecurringScreen extends ConsumerWidget {
 
     return DefaultTabController(
       length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Recurring'),
-          bottom: const TabBar(
-            tabs: [Tab(text: 'Income'), Tab(text: 'Expenses')],
-          ),
-        ),
-        floatingActionButton: canWrite
-            ? Builder(
-                builder: (context) => GradientExtendedFab(
-                  onPressed: () {
-                    final type = DefaultTabController.of(context).index == 0
-                        ? RecurringType.income
-                        : RecurringType.expense;
-                    openRecurringForm(context, type: type);
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Recurring'),
-                ),
-              )
-            : null,
-        body: items.when(
-          loading: () => const LoadingView(),
-          error: (e, _) =>
-              ErrorView(e, onRetry: () => ref.invalidate(recurringItemsProvider)),
-          data: (_) => TabBarView(
-            children: [
-              _RecurringList(type: RecurringType.income, canWrite: canWrite),
-              _RecurringList(type: RecurringType.expense, canWrite: canWrite),
-            ],
-          ),
-        ),
+      child: Builder(
+        builder: (context) {
+          final controller = DefaultTabController.of(context);
+          return AppPage(
+            title: 'Recurring',
+            subtitle: 'Salary, rent, EMIs and subscriptions',
+            padBody: false,
+            header: _Switcher(controller: controller),
+            floatingActionButton: canWrite
+                ? AnimatedBuilder(
+                    animation: controller,
+                    builder: (context, _) {
+                      final type = controller.index == 0
+                          ? RecurringType.income
+                          : RecurringType.expense;
+                      // The empty state already carries the same add action.
+                      final hasItems = ref
+                          .watch(recurringByTypeProvider(type))
+                          .isNotEmpty;
+                      if (!hasItems) return const SizedBox.shrink();
+                      return AddFab(
+                        label: 'Recurring',
+                        onPressed: () => openRecurringForm(context, type: type),
+                      );
+                    },
+                  )
+                : null,
+            body: items.when(
+              loading: () => const LoadingView(),
+              error: (e, _) => ErrorView(
+                e,
+                onRetry: () => ref.invalidate(recurringItemsProvider),
+              ),
+              data: (_) => TabBarView(
+                children: [
+                  _RecurringList(
+                    type: RecurringType.income,
+                    canWrite: canWrite,
+                  ),
+                  _RecurringList(
+                    type: RecurringType.expense,
+                    canWrite: canWrite,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
+}
+
+/// Round two-segment switcher (Income / Expenses) driving the tab controller.
+class _Switcher extends StatelessWidget {
+  const _Switcher({required this.controller});
+  final TabController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return AnimatedBuilder(
+      animation: controller.animation!,
+      builder: (context, _) {
+        final selected = controller.animation!.value.round();
+        Widget seg(int i, String label) {
+          final on = selected == i;
+          return Expanded(
+            child: Semantics(
+              button: true,
+              selected: on,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => controller.animateTo(i),
+                child: Container(
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: ShapeDecoration(
+                    shape: const StadiumBorder(),
+                    gradient: on ? palette.gradient : null,
+                  ),
+                  child: Text(
+                    label,
+                    style: AppTypography.bodyStrong.copyWith(
+                      color: on ? Colors.white : palette.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(4),
+          decoration: ShapeDecoration(
+            color: palette.card,
+            shape: StadiumBorder(side: BorderSide(color: palette.line)),
+          ),
+          child: Row(children: [seg(0, 'Income'), seg(1, 'Expenses')]),
+        );
+      },
+    );
+  }
+}
+
+/// Monthly equivalent of an item's amount (one-time items don't recur).
+double _monthly(RecurringItem i) {
+  final a = i.amount.amount.toDouble();
+  return switch (i.frequency) {
+    RecurringFrequency.monthly => a,
+    RecurringFrequency.weekly => a * 52 / 12,
+    RecurringFrequency.yearly => a / 12,
+    RecurringFrequency.oneTime => 0,
+  };
 }
 
 class _RecurringList extends ConsumerWidget {
@@ -72,6 +154,13 @@ class _RecurringList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final items = ref.watch(recurringByTypeProvider(type));
+    final income = type == RecurringType.income;
+    const padding = EdgeInsets.fromLTRB(
+      AppSpacing.screenGutter,
+      AppSpacing.sm,
+      AppSpacing.screenGutter,
+      96,
+    );
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -80,40 +169,65 @@ class _RecurringList extends ConsumerWidget {
       },
       child: items.isEmpty
           ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: padding,
               children: [
-                const SizedBox(height: AppSpacing.huge),
-                EmptyView(
-                  icon: Icons.event_repeat_outlined,
-                  title: type == RecurringType.income
+                CardEmpty(
+                  icon: Icons.event_repeat_rounded,
+                  title: income
                       ? 'No recurring income'
                       : 'No recurring expenses',
-                  message: type == RecurringType.income
-                      ? 'Add a salary or a rent you receive and the app will '
-                            'prompt you to log it each period.'
-                      : 'Add rent, EMIs or subscriptions and the app will '
-                            'prompt you to log them each period.',
-                  action: canWrite
-                      ? FilledButton(
-                          onPressed: () =>
-                              openRecurringForm(context, type: type),
-                          child: const Text('Add one'),
-                        )
+                  message: income
+                      ? 'Add your salary or a rent you receive. FinRoot '
+                            'prompts you to log it each period.'
+                      : 'Add rent, an EMI or a subscription. FinRoot '
+                            'prompts you to log it each period.',
+                  actionLabel: canWrite ? 'Add one' : null,
+                  onAction: canWrite
+                      ? () => openRecurringForm(context, type: type)
                       : null,
                 ),
               ],
             )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenGutter,
-                AppSpacing.lg,
-                AppSpacing.screenGutter,
-                AppSpacing.huge,
-              ),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: padding,
               children: [
+                _Summary(items: items, income: income),
+                const SizedBox(height: AppSpacing.sm),
                 for (final item in items)
                   _RecurringCard(item: item, canWrite: canWrite),
               ],
             ),
+    );
+  }
+}
+
+class _Summary extends StatelessWidget {
+  const _Summary({required this.items, required this.income});
+  final List<RecurringItem> items;
+  final bool income;
+
+  @override
+  Widget build(BuildContext context) {
+    final finance = context.finance;
+    final total = items.fold<double>(0, (a, i) => a + _monthly(i));
+    final next = items.first.daysUntilDue();
+    final String nextText = switch (next) {
+      < 0 => 'next one is ${-next}d overdue',
+      0 => 'next one is due today',
+      1 => 'next one is due tomorrow',
+      _ => 'next one is due in ${next}d',
+    };
+    return MetricCard(
+      eyebrow: income ? 'Monthly recurring in' : 'Monthly recurring out',
+      figure: MoneyFormat.money(total.roundToDouble()),
+      figureSuffix: 'a month',
+      status:
+          '${items.length} ${items.length == 1 ? 'item' : 'items'} · $nextText',
+      statusColor: next < 0
+          ? finance.expense
+          : (income ? finance.income : null),
     );
   }
 }
@@ -123,16 +237,31 @@ class _RecurringCard extends ConsumerWidget {
   final RecurringItem item;
   final bool canWrite;
 
+  static final ButtonStyle _compact = ButtonStyle(
+    minimumSize: WidgetStateProperty.all(const Size.fromHeight(40)),
+    padding: WidgetStateProperty.all(
+      const EdgeInsets.symmetric(horizontal: 14),
+    ),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
     final setting = ref.watch(reminderSettingForProvider(item.id));
     final days = item.daysUntilDue();
+    final tileTone = item.isIncome
+        ? StatusTone.mint(context)
+        : StatusTone.coral(context);
+    final dueTone = StatusTone.forDays(context, days);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
         onTap: canWrite
             ? () => openRecurringForm(context, editing: item)
             : null,
@@ -141,6 +270,14 @@ class _RecurringCard extends ConsumerWidget {
           children: [
             Row(
               children: [
+                IconTile(
+                  icon: item.isIncome
+                      ? Icons.south_west_rounded
+                      : Icons.north_east_rounded,
+                  tint: tileTone.background,
+                  color: tileTone.foreground,
+                ),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -149,19 +286,25 @@ class _RecurringCard extends ConsumerWidget {
                         item.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: tt.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
+                        style: AppTypography.bodyStrong.copyWith(
+                          color: palette.ink,
+                          fontSize: 15,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
                         '${item.category} · ${item.frequency.label}',
-                        style: tt.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.label.copyWith(
+                          color: palette.muted,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: AppSpacing.md),
                 AmountText.money(
                   item.amount,
                   signed: false,
@@ -169,44 +312,38 @@ class _RecurringCard extends ConsumerWidget {
                 ),
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: AppSpacing.md),
             Row(
               children: [
-                _DueChip(days: days),
-                const Spacer(),
+                dueTone.pill(dueLabel(days)),
                 if (setting.enabled)
                   Padding(
-                    padding: const EdgeInsets.only(right: AppSpacing.xs),
+                    padding: const EdgeInsets.only(left: AppSpacing.sm),
                     child: Icon(
                       Icons.notifications_active_outlined,
                       size: 16,
                       color: context.finance.brandText,
                     ),
                   ),
-              ],
-            ),
-            if (canWrite) ...[
-              const Divider(height: AppSpacing.xl),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      style: AppButtonStyles.noGradient,
-                      onPressed: () => _mark(context, ref),
-                      icon: const Icon(Icons.check_circle_outline, size: 18),
-                      label: Text(
-                        item.isIncome ? 'Mark received' : 'Mark paid',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.xs),
+                const Spacer(),
+                if (canWrite) ...[
                   ReminderBell(itemId: item.id, dueDate: item.nextDueDate),
-                  IconButton(
+                  RoundIconButton(
+                    icon: Icons.delete_outline_rounded,
                     tooltip: 'Delete',
-                    icon: const Icon(Icons.delete_outline, size: 20),
+                    size: 36,
                     onPressed: () => _confirmDelete(context, ref),
                   ),
                 ],
+              ],
+            ),
+            if (canWrite) ...[
+              const SizedBox(height: AppSpacing.md),
+              OutlinedButton.icon(
+                style: _compact,
+                onPressed: () => _mark(context, ref),
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: Text(item.isIncome ? 'Mark received' : 'Mark paid'),
               ),
             ],
           ],
@@ -245,6 +382,7 @@ class _RecurringCard extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
+            style: AppButtonStyles.destructive,
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Remove'),
           ),
@@ -258,40 +396,5 @@ class _RecurringCard extends ConsumerWidget {
     } on Failure catch (f) {
       messenger.showSnackBar(SnackBar(content: Text(f.message)));
     }
-  }
-}
-
-class _DueChip extends StatelessWidget {
-  const _DueChip({required this.days});
-  final int days;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final finance = context.finance;
-    final (String label, Color color) = switch (days) {
-      < 0 => ('${-days}d overdue', finance.expense),
-      0 => ('Due today', finance.expense),
-      1 => ('Due tomorrow', scheme.onSurfaceVariant),
-      <= 7 => ('Due in ${days}d', scheme.onSurfaceVariant),
-      _ => ('Due in ${days}d', scheme.onSurfaceVariant),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xxs,
-      ),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: AppRadius.chip,
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
   }
 }

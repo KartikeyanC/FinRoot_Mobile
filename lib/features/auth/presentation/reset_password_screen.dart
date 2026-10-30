@@ -63,20 +63,29 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('New password'),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: _busy ? null : _cancel,
+    return AppPage(
+      title: 'New password',
+      subtitle:
+          'At least ${AuthValidators.passwordMin} characters. Avoid a '
+          'password you use elsewhere.',
+      showBack: false,
+      actions: [
+        RoundIconButton(
+          icon: Icons.close_rounded,
           tooltip: 'Cancel',
+          onPressed: _busy ? null : _cancel,
         ),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.xxl),
+      ],
+      padBody: false,
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenGutter,
+              AppSpacing.lg,
+              AppSpacing.screenGutter,
+              AppSpacing.xxxl,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Form(
@@ -84,16 +93,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('Choose a new password', style: t.headlineSmall),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      'At least ${AuthValidators.passwordMin} characters. Avoid a '
-                      'password you use elsewhere.',
-                      style: t.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
                     TextFormField(
                       controller: _password,
                       obscureText: _obscure,
@@ -129,8 +128,8 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                       const SizedBox(height: AppSpacing.md),
                       Text(
                         _error!,
-                        style: t.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.error,
+                        style: AppTypography.bodyStrong.copyWith(
+                          color: context.finance.expense,
                         ),
                       ),
                     ],
@@ -150,7 +149,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
             ),
           ),
         ),
-      ),
     );
   }
 }

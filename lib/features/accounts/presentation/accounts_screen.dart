@@ -13,6 +13,7 @@ import '../application/account_editor_controller.dart';
 import '../application/accounts_providers.dart';
 import '../domain/account.dart';
 import 'account_form_sheet.dart';
+import 'wealth_kit.dart';
 
 /// Accounts (M8) — the list, each with its live balance
 /// (`opening_balance + dashboard_summary` delta), plus add / edit / delete.
@@ -26,15 +27,13 @@ class AccountsScreen extends ConsumerWidget {
     final balances = ref.watch(accountBalancesProvider);
     final summary = ref.watch(workspaceSummaryProvider);
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
+    final hasAccounts = accountsAsync.value?.isNotEmpty ?? false;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Accounts')),
-      floatingActionButton: canWrite
-          ? GradientExtendedFab(
-              onPressed: () => openAccountForm(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Account'),
-            )
+    return AppPage(
+      title: 'Accounts',
+      padBody: false,
+      floatingActionButton: canWrite && hasAccounts
+          ? AddFab(label: 'Account', onPressed: () => openAccountForm(context))
           : null,
       body: accountsAsync.when(
         loading: () => const LoadingView(),
@@ -44,7 +43,9 @@ class AccountsScreen extends ConsumerWidget {
             return EmptyView(
               icon: Icons.account_balance_outlined,
               title: 'No accounts yet',
-              message: 'Add your bank, cash and cards to track their balances.',
+              message:
+                  'Add your bank, cash and cards to see every balance in one '
+                  'place.',
               action: canWrite
                   ? FilledButton(
                       onPressed: () => openAccountForm(context),
@@ -53,25 +54,46 @@ class AccountsScreen extends ConsumerWidget {
                   : null,
             );
           }
+          final assets = [
+            for (final a in accounts)
+              if (!_isLiability(a)) a,
+          ];
+          final cards = [
+            for (final a in accounts)
+              if (_isLiability(a)) a,
+          ];
           return ListView(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.screenGutter,
-              AppSpacing.lg,
+              AppSpacing.xs,
               AppSpacing.screenGutter,
-              AppSpacing.huge,
+              96,
             ),
             children: [
               _TotalCard(
                 total: ref.watch(totalBalanceProvider),
+                accounts: accounts,
+                balances: balances,
                 stale: summary.isLoading && summary.value == null,
               ),
-              const SizedBox(height: AppSpacing.lg),
-              for (final account in accounts)
-                _AccountTile(
-                  account: account,
-                  balance: balances[account.id] ?? Money.zero(),
-                  canWrite: canWrite,
-                ),
+              if (assets.isNotEmpty) ...[
+                SectionTitle('Cash and bank', trailing: _Count(assets.length)),
+                for (final account in assets)
+                  _AccountTile(
+                    account: account,
+                    balance: balances[account.id] ?? Money.zero(),
+                    canWrite: canWrite,
+                  ),
+              ],
+              if (cards.isNotEmpty) ...[
+                SectionTitle('Credit cards', trailing: _Count(cards.length)),
+                for (final account in cards)
+                  _AccountTile(
+                    account: account,
+                    balance: balances[account.id] ?? Money.zero(),
+                    canWrite: canWrite,
+                  ),
+              ],
             ],
           );
         },
@@ -80,34 +102,90 @@ class AccountsScreen extends ConsumerWidget {
   }
 }
 
+bool _isLiability(AccountEntity a) => a.type == 'credit';
+
+class _Count extends StatelessWidget {
+  const _Count(this.n);
+  final int n;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    n == 1 ? '1 account' : '$n accounts',
+    style: AppTypography.label.copyWith(color: context.palette.muted),
+  );
+}
+
+Tone _toneFor(BuildContext c, String type) => switch (type) {
+  'bank' => Tones.sky(c),
+  'cash' => Tones.mint(c),
+  'wallet' => Tones.violet(c),
+  'investment' => Tones.teal(c),
+  'credit' => Tones.coral(c),
+  'debit' => Tones.butter(c),
+  _ => Tones.accent(c),
+};
+
+IconData _iconFor(String type) => switch (type) {
+  'bank' => Icons.account_balance_outlined,
+  'debit' || 'credit' => Icons.credit_card_outlined,
+  'wallet' => Icons.account_balance_wallet_outlined,
+  'cash' => Icons.payments_outlined,
+  'investment' => Icons.trending_up,
+  _ => Icons.savings_outlined,
+};
+
 class _TotalCard extends StatelessWidget {
-  const _TotalCard({required this.total, required this.stale});
+  const _TotalCard({
+    required this.total,
+    required this.accounts,
+    required this.balances,
+    required this.stale,
+  });
   final Money total;
+  final List<AccountEntity> accounts;
+  final Map<String, Money> balances;
   final bool stale;
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Total across accounts',
-            style: t.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          AmountText.money(total, size: AmountSize.hero, signed: false),
-          if (stale) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'Balancing figures update on the next sync.',
-              style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-          ],
-        ],
-      ),
+    final palette = context.palette;
+    // Positive balances by account type, for the split bar.
+    final byType = <String, double>{};
+    for (final a in accounts) {
+      final v = (balances[a.id] ?? Money.zero()).amount.toDouble();
+      if (v > 0 && !_isLiability(a)) {
+        byType[a.typeLabel] = (byType[a.typeLabel] ?? 0) + v;
+      }
+    }
+    final entries = byType.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final colors = [
+      palette.accent,
+      Tones.sky(context).fg,
+      Tones.butter(context).fg,
+      Tones.violet(context).fg,
+      Tones.rose(context).fg,
+      Tones.teal(context).fg,
+    ];
+    return MetricCard(
+      eyebrow: 'Total across accounts',
+      figure: total.formatShort(),
+      status: stale
+          ? 'Balancing figures update on the next sync.'
+          : (accounts.length == 1
+                ? '1 account'
+                : '${accounts.length} accounts'),
+      statusColor: stale ? context.finance.warning : palette.muted,
+      child: entries.length > 1
+          ? SplitBar([
+              for (var i = 0; i < entries.length; i++)
+                BarSegment(
+                  entries[i].key,
+                  entries[i].value,
+                  colors[i % colors.length],
+                ),
+            ])
+          : null,
     );
   }
 }
@@ -125,48 +203,34 @@ class _AccountTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final finance = context.finance;
+    final liability = _isLiability(account);
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: AppCard(
+      child: ListRow(
         onTap: () => _openLedger(context, ref),
-        child: Row(
+        leading: ToneTile(
+          icon: _iconFor(account.type),
+          tone: _toneFor(context, account.type),
+        ),
+        title: account.name,
+        subtitle: account.typeLabel,
+        trailing: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.5,
+          ),
+          child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            CircleAvatar(
-              backgroundColor: Theme.of(
-                context,
-              ).colorScheme.secondaryContainer,
-              child: Icon(
-                _iconFor(account.type),
-                size: 20,
-                color: Theme.of(context).colorScheme.onSecondaryContainer,
+            Flexible(
+              child: AmountText(
+                balance.amount.toDouble(),
+                currency: balance.currency,
+                color: liability ? finance.expense : null,
               ),
             ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    account.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    account.typeLabel,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Flexible(child: AmountText.money(balance, signed: false)),
             if (canWrite)
-              PopupMenuButton<String>(
+              RowMenu(
                 onSelected: (value) {
                   switch (value) {
                     case 'edit':
@@ -177,13 +241,17 @@ class _AccountTile extends ConsumerWidget {
                       _confirmDelete(context, ref);
                   }
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'ledger', child: Text('View transactions')),
+                items: const [
+                  PopupMenuItem(
+                    value: 'ledger',
+                    child: Text('View transactions'),
+                  ),
                   PopupMenuItem(value: 'edit', child: Text('Edit')),
                   PopupMenuItem(value: 'delete', child: Text('Delete')),
                 ],
               ),
           ],
+        ),
         ),
       ),
     );
@@ -197,28 +265,14 @@ class _AccountTile extends ConsumerWidget {
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Delete ${account.name}?'),
-        content: const Text(
+    final ok = await confirmDestructive(
+      context,
+      title: 'Delete ${account.name}?',
+      message:
           'Transactions linked to it are kept, but they will no longer count '
           'towards an account balance.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: AppButtonStyles.destructive,
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
     );
-    if (ok != true) return;
+    if (!ok) return;
     try {
       await ref.read(accountEditorControllerProvider).delete(account.id);
       messenger.showSnackBar(const SnackBar(content: Text('Account deleted')));
@@ -226,13 +280,4 @@ class _AccountTile extends ConsumerWidget {
       messenger.showSnackBar(SnackBar(content: Text(f.message)));
     }
   }
-
-  IconData _iconFor(String type) => switch (type) {
-    'bank' => Icons.account_balance_outlined,
-    'debit' || 'credit' => Icons.credit_card_outlined,
-    'wallet' => Icons.account_balance_wallet_outlined,
-    'cash' => Icons.payments_outlined,
-    'investment' => Icons.trending_up,
-    _ => Icons.savings_outlined,
-  };
 }

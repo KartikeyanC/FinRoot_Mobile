@@ -69,8 +69,10 @@ class _DetectedPaymentsScreenState
     final ledger = ref.watch(recentLedgerForMatchingProvider).value ?? const [];
     final notifier = ref.read(paymentCaptureProvider.notifier);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Detected payments')),
+    return AppPage(
+      title: 'Detected payments',
+      subtitle: 'Review what FinRoot noticed, then add it in one tap',
+      padBody: false,
       body: switch (async) {
         AsyncData(:final value) => RefreshIndicator(
           onRefresh: notifier.refresh,
@@ -78,7 +80,7 @@ class _DetectedPaymentsScreenState
             child: ListView(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.screenGutter,
-                AppSpacing.sm,
+                AppSpacing.xs,
                 AppSpacing.screenGutter,
                 AppSpacing.huge,
               ),
@@ -115,7 +117,7 @@ class _DetectedPaymentsScreenState
                             'in one tap.',
                       )
                     else ...[
-                      SectionHeader('To review (${value.payments.length})'),
+                      SectionTitle('To review (${value.payments.length})'),
                       for (final p in value.payments) ...[
                         _PaymentCard(
                           payment: p,
@@ -292,7 +294,6 @@ class _PaymentCard extends ConsumerWidget {
     final p = payment;
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
-    final finance = context.finance;
     final type = p.isPaid ? TxnType.expense : TxnType.income;
     final when =
         '${RelativeTime.dayLabel(p.occurredAt)}, '
@@ -306,16 +307,12 @@ class _PaymentCard extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: scheme.surfaceContainerHighest,
-                child: Icon(
-                  p.isPaid
-                      ? Icons.south_west_rounded
-                      : Icons.north_east_rounded,
-                  size: 20,
-                  color: p.isPaid ? finance.expense : finance.income,
-                ),
+              IconTile(
+                icon: p.isPaid
+                    ? Icons.south_west_rounded
+                    : Icons.north_east_rounded,
+                tint: p.isPaid ? _coral(context).$1 : _mint(context).$1,
+                color: p.isPaid ? _coral(context).$2 : _mint(context).$2,
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -324,7 +321,10 @@ class _PaymentCard extends ConsumerWidget {
                   children: [
                     Text(
                       p.headline,
-                      style: t.titleMedium,
+                      style: AppTypography.bodyStrong.copyWith(
+                        color: context.palette.ink,
+                        fontSize: 15,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -341,18 +341,31 @@ class _PaymentCard extends ConsumerWidget {
           ),
           if (alreadyRecorded) ...[
             const SizedBox(height: AppSpacing.md),
-            Row(
-              children: [
-                Icon(Icons.info_outline, size: 16, color: scheme.tertiary),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    'Looks already added — a ${type.name} of the same amount '
-                    'is in your ledger around this time.',
-                    style: t.bodySmall?.copyWith(color: scheme.tertiary),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: _butter(context).$1,
+                borderRadius: AppRadius.field,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: _butter(context).$2,
                   ),
-                ),
-              ],
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      'Looks already added — a ${type.name} of the same amount '
+                      'is in your ledger around this time.',
+                      style: AppTypography.label.copyWith(
+                        color: _butter(context).$2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
           const SizedBox(height: AppSpacing.md),
@@ -379,3 +392,15 @@ class _PaymentCard extends ConsumerWidget {
     );
   }
 }
+
+(Color, Color) _pair(BuildContext context, Color l, Color lf, Color d, Color df) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return dark ? (d, df) : (l, lf);
+}
+
+(Color, Color) _coral(BuildContext c) => _pair(c, AppColors.coralLight,
+    AppColors.coralFgLight, AppColors.coralDark, AppColors.coralFgDark);
+(Color, Color) _mint(BuildContext c) => _pair(c, AppColors.mintLight,
+    AppColors.mintFgLight, AppColors.mintDark, AppColors.mintFgDark);
+(Color, Color) _butter(BuildContext c) => _pair(c, AppColors.butterLight,
+    AppColors.butterFgLight, AppColors.butterDark, AppColors.butterFgDark);

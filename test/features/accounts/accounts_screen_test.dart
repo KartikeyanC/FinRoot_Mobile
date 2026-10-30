@@ -56,7 +56,7 @@ void main() {
 
     expect(find.text('SBI'), findsOneWidget);
     expect(find.text('Cash'), findsOneWidget);
-    expect(find.text('Total across accounts'), findsOneWidget);
+    expect(find.text('TOTAL ACROSS ACCOUNTS'), findsOneWidget);
     // 120,000 + 5,000 = ₹1.25L (hero short form)
     expect(find.textContaining('1.25L'), findsOneWidget);
   });

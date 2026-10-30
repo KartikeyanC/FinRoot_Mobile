@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../design/design.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../application/budget_editor_controller.dart';
 import '../application/budget_providers.dart';
 import '../domain/budget_buckets.dart';
@@ -72,114 +73,70 @@ class _AllocationSheetState extends ConsumerState<_AllocationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
     final bucket = widget.b.budget.bucket;
     final period = ref.watch(budgetPeriodProvider);
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppSpacing.xl,
-        right: AppSpacing.xl,
-        top: AppSpacing.sm,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(bucket, style: tt.titleLarge),
-            Text(
-              'Monthly allocation',
-              style: tt.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+    return SheetFrame(
+      formKey: _formKey,
+      title: bucket,
+      subtitle: 'Monthly allocation',
+      primaryLabel: 'Save allocation',
+      busy: _busy,
+      error: _error?.message,
+      onPrimary: () {
+        if (!(_formKey.currentState?.validate() ?? false)) return;
+        _run(
+          () => ref
+              .read(budgetEditorControllerProvider)
+              .setAllocation(
+                BudgetAllocationDraft(
+                  bucket: bucket,
+                  allocated: Money.tryParse(_amount.text)!,
+                  periodStart: period,
+                ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            if (isNonExpenseBucket(bucket))
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                child: Text(
-                  'This jar is money set aside, not spent — contributions show '
-                  'up as goals, investments or transfers, so its tracked spend '
-                  'stays at zero.',
-                  style: tt.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+          'Budget saved',
+        );
+      },
+      extraActions: [
+        if (_hasExisting)
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => _run(
+                    () => ref
+                        .read(budgetEditorControllerProvider)
+                        .delete(widget.b.budget.id),
+                    'Allocation removed',
                   ),
-                ),
-              ),
-            TextFormField(
-              controller: _amount,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                prefixIcon: Icon(Icons.currency_rupee),
-              ),
-              validator: BudgetValidators.allocated,
+            child: const Text('Remove this allocation'),
+          ),
+      ],
+      children: [
+        if (isNonExpenseBucket(bucket))
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+            child: Text(
+              'This jar is money set aside, not spent — contributions show '
+              'up as goals, investments or transfers, so its tracked spend '
+              'stays at zero.',
+              style: AppTypography.body.copyWith(color: context.palette.muted),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  borderRadius: AppRadius.field,
-                ),
-                child: Text(
-                  _error!.message,
-                  style: tt.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton(
-              onPressed: _busy
-                  ? null
-                  : () {
-                      if (!(_formKey.currentState?.validate() ?? false)) return;
-                      _run(
-                        () => ref
-                            .read(budgetEditorControllerProvider)
-                            .setAllocation(
-                              BudgetAllocationDraft(
-                                bucket: bucket,
-                                allocated: Money.tryParse(_amount.text)!,
-                                periodStart: period,
-                              ),
-                            ),
-                        'Budget saved',
-                      );
-                    },
-              child: _busy
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Save allocation'),
+          ),
+        LabeledField(
+          label: 'Amount',
+          child: TextFormField(
+            controller: _amount,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              hintText: '0',
+              prefixIcon: Icon(Icons.currency_rupee),
             ),
-            if (_hasExisting) ...[
-              const SizedBox(height: AppSpacing.sm),
-              TextButton(
-                onPressed: _busy
-                    ? null
-                    : () => _run(
-                        () => ref
-                            .read(budgetEditorControllerProvider)
-                            .delete(widget.b.budget.id),
-                        'Allocation removed',
-                      ),
-                child: const Text('Remove this allocation'),
-              ),
-            ],
-          ],
+            validator: BudgetValidators.allocated,
+          ),
         ),
-      ),
+      ],
     );
   }
 }

@@ -43,42 +43,14 @@ class _DetectedPaymentsBannerState
     if (state == null || !state.status.active || count == 0) {
       return const SizedBox.shrink();
     }
-    final t = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.lg),
-      child: AppCard(
-        color: scheme.secondaryContainer,
+      child: InfoPill(
+        icon: Icons.bolt_rounded,
+        text: count == 1 ? '1 payment to review' : '$count payments to review',
+        detail: 'Add in one tap',
         onTap: () => context.push(DetectedPaymentsBanner.route),
-        child: Row(
-          children: [
-            Icon(Icons.bolt_rounded, color: scheme.onSecondaryContainer),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    count == 1
-                        ? '1 payment to review'
-                        : '$count payments to review',
-                    style: t.titleSmall?.copyWith(
-                      color: scheme.onSecondaryContainer,
-                    ),
-                  ),
-                  Text(
-                    'Detected from your payment apps — add in one tap',
-                    style: t.bodySmall?.copyWith(
-                      color: scheme.onSecondaryContainer,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, color: scheme.onSecondaryContainer),
-          ],
-        ),
       ),
     );
   }

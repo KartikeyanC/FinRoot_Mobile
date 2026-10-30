@@ -15,7 +15,8 @@ import '../domain/tracker_draft.dart';
 import '../domain/tracker_spend.dart';
 import 'assign_transactions_sheet.dart';
 import 'tracker_form_sheet.dart';
-import 'widgets/tracker_progress.dart';
+import 'widgets/tracker_bar.dart';
+import 'widgets/tracker_status_pill.dart';
 
 /// Full-screen tracker detail — the phone route (`/tracker/:id`) and any deep
 /// link. On a tablet the Trackers tab shows [TrackerDetailView] inline in its
@@ -30,8 +31,8 @@ class TrackerDetailScreen extends ConsumerWidget {
     final trackerAsync = ref.watch(trackerByIdProvider(trackerId));
 
     if (t == null) {
-      return Scaffold(
-        appBar: AppBar(),
+      return AppPage(
+        title: 'Tracker',
         body: trackerAsync.isLoading
             ? const LoadingView()
             : const EmptyView(
@@ -45,25 +46,25 @@ class TrackerDetailScreen extends ConsumerWidget {
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
     final status = TrackerStatus.fromWire(t.tracker.status);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(trackerDisplayLabel(t.tracker.name)),
-        actions: [
-          if (canWrite)
-            TrackerActionsMenu(
-              tracker: t,
-              status: status,
-              onDeleted: () => context.pop(),
-            ),
-        ],
-      ),
+    return AppPage(
+      title: trackerDisplayLabel(t.tracker.name),
+      subtitle: t.tracker.type,
+      actions: [
+        if (canWrite)
+          TrackerActionsMenu(
+            tracker: t,
+            status: status,
+            onDeleted: () => context.pop(),
+          ),
+      ],
       floatingActionButton: canWrite
-          ? GradientExtendedFab(
+          ? AddFab(
+              label: 'Assign',
+              icon: Icons.playlist_add_rounded,
               onPressed: () => openAssignTransactions(context, trackerId),
-              icon: const Icon(Icons.playlist_add),
-              label: const Text('Assign'),
             )
           : null,
+      padBody: false,
       body: TrackerDetailView(trackerId: trackerId),
     );
   }
@@ -71,8 +72,8 @@ class TrackerDetailScreen extends ConsumerWidget {
 
 /// The tracker detail body — progress, dates, tagged transactions. [inPane]
 /// adds a compact header (title + Assign + actions) that the full-screen route
-/// gets from its [AppBar] and FAB instead. [onDeleted] runs after a successful
-/// delete — pop the route, or clear the pane selection.
+/// gets from its [AppPage] title row and FAB instead. [onDeleted] runs after a
+/// successful delete — pop the route, or clear the pane selection.
 class TrackerDetailView extends ConsumerWidget {
   const TrackerDetailView({
     super.key,
@@ -91,7 +92,7 @@ class TrackerDetailView extends ConsumerWidget {
     final trackerAsync = ref.watch(trackerByIdProvider(trackerId));
     final txns = ref.watch(trackerTransactionsProvider(trackerId));
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
-    final tt = Theme.of(context).textTheme;
+    final palette = context.palette;
 
     if (t == null) {
       return Center(
@@ -106,13 +107,26 @@ class TrackerDetailView extends ConsumerWidget {
     }
 
     final status = TrackerStatus.fromWire(t.tracker.status);
+    final finance = context.finance;
+    final budget = t.tracker.budget;
+    final String? statusLine;
+    Color? statusColor;
+    if (!t.hasBudget) {
+      statusLine = 'No budget set';
+    } else if (t.isOverBudget) {
+      statusLine = '${t.remaining!.abs.formatShort()} over budget';
+      statusColor = finance.expense;
+    } else {
+      statusLine = '${t.remaining!.formatShort()} left';
+      statusColor = t.utilization >= 85 ? finance.warning : finance.income;
+    }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.screenGutter,
-        AppSpacing.lg,
+        inPane ? AppSpacing.lg : AppSpacing.xs,
         AppSpacing.screenGutter,
-        AppSpacing.huge,
+        96,
       ),
       children: [
         if (inPane)
@@ -123,16 +137,20 @@ class TrackerDetailView extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     trackerDisplayLabel(t.tracker.name),
-                    style: tt.titleLarge,
+                    style: AppTypography.display.copyWith(
+                      color: palette.ink,
+                      fontSize: 24,
+                    ),
                   ),
                 ),
                 if (canWrite) ...[
-                  IconButton(
+                  RoundIconButton(
+                    icon: Icons.playlist_add_rounded,
                     tooltip: 'Assign transactions',
                     onPressed: () =>
                         openAssignTransactions(context, trackerId),
-                    icon: const Icon(Icons.playlist_add),
                   ),
+                  const SizedBox(width: AppSpacing.sm),
                   TrackerActionsMenu(
                     tracker: t,
                     status: status,
@@ -142,93 +160,106 @@ class TrackerDetailView extends ConsumerWidget {
               ],
             ),
           ),
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      trackerTypeIcon(t.tracker.type),
-                      size: 16,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: AppSpacing.xs),
-                    Text(
-                      t.tracker.type,
-                      style: tt.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (status != TrackerStatus.active) ...[
-                      const Spacer(),
-                      Text(status.label, style: tt.labelSmall),
-                    ],
-                  ],
+        MetricCard(
+          eyebrow: 'Spent so far',
+          figure: t.spent.formatShort(),
+          figureSuffix: budget != null && t.hasBudget
+              ? 'of ${budget.formatShort()}'
+              : null,
+          status: statusLine,
+          statusColor: statusColor,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (t.hasBudget) ...[
+                TrackerBar(
+                  fraction: t.spent.amount.toDouble() / budget!.amount.toDouble(),
+                  color: t.isOverBudget
+                      ? finance.expense
+                      : (t.utilization >= 85
+                            ? finance.warning
+                            : palette.accent),
                 ),
-                const SizedBox(height: AppSpacing.md),
-                TrackerProgress(t),
-                if (t.inflow.isPositive) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  Row(
-                    children: [
-                      Text(
-                        'Income tagged here (kept separate)',
-                        style: tt.bodySmall?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const Spacer(),
-                      AmountText.money(t.inflow, type: TxnType.income),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
-                  _dateLine(t),
-                  style: tt.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  '${t.utilization}% of budget used',
+                  style: AppTypography.label.copyWith(
+                    color: palette.muted,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                if ((t.tracker.description ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(t.tracker.description!.trim(), style: tt.bodyMedium),
-                ],
+                const SizedBox(height: AppSpacing.md),
               ],
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  TrackerStatusPill(t),
+                  Text(
+                    _dateLine(t),
+                    style: AppTypography.label.copyWith(
+                      color: palette.muted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (t.inflow.isPositive || t.txnCount > 0) ...[
+          const SizedBox(height: AppSpacing.md),
+          StatStrip([
+            Stat('${t.txnCount}', 'Tagged'),
+            Stat(
+              t.inflow.isPositive ? t.inflow.formatShort() : '—',
+              'Income tagged',
+              color: t.inflow.isPositive ? finance.income : null,
+            ),
+          ]),
+        ],
+        if ((t.tracker.description ?? '').trim().isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          AppCard(
+            child: Text(
+              t.tracker.description!.trim(),
+              style: AppTypography.body.copyWith(color: palette.ink),
             ),
           ),
-          const SectionHeader('Transactions'),
-          txns.when(
-            loading: () => const Padding(
-              padding: EdgeInsets.all(AppSpacing.xl),
-              child: LoadingView(),
-            ),
-            error: (e, st) => ErrorView(e, stackTrace: st),
-            data: (list) => list.isEmpty
-                ? const AppCard(
-                    child: Text(
+        ],
+        const SectionTitle('Transactions'),
+        txns.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(AppSpacing.xl),
+            child: LoadingView(),
+          ),
+          error: (e, st) => ErrorView(e, stackTrace: st),
+          data: (list) => list.isEmpty
+              ? CardEmpty(
+                  icon: Icons.receipt_long_rounded,
+                  title: 'Nothing tagged yet',
+                  message:
                       'No transactions tagged to this tracker yet. Use '
                       'Assign, or set the tracker when you record one.',
-                    ),
-                  )
-                : AppCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.lg,
-                    ),
-                    child: Column(
-                      children: [
-                        for (var i = 0; i < list.length; i++) ...[
-                          if (i > 0) const Divider(height: 1),
-                          TransactionTile(
-                            list[i],
-                            onTap: () =>
-                                openTransactionDetail(context, list[i].id),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
+                  actionLabel: canWrite && !inPane ? 'Assign' : null,
+                  onAction: canWrite && !inPane
+                      ? () => openAssignTransactions(context, trackerId)
+                      : null,
+                )
+              : Column(
+                  children: [
+                    for (final txn in list)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                        child: TransactionTile(
+                          txn,
+                          card: true,
+                          onTap: () => openTransactionDetail(context, txn.id),
+                        ),
+                      ),
+                  ],
+                ),
         ),
       ],
     );
@@ -244,7 +275,7 @@ class TrackerDetailView extends ConsumerWidget {
 }
 
 /// The edit / complete / archive / reopen / delete menu, shared by the
-/// full-screen route (in its AppBar) and the tablet pane header.
+/// full-screen route (in its title row) and the tablet pane header.
 class TrackerActionsMenu extends ConsumerWidget {
   const TrackerActionsMenu({
     super.key,
@@ -259,8 +290,20 @@ class TrackerActionsMenu extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
     return PopupMenuButton<String>(
+      tooltip: 'Tracker actions',
       onSelected: (v) => _onAction(context, ref, v),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: palette.card,
+          shape: BoxShape.circle,
+          border: Border.all(color: palette.line),
+        ),
+        child: Icon(Icons.more_horiz_rounded, size: 20, color: palette.ink),
+      ),
       itemBuilder: (_) => [
         const PopupMenuItem(value: 'edit', child: Text('Edit')),
         if (status != TrackerStatus.completed)

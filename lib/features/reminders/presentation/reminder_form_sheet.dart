@@ -137,7 +137,7 @@ class _ReminderFormSheetState extends ConsumerState<_ReminderFormSheet> {
             children: [
               Text(
                 _isEditing ? 'Edit reminder' : 'New reminder',
-                style: tt.titleLarge,
+                style: AppTypography.title.copyWith(color: context.palette.ink),
               ),
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
@@ -255,6 +255,11 @@ class _ReminderFormSheetState extends ConsumerState<_ReminderFormSheet> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text(_isEditing ? 'Save changes' : 'Schedule'),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              OutlinedButton(
+                onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
               ),
             ],
           ),

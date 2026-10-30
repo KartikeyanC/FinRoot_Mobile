@@ -45,13 +45,14 @@ Widget _host() {
 }
 
 void main() {
-  testWidgets('phone width is a single list under a More app bar', (
+  testWidgets('phone width is grouped cards under a big More title', (
     tester,
   ) async {
     await tester.pumpWidget(_host());
     await tester.pump();
 
-    expect(find.widgetWithText(AppBar, 'More'), findsOneWidget);
+    expect(find.text('More'), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing);
     expect(find.text('Accounts'), findsOneWidget);
     expect(find.byType(TwoPane), findsNothing);
   });

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/time/relative_time.dart';
 import '../../../design/design.dart';
+import '../../transactions/domain/transaction.dart';
+import '../../transactions/presentation/widgets/category_style.dart';
 import '../application/tracker_editor_controller.dart';
 import '../application/trackers_providers.dart';
 
@@ -58,35 +60,30 @@ class _AssignSheetState extends ConsumerState<_AssignSheet> {
   @override
   Widget build(BuildContext context) {
     final candidates = ref.watch(untaggedForTrackerProvider(widget.trackerId));
-    final tt = Theme.of(context).textTheme;
+    final palette = context.palette;
 
     return Padding(
       padding: EdgeInsets.only(
-        left: AppSpacing.lg,
-        right: AppSpacing.lg,
-        top: AppSpacing.sm,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.lg,
+        left: AppSpacing.xl,
+        right: AppSpacing.xl,
+        top: AppSpacing.xs,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-            child: Text('Assign transactions', style: tt.titleLarge),
+          Text(
+            'Assign transactions',
+            style: AppTypography.title.copyWith(color: palette.ink),
           ),
           const SizedBox(height: AppSpacing.xs),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-            child: Text(
-              'Untagged transactions from within this tracker\'s dates. '
-              'Assigning only adds a label — no money moves.',
-              style: tt.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
+          Text(
+            'Untagged transactions from within this tracker\'s dates. '
+            'Assigning only adds a label — no money moves.',
+            style: AppTypography.body.copyWith(color: palette.muted),
           ),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: AppSpacing.md),
           Flexible(
             child: candidates.when(
               loading: () => const Padding(
@@ -98,9 +95,10 @@ class _AssignSheetState extends ConsumerState<_AssignSheet> {
                 child: ErrorView(e, stackTrace: st),
               ),
               data: (txns) => txns.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(AppSpacing.xxl),
-                      child: Text('Nothing untagged in this date range.'),
+                  ? const CardEmpty(
+                      icon: Icons.check_circle_outline_rounded,
+                      title: 'Nothing untagged',
+                      message: 'Nothing untagged in this date range.',
                     )
                   : ListView.builder(
                       shrinkWrap: true,
@@ -108,34 +106,25 @@ class _AssignSheetState extends ConsumerState<_AssignSheet> {
                       itemBuilder: (_, i) {
                         final txn = txns[i];
                         final checked = _selected.contains(txn.id);
-                        return CheckboxListTile(
-                          value: checked,
-                          onChanged: _busy
-                              ? null
-                              : (v) => setState(() {
-                                  v == true
-                                      ? _selected.add(txn.id)
-                                      : _selected.remove(txn.id);
-                                }),
-                          title: Text(
-                            txn.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            '${txn.category} · '
-                            '${RelativeTime.dayLabel(txn.occurredAt)}',
-                          ),
-                          secondary: AmountText.money(
-                            txn.amount,
-                            type: txn.type,
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: _AssignRow(
+                            txn: txn,
+                            checked: checked,
+                            onChanged: _busy
+                                ? null
+                                : (v) => setState(() {
+                                    v
+                                        ? _selected.add(txn.id)
+                                        : _selected.remove(txn.id);
+                                  }),
                           ),
                         );
                       },
                     ),
             ),
           ),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: AppSpacing.md),
           FilledButton(
             onPressed: _busy || _selected.isEmpty ? null : _assign,
             child: _busy
@@ -149,7 +138,64 @@ class _AssignSheetState extends ConsumerState<_AssignSheet> {
                         : 'Assign ${_selected.length}',
                   ),
           ),
+          const SizedBox(height: AppSpacing.sm),
+          OutlinedButton(
+            onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _AssignRow extends StatelessWidget {
+  const _AssignRow({
+    required this.txn,
+    required this.checked,
+    required this.onChanged,
+  });
+
+  final TransactionEntity txn;
+  final bool checked;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Semantics(
+      checked: checked,
+      child: ListRow(
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CategoryTile(category: txn.category, type: txn.type),
+            if (checked)
+              Positioned(
+                right: -4,
+                bottom: -4,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: palette.accent,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: palette.card, width: 2),
+                  ),
+                  child: Icon(
+                    Icons.check_rounded,
+                    size: 12,
+                    color: palette.onAccent,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        title: txn.title,
+        subtitle:
+            '${txn.category} · ${RelativeTime.dayLabel(txn.occurredAt)}',
+        trailing: AmountText.money(txn.amount, type: txn.type),
+        onTap: onChanged == null ? null : () => onChanged!(!checked),
       ),
     );
   }

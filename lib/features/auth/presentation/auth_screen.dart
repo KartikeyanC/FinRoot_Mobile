@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/design.dart';
+import '../../reminders/presentation/status_tones.dart';
 import '../application/auth_controller.dart';
 import '../application/auth_validators.dart';
 
@@ -83,8 +84,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   Widget _content(BuildContext context, AuthActionState state) {
     final busy = state is AuthBusy;
-    final t = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
 
     // A confirmation / reset-sent outcome replaces the form with a message.
     if (state is AuthAwaitingConfirmation) {
@@ -111,10 +111,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
 
     return Scaffold(
+      backgroundColor: palette.page,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.xxl),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xxl,
+              vertical: AppSpacing.xxxl,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Form(
@@ -122,33 +126,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // The FinRoot mark, the same image as the launcher icon.
-                    Center(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Image.asset(
-                          'assets/brand/logo.png',
-                          width: 64,
-                          height: 64,
-                          filterQuality: FilterQuality.medium,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
+                    const _Lockup(),
+                    const SizedBox(height: AppSpacing.xxxl),
                     Text(
                       _title,
                       textAlign: TextAlign.center,
-                      style: t.headlineMedium,
+                      style: AppTypography.display.copyWith(color: palette.ink),
                     ),
-                    const SizedBox(height: AppSpacing.xs),
+                    const SizedBox(height: AppSpacing.sm),
                     Text(
                       _subtitle,
                       textAlign: TextAlign.center,
-                      style: t.bodyMedium?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
+                      style: AppTypography.body.copyWith(color: palette.muted),
                     ),
-                    const SizedBox(height: AppSpacing.xxl),
+                    const SizedBox(height: AppSpacing.xxxl),
 
                     if (_mode == _Mode.signUp) ...[
                       TextFormField(
@@ -244,11 +235,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       ),
 
                     if (state is AuthFailed) ...[
-                      const SizedBox(height: AppSpacing.sm),
+                      const SizedBox(height: AppSpacing.md),
                       _ErrorBanner(state.failure.message),
                     ],
 
-                    const SizedBox(height: AppSpacing.lg),
+                    const SizedBox(height: AppSpacing.xl),
                     FilledButton(
                       onPressed: busy ? null : _submit,
                       child: busy
@@ -259,9 +250,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                           : Text(_cta),
                     ),
                     if (_mode != _Mode.forgot) ...[
-                      const SizedBox(height: AppSpacing.md),
+                      const SizedBox(height: AppSpacing.xl),
                       _OrDivider(),
-                      const SizedBox(height: AppSpacing.md),
+                      const SizedBox(height: AppSpacing.xl),
                       OutlinedButton.icon(
                         onPressed: busy
                             ? null
@@ -272,7 +263,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         label: const Text('Continue with Google'),
                       ),
                     ],
-                    const SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.xl),
                     _ModeSwitcher(mode: _mode, busy: busy, onSwitch: _switchTo),
                   ],
                 ),
@@ -307,21 +298,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 class _OrDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final line = context.palette.line;
     return Row(
       children: [
-        Expanded(child: Divider(color: scheme.outlineVariant)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Text(
-            'OR CONTINUE WITH',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-              letterSpacing: 1,
-            ),
-          ),
+        Expanded(child: Divider(color: line)),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Eyebrow('or continue with'),
         ),
-        Expanded(child: Divider(color: scheme.outlineVariant)),
+        Expanded(child: Divider(color: line)),
       ],
     );
   }
@@ -408,8 +393,7 @@ class _ModeSwitcher extends StatelessWidget {
       children: [
         Text(
           toSignUp ? 'New to FinRoot?' : 'Already have an account?',
-          style: Theme.of(context).textTheme.bodyMedium
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: AppTypography.body.copyWith(color: context.palette.muted),
         ),
         TextButton(
           onPressed: busy
@@ -428,29 +412,33 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tone = StatusTone.coral(context);
     return Semantics(
       liveRegion: true,
       container: true,
       child: Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: scheme.errorContainer,
-        borderRadius: AppRadius.field,
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline, size: 20, color: scheme.onErrorContainer),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              message,
-              style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(color: scheme.onErrorContainer),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        decoration: BoxDecoration(
+          color: tone.background,
+          borderRadius: AppRadius.field,
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline_rounded, size: 20, color: tone.foreground),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Text(
+                message,
+                style: AppTypography.bodyStrong.copyWith(
+                  color: tone.foreground,
+                ),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -473,44 +461,77 @@ class _OutcomeScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
+    final palette = context.palette;
     return Scaffold(
+      backgroundColor: palette.page,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.xxl),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    icon,
-                    size: 48,
-                    color: context.finance.brandText,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  Text(
-                    title,
-                    style: t.headlineSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: t.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+              child: AppCard(
+                padding: const EdgeInsets.all(AppSpacing.xxl),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconTile(icon: icon, size: 56),
+                    const SizedBox(height: AppSpacing.xl),
+                    Text(
+                      title,
+                      style: AppTypography.display.copyWith(
+                        color: palette.ink,
+                        fontSize: 24,
+                        height: 32 / 24,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  FilledButton(onPressed: onAction, child: Text(actionLabel)),
-                ],
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: AppTypography.body.copyWith(color: palette.muted),
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                    FilledButton(onPressed: onAction, child: Text(actionLabel)),
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The FinRoot mark (same image as the launcher icon) with the wordmark.
+class _Lockup extends StatelessWidget {
+  const _Lockup();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Image.asset(
+            'assets/brand/logo.png',
+            width: 52,
+            height: 52,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Text(
+          'FinRoot',
+          style: AppTypography.display.copyWith(
+            color: context.palette.ink,
+            fontSize: 26,
+            height: 32 / 26,
+          ),
+        ),
+      ],
     );
   }
 }

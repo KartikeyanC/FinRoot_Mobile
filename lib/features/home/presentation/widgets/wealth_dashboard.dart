@@ -2,29 +2,31 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/money/money_format.dart';
-import '../../../../core/providers/providers.dart';
 import '../../../../design/design.dart';
 import '../../../../domain/constants.dart';
 import '../../../../navigation/quick_add_entry.dart';
 import '../../../accounts/application/accounts_providers.dart';
 import '../../../debts/debts.dart';
 import '../../../goals/application/goals_providers.dart';
+import '../../../insights/application/insights_providers.dart';
+import '../../../insights/domain/insight.dart';
 import '../../../investments/application/investments_providers.dart';
 import '../../../menus/application/menu_providers.dart';
-import '../../../profile/profile_providers.dart';
 import '../../../recurring/application/recurring_providers.dart';
 import '../../../recurring/domain/recurring_item.dart';
 import '../../../summary/application/summary_providers.dart';
 import '../../../summary/domain/workspace_summary.dart';
 import '../../domain/wealth_figures.dart';
+import 'home_parts.dart';
 
 /// The web dashboard's default "Wealth" layout (`DashboardWealth.tsx`), card
-/// for card, stacked into one column for the phone: greeting + Add
-/// transaction, net-worth hero, financial health, cash flow, net spending,
-/// upcoming bills, investment performance, and the metrics strip.
+/// for card, rebuilt for the phone in NineFlow's structure: a nudge pill, the
+/// net-worth headline card, a strip of the month's numbers, then cash flow,
+/// financial health, net spending, upcoming bills and investment performance.
 class WealthDashboard extends ConsumerWidget {
   const WealthDashboard({super.key});
 
@@ -32,11 +34,13 @@ class WealthDashboard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summary = ref.watch(workspaceSummaryProvider).value ?? WorkspaceSummary.empty();
     final cash = ref.watch(totalBalanceProvider).amount.toDouble();
+    final accounts = ref.watch(workspaceAccountsProvider).value ?? const [];
     final portfolio = ref.watch(portfolioSummaryProvider);
     final investments = ref.watch(investmentsProvider).value ?? const [];
     final debts = ref.watch(debtsProvider).value ?? const <Debt>[];
     final goals = ref.watch(goalsProvider).value ?? const [];
     final bills = ref.watch(recurringItemsProvider).value ?? const <RecurringItem>[];
+    final insights = ref.watch(homeInsightsProvider);
     bool can(FeatureMenu m) => ref.watch(menuStatusProvider(m)) != MenuStatus.locked;
 
     final income = summary.monthIncome.amount.toDouble();
@@ -51,7 +55,6 @@ class WealthDashboard extends ConsumerWidget {
         ? summary.monthlySeries.sublist(summary.monthlySeries.length - 6)
         : summary.monthlySeries;
     final incomeSeries = [for (final p in series) p.income.amount.toDouble()];
-    final expenseSeries = [for (final p in series) p.expense.amount.toDouble()];
     final health = healthScore(
       savings: savings,
       savingsRate: rate,
@@ -72,25 +75,51 @@ class WealthDashboard extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _Greeting(),
-        gap,
+        _Nudge(
+          nextBill: upcoming.isEmpty ? null : upcoming.first,
+          insight: insights.isEmpty ? null : insights.first,
+        ),
         if (can(FeatureMenu.netWorth))
-          _NetWorthHero(
+          _NetWorthCard(
             netWorth: assets - liabilities,
-            income: income,
-            expense: expense,
-            incomeSeries: incomeSeries,
-            expenseSeries: expenseSeries,
+            assets: assets,
+            liabilities: liabilities,
+            savings: savings,
+            hasActivity: income > 0 || expense > 0,
+            hasAccounts: accounts.isNotEmpty,
+            canBudget: can(FeatureMenu.budget),
           )
         else
-          const _Panel(child: Center(child: Text('Net worth is not available on your plan.'))),
+          const HomeSection(
+            title: 'Net worth',
+            child: HomeEmpty(
+              icon: Icons.lock_outline_rounded,
+              title: 'Not available',
+              message: 'Net worth is not available on your plan.',
+            ),
+          ),
         gap,
-        _HealthPanel(health),
+        StatStrip([
+          Stat(MoneyFormat.short(income), 'Income', color: context.finance.income),
+          Stat(MoneyFormat.short(expense), 'Spent', color: context.finance.expense),
+          Stat(
+            MoneyFormat.short(savings),
+            'Saved',
+            color: savings >= 0 ? context.finance.income : context.finance.expense,
+          ),
+          if (can(FeatureMenu.budget))
+            Stat('$rate%', 'Savings rate')
+          else
+            Stat('${summary.transactionCount}', 'Entries'),
+        ]),
         gap,
         _CashFlowPanel(
           inflows: summary.categoryIncome.take(4).toList(),
           outflows: summary.categorySpend.take(4).toList(),
+          incomeMom: monthOnMonth(incomeSeries),
         ),
+        gap,
+        _HealthPanel(health),
         if (can(FeatureMenu.expenses)) ...[gap, _SpendingDonut(summary.categorySpend)],
         if (can(FeatureMenu.reminders)) ...[gap, _UpcomingBills(upcoming.take(4).toList())],
         if (can(FeatureMenu.investments)) ...[
@@ -101,267 +130,148 @@ class WealthDashboard extends ConsumerWidget {
             series: cumulativeHoldings([for (final r in investments) r.current.amount.toDouble()]),
           ),
         ],
-        if (can(FeatureMenu.netWorth)) ...[
-          gap,
-          _MetricsGrid([
-            ('Total assets', MoneyFormat.compact(assets), Icons.trending_up),
-            ('Liabilities', MoneyFormat.compact(liabilities), Icons.trending_down),
-            ('Monthly savings', MoneyFormat.compact(savings), Icons.account_balance_wallet_outlined),
-            if (can(FeatureMenu.budget)) ('Savings rate', '$rate%', Icons.show_chart),
-          ]),
-        ],
       ],
     );
   }
 }
 
-// ─────────────────────────── shared pieces ───────────────────────────
-
-/// The web's `glass-card p-5`.
-class _Panel extends StatelessWidget {
-  const _Panel({required this.child, this.title, this.icon});
-  final Widget child;
-  final String? title;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (title != null) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title!.toUpperCase(),
-                      style: AppTypography.sectionLabel.copyWith(color: scheme.onSurface),
-                    ),
-                  ),
-                  if (icon != null) Icon(icon, size: 16, color: scheme.onSurfaceVariant),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-            ],
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyRow extends StatelessWidget {
-  const _EmptyRow(this.icon, this.text);
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
-      child: Column(
-        children: [
-          Icon(icon, size: 24, color: muted.withValues(alpha: 0.4)),
-          const SizedBox(height: AppSpacing.sm),
-          Text(text, textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 14)),
-        ],
-      ),
-    );
-  }
-}
-
-TextStyle _num(BuildContext context, double size, {Color? color}) => AppTypography.money.copyWith(
+TextStyle _num(BuildContext context, double size, {Color? color}) => AppTypography.bodyStrong.copyWith(
       fontSize: size,
-      color: color ?? Theme.of(context).colorScheme.onSurface,
+      height: 1.2,
+      color: color ?? context.palette.ink,
+      fontFeatures: const [FontFeature.tabularFigures()],
     );
 
-// ─────────────────────────── greeting ───────────────────────────
+// ─────────────────────────── nudge banner ───────────────────────────
 
-class _Greeting extends ConsumerWidget {
-  const _Greeting();
+/// The single most useful nudge: a bill due within a week, else the top
+/// insight. Not dismissible (the app has no dismiss state for either).
+class _Nudge extends StatelessWidget {
+  const _Nudge({required this.nextBill, required this.insight});
+
+  final RecurringItem? nextBill;
+  final Insight? insight;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final finance = context.finance;
-    final display = ref.watch(profileProvider).value?.displayName?.trim();
-    final email = ref.watch(currentUserProvider)?.email;
-    final name = (display != null && display.isNotEmpty)
-        ? display.split(RegExp(r'\s+')).first
-        : (email?.split('@').first ?? 'there');
-    final h = DateTime.now().hour;
-    final hello = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-    final tt = Theme.of(context).textTheme;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Icon(Icons.auto_awesome, size: 14, color: finance.brandText),
-                const SizedBox(width: AppSpacing.xs),
-                Text(
-                  'DASHBOARD',
-                  style: AppTypography.sectionLabel.copyWith(
-                    fontSize: 12,
-                    letterSpacing: 1.6,
-                    color: finance.brandText,
-                  ),
-                ),
-              ]),
-              const SizedBox(height: AppSpacing.xs),
-              Text('$hello, $name', style: tt.headlineSmall),
-            ],
+  Widget build(BuildContext context) {
+    final bill = nextBill;
+    if (bill != null) {
+      final days = bill.daysUntilDue(now: DateTime.now());
+      if (days <= 7) {
+        final when = switch (days) {
+          < 0 => '${-days}d overdue',
+          0 => 'due today',
+          1 => 'due tomorrow',
+          _ => 'due in ${days}d',
+        };
+        return Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+          child: InfoPill(
+            icon: Icons.event_rounded,
+            text: '${bill.name} $when',
+            detail: MoneyFormat.compact(
+              bill.amount.amount.toDouble(),
+              currency: bill.amount.currency,
+            ),
+            onTap: () => context.push('/recurring'),
           ),
+        );
+      }
+    }
+    final i = insight;
+    if (i != null) {
+      final route = i.route;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+        child: InfoPill(
+          icon: i.icon,
+          text: i.title,
+          onTap: route == null ? null : () => context.push(route),
         ),
-        const SizedBox(width: AppSpacing.md),
-        FilledButton.icon(
-          onPressed: () => openQuickAdd(context),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(0, 40),
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          ),
-          icon: const Icon(Icons.north_east, size: 16),
-          label: const Text('Add'),
-        ),
-      ],
-    );
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
 
-// ─────────────────────────── net worth hero ───────────────────────────
+// ─────────────────────────── net worth headline ───────────────────────────
 
-class _NetWorthHero extends StatelessWidget {
-  const _NetWorthHero({
+class _NetWorthCard extends StatelessWidget {
+  const _NetWorthCard({
     required this.netWorth,
-    required this.income,
-    required this.expense,
-    required this.incomeSeries,
-    required this.expenseSeries,
+    required this.assets,
+    required this.liabilities,
+    required this.savings,
+    required this.hasActivity,
+    required this.hasAccounts,
+    required this.canBudget,
   });
 
   final double netWorth;
-  final double income;
-  final double expense;
-  final List<double> incomeSeries;
-  final List<double> expenseSeries;
+  final double assets;
+  final double liabilities;
+  final double savings;
+  final bool hasActivity;
+  final bool hasAccounts;
+  final bool canBudget;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final finance = context.finance;
-    return _Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('NET WORTH',
-              style: TextStyle(fontSize: 12, letterSpacing: 1.0, color: scheme.onSurfaceVariant)),
-          const SizedBox(height: AppSpacing.xs),
-          // The web's `text-gradient-primary`: brand green → chart cyan.
-          ShaderMask(
-            shaderCallback: (r) => LinearGradient(colors: [finance.brandText, AppColors.gradientEnd])
-                .createShader(r),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                MoneyFormat.compact(netWorth),
-                style: _num(context, 36, color: Colors.white).copyWith(fontWeight: FontWeight.w700),
+    final palette = context.palette;
+
+    final String status;
+    final Color statusColor;
+    if (!hasActivity) {
+      status = 'Nothing recorded this month yet';
+      statusColor = palette.muted;
+    } else if (savings >= 0) {
+      status = '${MoneyFormat.compact(savings)} saved this month';
+      statusColor = finance.income;
+    } else {
+      status = '${MoneyFormat.compact(-savings)} overspent this month';
+      statusColor = finance.expense;
+    }
+
+    final VoidCallback onAction;
+    final String actionLabel;
+    if (!hasAccounts) {
+      actionLabel = 'Add your accounts';
+      onAction = () => context.push('/accounts');
+    } else if (hasActivity && savings < 0 && canBudget) {
+      actionLabel = 'Review your budget';
+      onAction = () => context.push('/budget');
+    } else {
+      actionLabel = 'Add a transaction';
+      onAction = () => openQuickAdd(context);
+    }
+
+    return MetricCard(
+      eyebrow: 'Net worth',
+      figure: MoneyFormat.money(netWorth),
+      status: status,
+      statusColor: statusColor,
+      action: PillButton(
+        label: actionLabel,
+        trailingArrow: true,
+        onPressed: onAction,
+      ),
+      child: assets > 0 || liabilities > 0
+          ? SegmentedBar([
+              BarSegment(
+                'Assets',
+                assets,
+                palette.accent,
+                amountLabel: MoneyFormat.short(assets),
               ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          Row(
-            children: [
-              Expanded(child: _MiniStat('Income', income, incomeSeries, positive: true)),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(child: _MiniStat('Expenses', expense, expenseSeries, positive: false)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniStat extends StatelessWidget {
-  const _MiniStat(this.label, this.value, this.series, {required this.positive});
-  final String label;
-  final double value;
-  final List<double> series;
-  final bool positive;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final finance = context.finance;
-    final accent = positive ? finance.income : finance.expense;
-    final mom = monthOnMonth(series);
-    final good = mom == null ? null : (positive ? mom >= 0 : mom <= 0);
-    final max = series.isEmpty ? 1.0 : math.max(1.0, series.reduce(math.max));
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        borderRadius: AppRadius.card,
-        border: Border.all(color: scheme.outline.withValues(alpha: 0.6)),
-        color: scheme.surface.withValues(alpha: 0.4),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text(label, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))),
-              if (mom != null)
-                Text(
-                  '${mom >= 0 ? '+' : ''}${mom.toStringAsFixed(1)}%',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: good! ? finance.income : finance.expense,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(MoneyFormat.compact(value), style: _num(context, 18)),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          SizedBox(
-            height: 24,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (var i = 0; i < series.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 4),
-                  Expanded(
-                    child: FractionallySizedBox(
-                      heightFactor: math.max(0.08, series[i] / max),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: i == series.length - 1 ? accent : accent.withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+              BarSegment(
+                'Liabilities',
+                liabilities,
+                finance.expense,
+                amountLabel: MoneyFormat.short(liabilities),
+              ),
+            ])
+          : null,
     );
   }
 }
@@ -374,15 +284,20 @@ class _HealthPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
     final finance = context.finance;
-    return _Panel(
+    final tone = health.score >= 75
+        ? HomeTone.mint
+        : health.score >= 50
+            ? HomeTone.butter
+            : HomeTone.coral;
+    return HomeSection(
       title: 'Financial health',
-      icon: Icons.monitor_heart_outlined,
+      trailing: TonePill(health.verdict, tone),
       child: Row(
         children: [
           SizedBox.square(
-            dimension: 104,
+            dimension: 96,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -395,17 +310,18 @@ class _HealthPanel extends StatelessWidget {
                       value: v,
                       strokeWidth: 9,
                       strokeCap: StrokeCap.round,
-                      backgroundColor: scheme.outlineVariant,
-                      color: scheme.primary,
+                      backgroundColor: palette.line,
+                      color: palette.accent,
                     ),
                   ),
                 ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('${health.score}%', style: _num(context, 22)),
-                    Text(health.verdict, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-                  ],
+                Text(
+                  '${health.score}%',
+                  style: AppTypography.display.copyWith(
+                    fontSize: 22,
+                    height: 1.2,
+                    color: palette.ink,
+                  ),
                 ),
               ],
             ),
@@ -419,19 +335,20 @@ class _HealthPanel extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(
-                          c.ok ? Icons.check_circle : Icons.circle_outlined,
-                          size: 15,
-                          color: c.ok ? finance.income : scheme.onSurfaceVariant.withValues(alpha: 0.5),
+                          c.ok ? Icons.check_circle_rounded : Icons.circle_outlined,
+                          size: 16,
+                          color: c.ok ? finance.income : palette.faint,
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: Text(
                             c.label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: c.ok ? scheme.onSurface : scheme.onSurfaceVariant,
+                            style: AppTypography.label.copyWith(
+                              fontWeight: FontWeight.w500,
+                              color: c.ok ? palette.ink : palette.muted,
                             ),
                           ),
                         ),
@@ -450,19 +367,35 @@ class _HealthPanel extends StatelessWidget {
 // ─────────────────────────── cash flow ───────────────────────────
 
 class _CashFlowPanel extends StatelessWidget {
-  const _CashFlowPanel({required this.inflows, required this.outflows});
+  const _CashFlowPanel({
+    required this.inflows,
+    required this.outflows,
+    required this.incomeMom,
+  });
   final List<CategorySpendPoint> inflows;
   final List<CategorySpendPoint> outflows;
+  final double? incomeMom;
 
   @override
   Widget build(BuildContext context) {
     final values = [...inflows, ...outflows].map((c) => c.amount.amount.toDouble());
     final max = values.isEmpty ? 1.0 : math.max(1.0, values.reduce(math.max));
-    return _Panel(
+    final mom = incomeMom;
+    return HomeSection(
       title: 'Cash flow',
-      icon: Icons.show_chart,
+      trailing: mom == null
+          ? null
+          : TonePill(
+              '${mom >= 0 ? '+' : ''}${mom.toStringAsFixed(1)}% income',
+              mom >= 0 ? HomeTone.mint : HomeTone.coral,
+              dot: false,
+            ),
       child: inflows.isEmpty && outflows.isEmpty
-          ? const _EmptyRow(Icons.show_chart, 'Log income and expenses to see your flow.')
+          ? const HomeEmpty(
+              icon: Icons.show_chart_rounded,
+              title: 'No cash flow yet',
+              message: 'Log income and expenses to see your flow.',
+            )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -484,49 +417,52 @@ class _FlowGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
     final color = income ? context.finance.income : context.finance.expense;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(),
-            style: TextStyle(fontSize: 11, letterSpacing: 1.0, fontWeight: FontWeight.w600, color: color)),
+        Eyebrow(label, color: color),
         const SizedBox(height: AppSpacing.sm),
         for (final r in rows)
           Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Row(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  width: 84,
-                  child: Text(r.category,
-                      textAlign: TextAlign.right,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        r.category,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.bodyStrong.copyWith(color: palette.ink),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(
+                      MoneyFormat.compact(r.amount.amount.toDouble()),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                      style: _num(context, 14),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: Container(
-                      height: 14,
-                      color: scheme.outlineVariant,
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: math.max(0.04, r.amount.amount.toDouble() / max),
-                        child: Container(
-                          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(99)),
-                        ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: AppRadius.chip,
+                  child: Container(
+                    height: 8,
+                    color: palette.line,
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      heightFactor: 1,
+                      widthFactor: math.max(0.04, r.amount.amount.toDouble() / max).clamp(0.0, 1.0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: color, borderRadius: AppRadius.chip),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                SizedBox(
-                  width: 72,
-                  child: Text(MoneyFormat.compact(r.amount.amount.toDouble()),
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: _num(context, 12)),
                 ),
               ],
             ),
@@ -551,9 +487,8 @@ class _SpendingDonutState extends State<_SpendingDonut> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final deck = dark ? AppColors.chartDark : AppColors.chartLight;
+    final palette = context.palette;
+    final deck = palette.isDark ? AppColors.chartDark : AppColors.chartLight;
     final total = widget.data.fold<double>(0, (s, d) => s + d.amount.amount.toDouble());
     final items = [
       for (var i = 0; i < widget.data.length; i++)
@@ -566,11 +501,15 @@ class _SpendingDonutState extends State<_SpendingDonut> {
     ];
     final sel = _active == null ? null : items[_active!];
 
-    return _Panel(
+    return HomeSection(
       title: 'Net spending',
-      icon: Icons.pie_chart_outline,
+      trailing: items.isEmpty ? null : TonePill(MoneyFormat.short(total), HomeTone.coral, dot: false),
       child: items.isEmpty
-          ? const _EmptyRow(Icons.pie_chart_outline, 'No expenses logged this month yet.')
+          ? const HomeEmpty(
+              icon: Icons.pie_chart_outline_rounded,
+              title: 'No spending yet',
+              message: 'No expenses logged this month yet.',
+            )
           : Row(
               children: [
                 SizedBox.square(
@@ -583,67 +522,69 @@ class _SpendingDonutState extends State<_SpendingDonut> {
                         painter: _DonutPainter(
                           [for (final it in items) (it.value, it.color)],
                           active: _active,
-                          gapColor: scheme.surface,
                         ),
                       ),
                       SizedBox(
-                        width: 58,
+                        width: 62,
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: sel == null
                               ? [
-                                  Text('SPENT',
-                                      style: TextStyle(
-                                          fontSize: 10, letterSpacing: 1, color: scheme.onSurfaceVariant)),
-                                  FittedBox(child: Text(MoneyFormat.compact(total), style: _num(context, 13))),
+                                  Text('Spent', style: AppTypography.caption.copyWith(color: palette.muted)),
+                                  FittedBox(child: Text(MoneyFormat.compact(total), style: _num(context, 14))),
                                 ]
                               : [
-                                  Text(sel.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-                                  FittedBox(child: Text(MoneyFormat.compact(sel.value), style: _num(context, 13))),
-                                  Text('${sel.pct}%', style: TextStyle(fontSize: 11, color: sel.color)),
+                                  Text(
+                                    sel.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.caption.copyWith(color: palette.muted),
+                                  ),
+                                  FittedBox(child: Text(MoneyFormat.compact(sel.value), style: _num(context, 14))),
+                                  Text('${sel.pct}%', style: AppTypography.caption.copyWith(color: palette.accentText)),
                                 ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: AppSpacing.lg),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     children: [
                       for (var i = 0; i < math.min(5, items.length); i++)
                         InkWell(
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: AppRadius.chip,
                           onTap: () => setState(() => _active = _active == i ? null : i),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(6),
-                              color: _active == i ? scheme.primary.withValues(alpha: 0.1) : null,
+                              borderRadius: AppRadius.chip,
+                              color: _active == i ? palette.tint : null,
                             ),
                             child: Row(
                               children: [
                                 Container(
-                                  width: 10,
-                                  height: 10,
+                                  width: 8,
+                                  height: 8,
                                   decoration: BoxDecoration(color: items[i].color, shape: BoxShape.circle),
                                 ),
                                 const SizedBox(width: AppSpacing.sm),
                                 Expanded(
-                                  child: Text(items[i].name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: _active == i ? scheme.onSurface : scheme.onSurfaceVariant,
-                                      )),
+                                  child: Text(
+                                    items[i].name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.label.copyWith(
+                                      fontWeight: FontWeight.w500,
+                                      color: _active == i ? palette.ink : palette.muted,
+                                    ),
+                                  ),
                                 ),
-                                Text('${items[i].pct}%',
-                                    style: TextStyle(
-                                        fontSize: 12, fontWeight: FontWeight.w500, color: scheme.onSurface)),
+                                Text(
+                                  '${items[i].pct}%',
+                                  style: AppTypography.label.copyWith(color: palette.ink),
+                                ),
                               ],
                             ),
                           ),
@@ -658,10 +599,9 @@ class _SpendingDonutState extends State<_SpendingDonut> {
 }
 
 class _DonutPainter extends CustomPainter {
-  _DonutPainter(this.slices, {required this.active, required this.gapColor});
+  _DonutPainter(this.slices, {required this.active});
   final List<(double, Color)> slices;
   final int? active;
-  final Color gapColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -669,7 +609,7 @@ class _DonutPainter extends CustomPainter {
     if (total <= 0) return;
     final center = size.center(Offset.zero);
     const outer = 50.0 * 128 / 100;
-    const inner = 32.0 * 128 / 100;
+    const inner = 34.0 * 128 / 100;
     const stroke = outer - inner;
     const pad = 3 * math.pi / 180; // web paddingAngle 3°
     var start = -math.pi / 2;
@@ -699,47 +639,60 @@ class _UpcomingBills extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return _Panel(
+    final palette = context.palette;
+    final now = DateTime.now();
+    return HomeSection(
       title: 'Upcoming bills',
-      icon: Icons.event_outlined,
+      trailing: HomeSeeAll(label: 'All bills', onPressed: () => context.push('/recurring')),
       child: items.isEmpty
-          ? const _EmptyRow(Icons.event_outlined, 'No upcoming bills. Add recurring expenses to track them.')
+          ? const HomeEmpty(
+              icon: Icons.event_outlined,
+              title: 'No upcoming bills',
+              message: 'Add recurring expenses to track them.',
+            )
           : Column(
               children: [
-                for (final b in items)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: scheme.primary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(Icons.receipt_long_outlined, size: 16, color: context.finance.brandText),
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(b.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                              Text(DateFormat('d MMM').format(b.nextDueDate),
-                                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          '−${MoneyFormat.money(b.amount.amount.toDouble(), currency: b.amount.currency)}',
-                          style: _num(context, 14, color: context.finance.expense)
-                              .copyWith(fontWeight: FontWeight.w500),
-                        ),
-                      ],
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                      child: HomeDivider(),
                     ),
+                  Row(
+                    children: [
+                      const IconTile(icon: Icons.receipt_long_outlined),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              items[i].name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.bodyStrong.copyWith(color: palette.ink, fontSize: 15),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              DateFormat('d MMM').format(items[i].nextDueDate),
+                              style: AppTypography.label.copyWith(
+                                color: items[i].daysUntilDue(now: now) <= 2
+                                    ? context.finance.expense
+                                    : palette.muted,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Text(
+                        '-${MoneyFormat.money(items[i].amount.amount.toDouble(), currency: items[i].amount.currency)}',
+                        style: _num(context, 15, color: context.finance.expense),
+                      ),
+                    ],
                   ),
+                ],
               ],
             ),
     );
@@ -756,49 +709,50 @@ class _InvestmentPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final finance = context.finance;
+    final palette = context.palette;
     final delta = current - invested;
     final pct = invested > 0 ? delta / invested * 100 : 0.0;
     final up = delta >= 0;
-    return _Panel(
-      title: 'Investment performance',
-      icon: Icons.stacked_line_chart,
+    return HomeSection(
+      title: 'Investments',
+      trailing: invested > 0
+          ? TonePill(
+              '${up ? '+' : ''}${pct.toStringAsFixed(1)}%',
+              up ? HomeTone.mint : HomeTone.coral,
+              dot: false,
+            )
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(MoneyFormat.compact(current), style: _num(context, 24)),
-                ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              MoneyFormat.money(current),
+              style: AppTypography.display.copyWith(
+                color: palette.ink,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
-              if (invested > 0) ...[
-                const SizedBox(width: AppSpacing.sm),
-                Icon(up ? Icons.north_east : Icons.south_east,
-                    size: 14, color: up ? finance.income : finance.expense),
-                Text('${up ? '+' : ''}${pct.toStringAsFixed(1)}%',
-                    style: TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w500, color: up ? finance.income : finance.expense)),
-              ],
-            ],
+            ),
           ),
-          if (series.isEmpty)
-            const _EmptyRow(Icons.stacked_line_chart, 'Add holdings on the Investments page to track performance.')
-          else ...[
-            const SizedBox(height: AppSpacing.sm),
+          if (series.isEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            const HomeEmpty(
+              icon: Icons.stacked_line_chart_rounded,
+              title: 'No holdings yet',
+              message: 'Add holdings on the Investments page to track performance.',
+            ),
+          ] else ...[
+            const SizedBox(height: AppSpacing.md),
             SizedBox(
-              height: 120,
+              height: 110,
               width: double.infinity,
-              child: CustomPaint(painter: _AreaPainter(series, const Color(0xFF2EB88A))),
+              child: CustomPaint(painter: _AreaPainter(series, palette.accent)),
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               'Cumulative value across ${series.length} holding${series.length == 1 ? '' : 's'}.',
-              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              style: AppTypography.label.copyWith(color: palette.muted, fontWeight: FontWeight.w500),
             ),
           ],
         ],
@@ -807,7 +761,7 @@ class _InvestmentPanel extends StatelessWidget {
   }
 }
 
-/// The web's monotone area chart (stroke hsl(160,60%,45%), 35% → 0 fill).
+/// The web's monotone area chart (35% → 0 fill).
 class _AreaPainter extends CustomPainter {
   _AreaPainter(this.values, this.color);
   final List<double> values;
@@ -851,64 +805,12 @@ class _AreaPainter extends CustomPainter {
       line,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
         ..color = color,
     );
   }
 
   @override
-  bool shouldRepaint(_AreaPainter old) => old.values != values;
-}
-
-// ─────────────────────────── metrics strip ───────────────────────────
-
-class _MetricsGrid extends StatelessWidget {
-  const _MetricsGrid(this.metrics);
-  final List<(String, String, IconData)> metrics;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    Widget tile((String, String, IconData) m) => Card(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Expanded(
-                    child: Text(m.$1.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11,
-                            letterSpacing: 0.8,
-                            fontWeight: FontWeight.w500,
-                            color: scheme.onSurfaceVariant)),
-                  ),
-                  Icon(m.$3, size: 16, color: scheme.onSurfaceVariant),
-                ]),
-                const SizedBox(height: AppSpacing.sm),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(m.$2, style: _num(context, 22).copyWith(letterSpacing: -0.5)),
-                ),
-              ],
-            ),
-          ),
-        );
-    final rows = <Widget>[];
-    for (var i = 0; i < metrics.length; i += 2) {
-      rows.add(Row(
-        children: [
-          Expanded(child: tile(metrics[i])),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(child: i + 1 < metrics.length ? tile(metrics[i + 1]) : const SizedBox()),
-        ],
-      ));
-      if (i + 2 < metrics.length) rows.add(const SizedBox(height: AppSpacing.md));
-    }
-    return Column(children: rows);
-  }
+  bool shouldRepaint(_AreaPainter old) => old.values != values || old.color != color;
 }

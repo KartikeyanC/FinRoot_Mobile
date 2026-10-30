@@ -9,6 +9,7 @@ import '../../../menus/application/menu_providers.dart';
 import '../../../recurring/application/recurring_providers.dart';
 import '../../../recurring/domain/recurring_item.dart';
 import '../../../reminders/application/reminders_providers.dart';
+import 'home_parts.dart';
 
 /// Home "Upcoming" — the nearest recurring items and reminders, merged and
 /// sorted by due date (mirrors the web `ActionableReminders`). Reads the same
@@ -63,28 +64,21 @@ class HomeUpcomingCard extends ConsumerWidget {
     rows.sort((a, b) => a.days.compareTo(b.days));
     final shown = rows.take(_maxRows).toList();
 
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-
-    return AppCard(
+    return HomeSection(
+      title: 'Upcoming',
+      trailing: rows.length > shown.length
+          ? TonePill('+${rows.length - shown.length} more', HomeTone.sky, dot: false)
+          : null,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.upcoming_outlined, size: 20,
-                  color: scheme.onSurfaceVariant),
-              const SizedBox(width: AppSpacing.sm),
-              Text('Upcoming', style: tt.titleSmall),
-              const Spacer(),
-              if (rows.length > shown.length)
-                Text('+${rows.length - shown.length} more',
-                    style: tt.labelSmall
-                        ?.copyWith(color: scheme.onSurfaceVariant)),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          for (final row in shown) _UpcomingTile(row: row),
+          for (var i = 0; i < shown.length; i++) ...[
+            if (i > 0)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                child: HomeDivider(),
+              ),
+            _UpcomingTile(row: shown[i]),
+          ],
         ],
       ),
     );
@@ -115,9 +109,7 @@ class _UpcomingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    final finance = context.finance;
+    final palette = context.palette;
     final soon = row.days <= 2;
     final due = switch (row.days) {
       < 0 => '${-row.days}d overdue',
@@ -128,42 +120,40 @@ class _UpcomingTile extends StatelessWidget {
 
     return InkWell(
       onTap: () => context.push(row.route),
-      borderRadius: AppRadius.field,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: AppSpacing.minTouchTarget),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-          child: Row(
-            children: [
-              Icon(row.icon, size: 18, color: scheme.onSurfaceVariant),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      row.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      '${row.amount != null ? '${row.amount!.formatShort()} · ' : ''}'
-                      'due $due',
-                      style: tt.bodySmall?.copyWith(
-                        color: soon ? finance.expense : scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+      borderRadius: AppRadius.tile,
+      child: Row(
+        children: [
+          IconTile(icon: row.icon),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  row.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.bodyStrong.copyWith(
+                    color: palette.ink,
+                    fontSize: 15,
+                  ),
                 ),
-              ),
-              Icon(Icons.chevron_right, size: 18,
-                  color: scheme.onSurfaceVariant),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  '${row.amount != null ? '${row.amount!.formatShort()} · ' : ''}'
+                  'due $due',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.label.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: soon ? context.finance.expense : palette.muted,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+          Icon(Icons.chevron_right_rounded, color: palette.faint),
+        ],
       ),
     );
   }

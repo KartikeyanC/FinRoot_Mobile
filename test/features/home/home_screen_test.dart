@@ -105,8 +105,9 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining(', Priya'), findsOneWidget);
-    expect(find.text('DASHBOARD'), findsOneWidget);
-    expect(find.text('Add'), findsOneWidget);
+    expect(find.text('Kumar Household'), findsOneWidget);
+    // The shell's + owns adding; Home has no floating Add of its own.
+    expect(find.text('Add'), findsNothing);
   });
 
   testWidgets('the web dashboard cards are all there, in order', (tester) async {
@@ -134,15 +135,15 @@ void main() {
     );
     await tester.pump();
 
-    for (final t in ['NET WORTH', 'FINANCIAL HEALTH', 'CASH FLOW', 'NET SPENDING']) {
+    for (final t in ['NET WORTH', 'Financial health', 'Cash flow', 'Net spending']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(
       tester.getTopLeft(find.text('NET WORTH')).dy,
-      lessThan(tester.getTopLeft(find.text('CASH FLOW')).dy),
+      lessThan(tester.getTopLeft(find.text('Cash flow')).dy),
     );
     // Income month-on-month: 80k to 100k is +25.0%.
-    expect(find.text('+25.0%'), findsOneWidget);
+    expect(find.text('+25.0% income'), findsOneWidget);
     // Salary is income: it shows under cash flow In, not in the spending donut.
     expect(find.text('Salary'), findsOneWidget);
     expect(find.text('67%'), findsOneWidget, reason: 'Rent is 40k of 60k spent');

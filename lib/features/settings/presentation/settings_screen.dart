@@ -5,8 +5,8 @@ import '../../../core/device/device_prefs.dart';
 import '../../../core/providers/providers.dart';
 import '../../../design/design.dart';
 import '../../auth/application/sign_out.dart';
+import '../../more/presentation/workspace_row.dart';
 import '../../profile/profile_providers.dart';
-import '../../workspace/presentation/workspace_switcher_sheet.dart';
 
 /// Settings — profile, workspace, appearance, sign-out.
 ///
@@ -21,75 +21,81 @@ class SettingsScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final profile = ref.watch(profileProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final palette = context.palette;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+    final name =
+        profile.value?.displayName ??
+        user?.userMetadata?['display_name'] as String? ??
+        'Your name';
+
+    return AppPage(
+      title: 'Settings',
+      subtitle: 'Your profile, workspace and look',
+      padBody: false,
       body: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.screenGutter,
+          0,
+          AppSpacing.screenGutter,
+          AppSpacing.huge,
+        ),
         children: [
-          const _SectionLabel('Profile'),
-          ListTile(
-            leading: const Icon(Icons.badge_outlined),
-            title: Text(
-              profile.value?.displayName ??
-                  user?.userMetadata?['display_name'] as String? ??
-                  'Your name',
-            ),
-            subtitle: const Text('Display name'),
-            trailing: const Icon(Icons.edit_outlined),
+          const SectionTitle('Profile'),
+          ListRow(
+            icon: Icons.badge_outlined,
+            title: name,
+            subtitle: 'Display name',
+            trailing: Icon(Icons.edit_outlined, size: 20, color: palette.muted),
             onTap: () => _editName(context, ref),
           ),
-          ListTile(
-            leading: const Icon(Icons.mail_outline),
-            title: Text(user?.email ?? '—'),
-            subtitle: const Text('Email'),
+          const SizedBox(height: AppSpacing.sm),
+          ListRow(
+            icon: Icons.mail_outline_rounded,
+            title: user?.email ?? '—',
+            subtitle: 'Email',
           ),
 
-          const Divider(height: 1),
-          const _SectionLabel('Workspace'),
-          const WorkspaceSummaryTile(),
+          const SectionTitle('Workspace'),
+          const MoreWorkspaceRow(),
 
-          const Divider(height: 1),
-          const _SectionLabel('Appearance'),
-          RadioGroup<ThemeMode>(
-            groupValue: themeMode,
-            onChanged: (mode) {
-              if (mode != null) {
-                ref.read(themeModeProvider.notifier).set(mode);
-              }
-            },
-            child: const Column(
+          const SectionTitle('Appearance'),
+          AppCard(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                RadioListTile<ThemeMode>(
-                  value: ThemeMode.light,
-                  title: Text('Light'),
+                Text(
+                  'Mode',
+                  style: AppTypography.label.copyWith(color: palette.muted),
                 ),
-                RadioListTile<ThemeMode>(
-                  value: ThemeMode.dark,
-                  title: Text('Dark'),
+                const SizedBox(height: AppSpacing.md),
+                FilterPills<ThemeMode>(
+                  options: const [
+                    FilterPill(ThemeMode.light, 'Light', icon: Icons.light_mode_outlined),
+                    FilterPill(ThemeMode.dark, 'Dark', icon: Icons.dark_mode_outlined),
+                    FilterPill(ThemeMode.system, 'Follow system'),
+                  ],
+                  selected: themeMode,
+                  onSelected: (mode) =>
+                      ref.read(themeModeProvider.notifier).set(mode),
                 ),
-                RadioListTile<ThemeMode>(
-                  value: ThemeMode.system,
-                  title: Text('Follow system'),
-                ),
+                const SizedBox(height: AppSpacing.xl),
+                const _ColorThemePicker(),
               ],
             ),
           ),
-          const _ColorThemePicker(),
 
-          const Divider(height: 1),
-          const _SectionLabel('Account'),
-          ListTile(
-            leading: Icon(
-              Icons.logout,
-              color: Theme.of(context).colorScheme.error,
+          const SectionTitle('Account'),
+          ListRow(
+            leading: IconTile(
+              icon: Icons.logout_rounded,
+              tint: context.finance.danger.withValues(alpha: 0.14),
+              color: context.finance.danger,
             ),
-            title: Text(
-              'Sign out',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
+            title: 'Sign out',
+            subtitle: 'You will need your email and password to sign back in',
             onTap: () => _confirmSignOut(context, ref),
           ),
-          const SizedBox(height: AppSpacing.xxl),
         ],
       ),
     );
@@ -110,7 +116,7 @@ class SettingsScreen extends ConsumerWidget {
           onSubmitted: (v) => Navigator.of(dialogContext).pop(v.trim()),
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Cancel'),
           ),
@@ -146,11 +152,12 @@ class SettingsScreen extends ConsumerWidget {
           'not yet synced will finish on the next sign-in.',
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
           ),
           FilledButton(
+            style: AppButtonStyles.destructive,
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Sign out'),
           ),
@@ -176,28 +183,6 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.sm,
-      ),
-      child: Text(
-        text.toUpperCase(),
-        style: Theme.of(context).textTheme.labelMedium
-            ?.copyWith(color: context.finance.brandText, letterSpacing: 0.8),
-      ),
-    );
-  }
-}
-
 /// Colour theme: five swatches (NineFlow's themes), each showing its gradient
 /// in the current mode. Independent of light / dark above.
 class _ColorThemePicker extends ConsumerWidget {
@@ -208,38 +193,29 @@ class _ColorThemePicker extends ConsumerWidget {
     final current = ref.watch(colorThemeProvider);
     final brightness = Theme.of(context).brightness;
     final palette = context.palette;
-    final t = Theme.of(context).textTheme;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.sm,
-        AppSpacing.lg,
-        AppSpacing.lg,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Colour theme',
-            style: t.bodyMedium?.copyWith(color: palette.muted),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Wrap(
-            spacing: AppSpacing.md,
-            runSpacing: AppSpacing.md,
-            children: [
-              for (final theme in AppColorTheme.values)
-                _Swatch(
-                  theme: theme,
-                  colors: theme.palette(brightness),
-                  selected: theme == current,
-                  onTap: () => ref.read(colorThemeProvider.notifier).set(theme),
-                ),
-            ],
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Colour theme',
+          style: AppTypography.label.copyWith(color: palette.muted),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Wrap(
+          spacing: AppSpacing.md,
+          runSpacing: AppSpacing.md,
+          children: [
+            for (final theme in AppColorTheme.values)
+              _Swatch(
+                theme: theme,
+                colors: theme.palette(brightness),
+                selected: theme == current,
+                onTap: () => ref.read(colorThemeProvider.notifier).set(theme),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

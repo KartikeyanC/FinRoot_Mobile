@@ -126,7 +126,7 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Reminder', style: tt.titleLarge),
+          Text('Reminder', style: AppTypography.title.copyWith(color: context.palette.ink)),
           const SizedBox(height: AppSpacing.xs),
           Text(
             'Get a notification before this item is due.',
@@ -189,6 +189,11 @@ class _ReminderSheetState extends ConsumerState<_ReminderSheet> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Text('Save'),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          OutlinedButton(
+            onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
           ),
         ],
       ),

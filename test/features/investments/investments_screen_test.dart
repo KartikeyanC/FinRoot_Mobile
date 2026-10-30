@@ -65,7 +65,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 10));
 
     expect(find.text('ITC'), findsOneWidget);
-    expect(find.text('Current value'), findsOneWidget);
+    expect(find.text('CURRENT VALUE'), findsOneWidget);
     // total gain 3000 - 1000 = +2000 → "+₹2.0k (6.7%)"
     expect(find.textContaining('6.7%'), findsOneWidget);
   });

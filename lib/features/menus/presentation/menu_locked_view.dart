@@ -14,12 +14,22 @@ class MenuLockedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EmptyView(
-      icon: icon ?? Icons.lock_outline,
-      title: '$feature isn\'t available',
-      message:
-          'This feature is turned off for the current workspace. A workspace '
-          'owner can change what\'s available on the web app.',
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenGutter,
+        AppSpacing.sm,
+        AppSpacing.screenGutter,
+        AppSpacing.huge,
+      ),
+      children: [
+        CardEmpty(
+          icon: icon ?? Icons.lock_outline_rounded,
+          title: '$feature isn\'t available',
+          message:
+              'This feature is turned off for the current workspace. A '
+              'workspace owner can switch it on from the web app.',
+        ),
+      ],
     );
   }
 }

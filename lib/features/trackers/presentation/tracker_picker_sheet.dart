@@ -24,30 +24,32 @@ class _TrackerPickerSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Assigning is only meaningful for live projects.
     final active = ref.watch(trackersListProvider).value ?? const [];
-    final tt = Theme.of(context).textTheme;
+    final palette = context.palette;
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xs,
+          AppSpacing.xl,
+          AppSpacing.lg,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.xl,
-                AppSpacing.sm,
-                AppSpacing.xl,
-                AppSpacing.sm,
-              ),
-              child: Text('Assign to tracker', style: tt.titleLarge),
+            Text(
+              'Assign to tracker',
+              style: AppTypography.title.copyWith(color: palette.ink),
             ),
+            const SizedBox(height: AppSpacing.md),
             if (active.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(AppSpacing.xl),
-                child: Text(
-                  'No active trackers. Create one from the Trackers tab first.',
-                ),
+              const CardEmpty(
+                icon: Icons.donut_large_rounded,
+                title: 'No active trackers',
+                message:
+                    'No active trackers. Create one from the Trackers tab '
+                    'first.',
               )
             else
               Flexible(
@@ -55,11 +57,15 @@ class _TrackerPickerSheet extends ConsumerWidget {
                   shrinkWrap: true,
                   children: [
                     for (final t in active)
-                      ListTile(
-                        leading: Icon(trackerTypeIcon(t.type)),
-                        title: Text(trackerDisplayLabel(t.name)),
-                        subtitle: Text(t.type),
-                        onTap: () => Navigator.of(context).pop(t.id),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                        child: ListRow(
+                          icon: trackerTypeIcon(t.type),
+                          title: trackerDisplayLabel(t.name),
+                          subtitle: t.type,
+                          chevron: true,
+                          onTap: () => Navigator.of(context).pop(t.id),
+                        ),
                       ),
                   ],
                 ),
