@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../design/components/gradient_fab.dart';
 import '../design/tokens/app_breakpoints.dart';
 import '../design/tokens/app_palette.dart';
+import '../design/tokens/app_radius.dart';
 import '../design/tokens/app_spacing.dart';
 import '../features/payment_capture/presentation/payment_popup_opener.dart';
 import '../features/price_alerts/presentation/price_alert_watcher.dart';
@@ -20,8 +21,9 @@ import 'quick_add_entry.dart';
 /// The adaptive app shell (M1 audit §11, §14, §15).
 ///
 /// - compact / medium → NineFlow's phone layout: a bottom tab bar (the main
-///   tabs + "More", which opens a sheet) and a floating gradient "+" for
-///   Quick Add, bottom right.
+///   tabs + "More", which opens a sheet) with the gradient "+" for Quick Add
+///   docked in the middle of the bar. It is part of the bar, not a floating
+///   button, so a screen's own "+ Tracker"-style button never lands on it.
 /// - expanded (tablet) → `NavigationRail` + Quick Add as the rail's leading
 ///   action; content gets the rest of the width for future split views.
 ///
@@ -84,12 +86,8 @@ class AppShell extends StatelessWidget {
           Expanded(child: navigationShell),
         ],
       ),
-      floatingActionButton: GradientFab(
-        tooltip: 'Add a transaction',
-        onPressed: () => openQuickAdd(context),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _BottomBar(
+        onAdd: () => openQuickAdd(context),
         currentIndex: navigationShell.currentIndex,
         onSelected: (i) => destinations[i] == AppDestination.more
             ? showMoreSheet(context)
@@ -102,11 +100,13 @@ class AppShell extends StatelessWidget {
 
 class _BottomBar extends StatelessWidget {
   const _BottomBar({
+    required this.onAdd,
     required this.currentIndex,
     required this.onSelected,
     required this.destinations,
   });
 
+  final VoidCallback onAdd;
   final int currentIndex;
   final ValueChanged<int> onSelected;
   final List<AppDestination> destinations;
@@ -114,29 +114,41 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    // Card-coloured bar with a 1px top line; one equal slot per destination
-    // (at most 4 tabs + More, per NineFlow).
+    // Card-coloured bar with a 1px top line; one equal slot per destination,
+    // with the round "+" in a slot of its own in the middle (half the tabs
+    // either side of it).
+    final half = (destinations.length / 2).ceil();
+    Widget tab(int i) => Expanded(
+      child: _BottomItem(
+        destination: destinations[i],
+        selected: i == currentIndex,
+        onTap: () => onSelected(i),
+      ),
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         color: palette.card,
         border: Border(top: BorderSide(color: palette.line)),
       ),
       child: BottomAppBar(
-        height: 64,
+        height: 68,
         padding: EdgeInsets.zero,
         elevation: 0,
         color: palette.card,
         surfaceTintColor: Colors.transparent,
         child: Row(
           children: [
-            for (var i = 0; i < destinations.length; i++)
-              Expanded(
-                child: _BottomItem(
-                  destination: destinations[i],
-                  selected: i == currentIndex,
-                  onTap: () => onSelected(i),
+            for (var i = 0; i < half; i++) tab(i),
+            Expanded(
+              child: Center(
+                child: GradientFab(
+                  tooltip: 'Add a transaction',
+                  size: 52,
+                  onPressed: onAdd,
                 ),
               ),
+            ),
+            for (var i = half; i < destinations.length; i++) tab(i),
           ],
         ),
       ),
@@ -228,20 +240,15 @@ class _Rail extends ConsumerWidget {
     final leading = Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       child: extended
-          ? FloatingActionButton.extended(
-              heroTag: 'quick-add-rail',
-              elevation: 0,
+          ? GradientExtendedFab(
               tooltip: 'Add a transaction',
               onPressed: () => openQuickAdd(context),
               icon: const Icon(Icons.add_rounded),
               label: const Text('Add'),
             )
-          : FloatingActionButton(
-              heroTag: 'quick-add-rail',
-              elevation: 0,
+          : GradientFab(
               tooltip: 'Add a transaction',
               onPressed: () => openQuickAdd(context),
-              child: const Icon(Icons.add_rounded),
             ),
     );
 
@@ -344,7 +351,7 @@ class _WorkspaceChip extends StatelessWidget {
       width: 150,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppSpacing.sm),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.sm,

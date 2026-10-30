@@ -42,7 +42,7 @@ class NetWorthScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Net worth')),
       floatingActionButton: canWrite
-          ? FloatingActionButton.extended(
+          ? GradientExtendedFab(
               onPressed: () => openNetWorthEntryForm(context),
               icon: const Icon(Icons.add),
               label: const Text('Item'),

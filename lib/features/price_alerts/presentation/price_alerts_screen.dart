@@ -53,7 +53,7 @@ class _PriceAlertsScreenState extends ConsumerState<PriceAlertsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Price alerts')),
       floatingActionButton: canWrite
-          ? FloatingActionButton.extended(
+          ? GradientExtendedFab(
               onPressed: () => _openAddSheet(context),
               icon: const Icon(Icons.add_alert_outlined),
               label: const Text('Alert'),

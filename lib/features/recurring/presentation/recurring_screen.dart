@@ -36,7 +36,7 @@ class RecurringScreen extends ConsumerWidget {
         ),
         floatingActionButton: canWrite
             ? Builder(
-                builder: (context) => FloatingActionButton.extended(
+                builder: (context) => GradientExtendedFab(
                   onPressed: () {
                     final type = DefaultTabController.of(context).index == 0
                         ? RecurringType.income

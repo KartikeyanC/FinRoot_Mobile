@@ -92,6 +92,33 @@ void main() {
     expect(find.text('MORE'), findsNothing);
   });
 
+  testWidgets('phone: the + is docked in the middle of the bottom bar', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+
+    final add = find.byType(GradientFab);
+    expect(add, findsOneWidget);
+    // Centred horizontally, and inside the bar rather than floating above it.
+    expect(tester.getCenter(add).dx, closeTo(210, 1));
+    expect(
+      tester.getBottomLeft(add).dy,
+      lessThanOrEqualTo(tester.getBottomLeft(find.byType(BottomAppBar)).dy),
+    );
+    expect(
+      tester.getTopLeft(add).dy,
+      greaterThanOrEqualTo(tester.getTopLeft(find.byType(BottomAppBar)).dy),
+    );
+    // No separate floating action button left to collide with a screen's own.
+    expect(find.byType(FloatingActionButton), findsNothing);
+  });
+
   testWidgets('compact width uses the bottom bar, no rail', (tester) async {
     tester.view.physicalSize = const Size(420, 900);
     tester.view.devicePixelRatio = 1.0;

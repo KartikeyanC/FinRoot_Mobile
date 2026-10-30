@@ -58,7 +58,7 @@ class InvestmentsScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButton: canWrite
-          ? FloatingActionButton.extended(
+          ? GradientExtendedFab(
               onPressed: () => openInvestmentForm(context),
               icon: const Icon(Icons.add),
               label: const Text('Holding'),

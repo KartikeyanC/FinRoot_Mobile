@@ -30,7 +30,7 @@ class AccountsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Accounts')),
       floatingActionButton: canWrite
-          ? FloatingActionButton.extended(
+          ? GradientExtendedFab(
               onPressed: () => openAccountForm(context),
               icon: const Icon(Icons.add),
               label: const Text('Account'),

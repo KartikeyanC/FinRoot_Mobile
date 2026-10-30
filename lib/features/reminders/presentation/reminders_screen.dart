@@ -41,7 +41,7 @@ class RemindersScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Reminders')),
       floatingActionButton: canWrite
-          ? FloatingActionButton.extended(
+          ? GradientExtendedFab(
               onPressed: () => openReminderForm(context),
               icon: const Icon(Icons.add),
               label: const Text('Reminder'),

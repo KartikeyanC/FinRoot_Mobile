@@ -58,7 +58,7 @@ class TrackerDetailScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButton: canWrite
-          ? FloatingActionButton.extended(
+          ? GradientExtendedFab(
               onPressed: () => openAssignTransactions(context, trackerId),
               icon: const Icon(Icons.playlist_add),
               label: const Text('Assign'),

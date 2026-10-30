@@ -132,7 +132,7 @@ class TrackersScreen extends ConsumerWidget {
     );
 
     final fab = canWrite
-        ? FloatingActionButton.extended(
+        ? GradientExtendedFab(
             onPressed: () => openTrackerForm(context),
             icon: const Icon(Icons.add),
             label: const Text('Tracker'),

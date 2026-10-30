@@ -37,7 +37,7 @@ class GoalsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Goals')),
       floatingActionButton: canWrite
-          ? FloatingActionButton.extended(
+          ? GradientExtendedFab(
               onPressed: () => openGoalForm(context),
               icon: const Icon(Icons.add),
               label: const Text('Goal'),
