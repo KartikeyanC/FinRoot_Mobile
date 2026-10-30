@@ -289,7 +289,6 @@ class _LedgerList extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: TransactionTile(
                   txn,
-                  showDay: false,
                   card: true,
                   selected: txn.id == selectedId,
                   onTap: () => onTapRow(txn.id),

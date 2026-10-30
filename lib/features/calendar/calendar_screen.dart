@@ -185,7 +185,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             )
           else
             for (final t in selected)
-              TransactionTile(t, showDay: false, onTap: () => openTransactionDetail(context, t.id)),
+              TransactionTile(t, onTap: () => openTransactionDetail(context, t.id)),
         ],
       ),
     );
