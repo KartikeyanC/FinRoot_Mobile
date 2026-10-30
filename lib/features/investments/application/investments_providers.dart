@@ -66,5 +66,17 @@ final holdingPricesProvider = FutureProvider<Map<String, double>>((ref) async {
   final records = ref.watch(investmentsProvider).value ?? const [];
   final wants = liveWantsFor(records);
   if (wants.isEmpty) return const {};
-  return ref.watch(livePriceGatewayProvider).fetch(wants);
+  final gateway = ref.watch(livePriceGatewayProvider);
+  if (gateway is CheckedLivePriceGateway) {
+    final r = await gateway.fetchChecked(wants);
+    return LivePrices(r.prices, lookupFailed: r.failed);
+  }
+  return gateway.fetch(wants);
 }, name: 'holdingPrices');
+
+/// True when priceable holdings exist but the last live-price lookup failed
+/// - the screen then quietly says it is showing saved values.
+final livePricesUnavailableProvider = Provider<bool>((ref) {
+  final prices = ref.watch(holdingPricesProvider).value;
+  return prices is LivePrices && prices.lookupFailed;
+}, name: 'livePricesUnavailable');

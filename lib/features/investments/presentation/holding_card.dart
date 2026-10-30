@@ -17,6 +17,8 @@ class HoldingCard extends StatelessWidget {
     required this.gainLabel,
     required this.up,
     this.live,
+    this.hint,
+    this.onHintTap,
     this.facts,
     this.menu,
     this.chevron,
@@ -32,6 +34,10 @@ class HoldingCard extends StatelessWidget {
   final String gainLabel;
   final bool up;
   final String? live;
+
+  /// A muted one-line nudge under the title (e.g. add a ticker).
+  final String? hint;
+  final VoidCallback? onHintTap;
   final Widget? facts;
   final Widget? menu;
   final Widget? chevron;
@@ -81,6 +87,19 @@ class HoldingCard extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (hint != null)
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: onHintTap,
+                          child: Text(
+                            hint!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.label.copyWith(
+                              color: palette.faint,
+                            ),
+                          ),
+                        ),
                       if (live != null)
                         Text(
                           live!,

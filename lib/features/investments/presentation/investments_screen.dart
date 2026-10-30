@@ -17,6 +17,7 @@ import '../../price_alerts/presentation/price_alerts_screen.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
+import '../domain/holding_fields.dart';
 import '../domain/investment.dart';
 import '../domain/live_price.dart';
 import '../domain/stock_lots.dart';
@@ -196,6 +197,10 @@ class _HoldingTile extends ConsumerWidget {
       live: live != null && symbol != null
           ? 'Live ${formatPrice(symbol, live.unitPrice)} · $symbol'
           : null,
+      hint: symbol == null && canWrite && isPriceableAsset(record.asset)
+          ? 'Add a ticker to see the live price'
+          : null,
+      onHintTap: () => openInvestmentForm(context, editing: record),
       facts: facts,
       value: liveValue != null
           ? formatPrice(symbol ?? '', liveValue)
@@ -289,5 +294,34 @@ class _LivePriceTickerState extends ConsumerState<_LivePriceTicker> {
   }
 
   @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
+  Widget build(BuildContext context) {
+    final unavailable = ref.watch(livePricesUnavailableProvider);
+    if (!unavailable) return const SizedBox.shrink();
+    return const Padding(
+      padding: EdgeInsets.only(bottom: AppSpacing.sm),
+      child: LivePricesUnavailableNote(),
+    );
+  }
+}
+
+/// The quiet note shown when the live-price lookup fails; never a dialog.
+class LivePricesUnavailableNote extends StatelessWidget {
+  const LivePricesUnavailableNote({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Row(
+      children: [
+        Icon(Icons.cloud_off_outlined, size: 14, color: palette.muted),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(
+          child: Text(
+            'Live prices unavailable — showing saved values',
+            style: AppTypography.label.copyWith(color: palette.muted),
+          ),
+        ),
+      ],
+    );
+  }
 }

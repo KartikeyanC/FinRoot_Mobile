@@ -81,6 +81,18 @@ const kMoreEntries = <MoreEntry>[
     menu: FeatureMenu.investments,
   ),
   MoreEntry(
+    'Live prices',
+    Icons.show_chart,
+    '/live-prices',
+    menu: FeatureMenu.investments,
+  ),
+  MoreEntry(
+    'Price alerts',
+    Icons.notifications_active_outlined,
+    '/price-alerts',
+    menu: FeatureMenu.investments,
+  ),
+  MoreEntry(
     'Net Worth',
     Icons.balance_outlined,
     '/net-worth',

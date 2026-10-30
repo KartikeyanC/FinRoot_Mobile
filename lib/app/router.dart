@@ -21,6 +21,7 @@ import '../features/home/presentation/home_screen.dart';
 import '../features/insights/presentation/insights_screen.dart';
 import '../features/insurance/insurance_screen.dart';
 import '../features/investments/presentation/investments_screen.dart';
+import '../features/investments/presentation/live_prices_screen.dart';
 import '../features/more/presentation/more_screen.dart';
 import '../features/net_worth/presentation/net_worth_screen.dart';
 import '../features/payment_capture/presentation/detected_payments_screen.dart';
@@ -80,6 +81,8 @@ class _Routes {
     budget,
     goals,
     investments,
+    livePricesPath,
+    priceAlertsPath,
     netWorth,
     recurring,
     reminders,
@@ -260,7 +263,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: priceAlertsPath,
         parentNavigatorKey: _rootKey,
-        builder: (_, _) => const PriceAlertsScreen(),
+        builder: (_, state) => PriceAlertsScreen(
+          initialSymbol: state.uri.queryParameters['symbol'],
+          initialName: state.uri.queryParameters['name'],
+        ),
+      ),
+      GoRoute(
+        path: livePricesPath,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const LivePricesScreen(),
       ),
       GoRoute(
         path: _Routes.netWorth,

@@ -14,8 +14,10 @@ import '../../export/presentation/export_screen.dart';
 import '../../goals/presentation/goals_screen.dart';
 import '../../insights/presentation/insights_screen.dart';
 import '../../investments/presentation/investments_screen.dart';
+import '../../investments/presentation/live_prices_screen.dart';
 import '../../menus/application/menu_providers.dart';
 import '../../net_worth/presentation/net_worth_screen.dart';
+import '../../price_alerts/presentation/price_alerts_screen.dart';
 import '../../recurring/presentation/recurring_screen.dart';
 import '../../reminders/presentation/reminders_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
@@ -95,6 +97,8 @@ const _kMoreGroups = <(String, List<String>)>[
       '/budget',
       '/goals',
       '/investments',
+      '/live-prices',
+      '/price-alerts',
       '/net-worth',
       '/debts',
       '/trips',
@@ -241,6 +245,10 @@ class _MorePaneDetail extends StatelessWidget {
         return const GoalsScreen();
       case '/investments':
         return const InvestmentsScreen();
+      case '/live-prices':
+        return const LivePricesScreen();
+      case '/price-alerts':
+        return const PriceAlertsScreen();
       case '/net-worth':
         return const NetWorthScreen();
       case '/recurring':

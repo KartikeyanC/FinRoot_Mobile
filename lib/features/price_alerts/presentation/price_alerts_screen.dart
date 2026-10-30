@@ -19,7 +19,12 @@ const priceAlertsPath = '/price-alerts';
 /// Price alerts: decide the price you would buy at, and get a notification
 /// when the stock reaches it. The same list as the web dashboard.
 class PriceAlertsScreen extends ConsumerStatefulWidget {
-  const PriceAlertsScreen({super.key});
+  const PriceAlertsScreen({super.key, this.initialSymbol, this.initialName});
+
+  /// When set (from the Live prices list) the add-alert sheet opens
+  /// pre-filled for this symbol.
+  final String? initialSymbol;
+  final String? initialName;
 
   @override
   ConsumerState<PriceAlertsScreen> createState() => _PriceAlertsScreenState();
@@ -37,6 +42,16 @@ class _PriceAlertsScreenState extends ConsumerState<PriceAlertsScreen> {
       ref.invalidate(priceAlertsProvider);
       ref.invalidate(alertPricesProvider);
     });
+    final sym = widget.initialSymbol;
+    if (sym != null && sym.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(
+            _openAddSheet(context, symbol: sym, name: widget.initialName),
+          );
+        }
+      });
+    }
   }
 
   @override
@@ -135,14 +150,18 @@ class _PriceAlertsScreenState extends ConsumerState<PriceAlertsScreen> {
     );
   }
 
-  Future<void> _openAddSheet(BuildContext context) async {
+  Future<void> _openAddSheet(
+    BuildContext context, {
+    String? symbol,
+    String? name,
+  }) async {
     // Ask now, from a tap: Android 13+ needs the permission to post alerts.
     unawaited(ref.read(notificationServiceProvider).requestPermission());
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => const _AddAlertSheet(),
+      builder: (_) => _AddAlertSheet(symbol: symbol, name: name),
     );
   }
 }
@@ -281,7 +300,9 @@ class _AlertTile extends ConsumerWidget {
 }
 
 class _AddAlertSheet extends ConsumerStatefulWidget {
-  const _AddAlertSheet();
+  const _AddAlertSheet({this.symbol, this.name});
+  final String? symbol;
+  final String? name;
 
   @override
   ConsumerState<_AddAlertSheet> createState() => _AddAlertSheetState();
@@ -296,6 +317,14 @@ class _AddAlertSheetState extends ConsumerState<_AddAlertSheet> {
   double? _now;
   bool _looking = false;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _symbol.text = widget.symbol ?? '';
+    _name.text = widget.name ?? '';
+    if (_symbol.text.isNotEmpty) unawaited(_lookUp());
+  }
 
   @override
   void dispose() {

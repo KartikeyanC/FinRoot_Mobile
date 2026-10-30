@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -13,7 +15,28 @@ abstract interface class LivePriceGateway {
   Future<Map<String, double>> fetch(List<LiveWant> wants);
 }
 
-class SupabaseLivePriceGateway implements LivePriceGateway {
+/// A batch of prices plus whether the lookup itself failed (as opposed to
+/// nothing being asked for, or the function simply having no price).
+class LivePriceResult {
+  const LivePriceResult(this.prices, {this.failed = false});
+  final Map<String, double> prices;
+  final bool failed;
+}
+
+/// A [Map] of prices that also remembers the lookup failed, so the
+/// Map-returning providers keep their type while the screen can say
+/// "unavailable".
+class LivePrices extends UnmodifiableMapView<String, double> {
+  LivePrices(super.map, {this.lookupFailed = false});
+  final bool lookupFailed;
+}
+
+/// Gateways that can tell a failed lookup from an empty answer.
+abstract interface class CheckedLivePriceGateway implements LivePriceGateway {
+  Future<LivePriceResult> fetchChecked(List<LiveWant> wants);
+}
+
+class SupabaseLivePriceGateway implements CheckedLivePriceGateway {
   SupabaseLivePriceGateway(this._client);
   final SupabaseClient _client;
   final _log = AppLog.of('live-price');
@@ -22,8 +45,12 @@ class SupabaseLivePriceGateway implements LivePriceGateway {
   static const maxSymbols = 100;
 
   @override
-  Future<Map<String, double>> fetch(List<LiveWant> wants) async {
-    if (wants.isEmpty) return const {};
+  Future<Map<String, double>> fetch(List<LiveWant> wants) async =>
+      (await fetchChecked(wants)).prices;
+
+  @override
+  Future<LivePriceResult> fetchChecked(List<LiveWant> wants) async {
+    if (wants.isEmpty) return const LivePriceResult({});
     try {
       final res = await _client.functions.invoke(
         'live-price',
@@ -31,10 +58,14 @@ class SupabaseLivePriceGateway implements LivePriceGateway {
           'symbols': [for (final w in wants.take(maxSymbols)) w.toJson()],
         },
       );
-      return parseLivePrices(res.data);
+      final data = res.data;
+      // The function answers 200 with `error` set when its own lookup broke.
+      final failed = data is! Map || data['prices'] is! Map;
+      if (failed) _log.warning('live-price returned no price map');
+      return LivePriceResult(parseLivePrices(data), failed: failed);
     } on Object catch (e) {
       _log.warning('live-price failed: ${e.runtimeType}');
-      return const {};
+      return const LivePriceResult({}, failed: true);
     }
   }
 }

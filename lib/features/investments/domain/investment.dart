@@ -152,7 +152,19 @@ class InvestmentDraft {
     required this.current,
     this.goal,
     this.currency = 'INR',
+    this.ticker = '',
+    this.quantity = '',
+    this.baseFields = const {},
   });
+
+  /// Optional market ticker / fund scheme code (priceable assets only) and
+  /// the units held. Saved under the web's keys (`holding_fields.dart`).
+  final String ticker;
+  final String quantity;
+
+  /// The holding's existing `fields` when editing, so keys written by the web
+  /// are kept rather than dropped.
+  final Map<String, dynamic> baseFields;
 
   final String asset;
   final String name;
@@ -167,6 +179,26 @@ abstract final class InvestmentValidators {
     final t = v?.trim() ?? '';
     if (t.isEmpty) return 'Name this holding';
     if (t.length > 100) return 'That name is too long';
+    return null;
+  }
+
+  /// Optional. A fund's code must contain the numeric MFAPI scheme code.
+  static String? ticker(String? v, {required String asset}) {
+    final t = v?.trim() ?? '';
+    if (t.isEmpty) return null;
+    if (t.length > 40) return 'That ticker is too long';
+    if (asset == 'mutual_funds' && !RegExp(r'\d{4,}').hasMatch(t)) {
+      return 'Use the numeric scheme code (e.g. 119551)';
+    }
+    return null;
+  }
+
+  /// Optional. Units held, when given, must be above zero.
+  static String? quantity(String? v) {
+    final t = v?.trim() ?? '';
+    if (t.isEmpty) return null;
+    final n = double.tryParse(t);
+    if (n == null || !n.isFinite || n <= 0) return 'Enter a quantity above 0';
     return null;
   }
 

@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/error/error_mapper.dart';
 import '../../../core/providers/providers.dart';
+import '../domain/holding_fields.dart';
 import '../domain/investment.dart';
 
 const _uuid = Uuid();
@@ -92,12 +93,15 @@ class SupabaseInvestmentsGateway implements InvestmentsGateway {
     'asset': d.asset,
     'currency': d.currency,
     'goal': d.goal,
-    'fields': {
-      'name': d.name.trim(),
-      'invested': d.invested.amount.toString(),
-      'current': d.current.amount.toString(),
-      '_mobile': '1',
-    },
+    'fields': buildHoldingFields(
+      base: d.baseFields,
+      asset: d.asset,
+      name: d.name,
+      invested: d.invested.amount.toString(),
+      current: d.current.amount.toString(),
+      ticker: d.ticker,
+      quantity: d.quantity,
+    ),
     'derived': <String, dynamic>{},
   };
 
