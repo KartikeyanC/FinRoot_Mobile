@@ -29,8 +29,14 @@ abstract final class AppButtonStyles {
     if (states.contains(WidgetState.disabled)) return _plain(child);
     // Label and icon are white on every gradient (the scheme's onPrimary is
     // dark on dark-mode accents, which suits solid accent fills only).
+    // Painted in its own pill shape: the button's clip is not guaranteed to
+    // reach a builder-made background, and an unclipped gradient shows square
+    // corners (seen on the Reminders empty state).
     return Ink(
-      decoration: BoxDecoration(gradient: gradientOf(context)),
+      decoration: ShapeDecoration(
+        shape: const StadiumBorder(),
+        gradient: gradientOf(context),
+      ),
       child: IconTheme.merge(
         data: const IconThemeData(color: Colors.white),
         child: DefaultTextStyle.merge(

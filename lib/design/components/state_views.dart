@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/error/error_mapper.dart';
 import '../../core/error/failure.dart';
+import '../tokens/app_palette.dart';
 import '../tokens/app_spacing.dart';
+import 'app_card.dart';
 import 'button_styles.dart';
+import 'nineflow_kit.dart';
 
 /// Centered, quiet loading state. Prefer skeletons for content lists (M2 ships
 /// the primitive; screens choose).
@@ -45,35 +48,47 @@ class EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
+    final palette = context.palette;
+    // NineFlow style: the empty state is a card with a tinted icon tile, a
+    // bold title and one muted hint; the action sits below as a pill.
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 40,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(title, style: t.titleMedium, textAlign: TextAlign.center),
-            if (message != null) ...[
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                message!,
-                style: t.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-            if (action != null) ...[
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpacing.screenGutter),
+        child: AppCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xl,
+            vertical: 40,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconTile(icon: icon, size: 56),
               const SizedBox(height: AppSpacing.lg),
-              action!,
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: palette.ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (message != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  message!,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: palette.muted,
+                  ),
+                ),
+              ],
+              if (action != null) ...[
+                const SizedBox(height: AppSpacing.xl),
+                action!,
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
