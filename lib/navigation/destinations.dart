@@ -86,6 +86,7 @@ const kMoreEntries = <MoreEntry>[
     '/net-worth',
     menu: FeatureMenu.netWorth,
   ),
+  MoreEntry('Trips', Icons.luggage_outlined, '/trips', menu: FeatureMenu.trips),
   MoreEntry('Debts', Icons.account_balance_outlined, '/debts'),
   MoreEntry('Subscriptions', Icons.subscriptions_outlined, '/subscriptions'),
   MoreEntry(
@@ -108,10 +109,35 @@ const kMoreEntries = <MoreEntry>[
     '/bill-scan',
     menu: FeatureMenu.billScan,
   ),
+  MoreEntry(
+    'Calculator',
+    Icons.calculate_outlined,
+    '/calculator',
+    menu: FeatureMenu.calculator,
+  ),
+  MoreEntry(
+    'Import',
+    Icons.file_upload_outlined,
+    '/import',
+    menu: FeatureMenu.import,
+  ),
+  MoreEntry(
+    'Export',
+    Icons.file_download_outlined,
+    '/export',
+    menu: FeatureMenu.export,
+  ),
   MoreEntry('Voice', Icons.mic_none, '/voice'),
   MoreEntry('Detected payments', Icons.bolt_outlined, '/detected-payments'),
   MoreEntry('Insights', Icons.insights_outlined, '/insights'),
   MoreEntry('Search', Icons.search, '/search'),
   MoreEntry('Sync & backup', Icons.add_to_drive, '/backup'),
+  MoreEntry('Workspace', Icons.workspaces_outline, '/workspace'),
+  MoreEntry(
+    'Billing',
+    Icons.credit_card_outlined,
+    '/billing',
+    menu: FeatureMenu.billing,
+  ),
   MoreEntry('Settings', Icons.settings_outlined, '/settings', phase: 'M3'),
 ];

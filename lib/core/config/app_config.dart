@@ -20,6 +20,11 @@ enum AppFlavor {
   };
 }
 
+/// Where the FinRoot web app lives. UNCONFIRMED default: the only domain found
+/// in the repo is `finroot.app` (used for e-mail addresses). Override with
+/// `--dart-define WEB_APP_URL=...` (see config/*.json).
+const defaultWebAppUrl = 'https://finroot.app';
+
 @immutable
 class AppConfig {
   const AppConfig({
@@ -27,6 +32,7 @@ class AppConfig {
     required this.supabaseUrl,
     required this.supabaseAnonKey,
     required this.authDeepLinkScheme,
+    this.webAppUrl = defaultWebAppUrl,
   });
 
   /// Reads the compile-time environment (`--dart-define` /
@@ -42,6 +48,11 @@ class AppConfig {
         'AUTH_DEEP_LINK_SCHEME',
         defaultValue: 'finroot',
       ),
+      // ignore: avoid_redundant_argument_values
+      webAppUrl: const String.fromEnvironment(
+        'WEB_APP_URL',
+        defaultValue: defaultWebAppUrl,
+      ),
     );
   }
 
@@ -52,6 +63,18 @@ class AppConfig {
   /// Scheme for password-reset / (future) OAuth deep links, e.g.
   /// `finroot://auth-callback`.
   final String authDeepLinkScheme;
+
+  /// Base URL of the web app (no trailing slash needed). Web-only menus
+  /// (Trips, Import, Billing, member management) open `<webAppUrl>/app/<page>`.
+  final String webAppUrl;
+
+  /// The web app page at [path] (e.g. `trips`), under `/app/`.
+  Uri webAppPage(String path) {
+    final base = webAppUrl.endsWith('/')
+        ? webAppUrl.substring(0, webAppUrl.length - 1)
+        : webAppUrl;
+    return Uri.parse('$base/app/$path');
+  }
 
   bool get isConfigured => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 

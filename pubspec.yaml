@@ -97,6 +97,9 @@ dependencies:
   # unverified (no Android SDK).
   speech_to_text: ^7.4.0
   google_sign_in: ^7.2.0
+  # --- More-screen parity: open web-only menus, share the CSV export ---
+  url_launcher: ^6.3.2
+  share_plus: ^13.0.0
   http: ^1.6.0
 
   # --- Added in later phases (kept here as the intended dependency map) ---

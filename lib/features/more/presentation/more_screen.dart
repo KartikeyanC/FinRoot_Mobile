@@ -9,6 +9,8 @@ import '../../../navigation/two_pane.dart';
 import '../../accounts/presentation/accounts_screen.dart';
 import '../../bill_scan/presentation/bill_scan_screen.dart';
 import '../../budget/presentation/budget_screen.dart';
+import '../../calculator/presentation/calculator_screen.dart';
+import '../../export/presentation/export_screen.dart';
 import '../../goals/presentation/goals_screen.dart';
 import '../../insights/presentation/insights_screen.dart';
 import '../../investments/presentation/investments_screen.dart';
@@ -18,6 +20,8 @@ import '../../recurring/presentation/recurring_screen.dart';
 import '../../reminders/presentation/reminders_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../voice/presentation/voice_screen.dart';
+import '../../web_link/presentation/web_link_screen.dart';
+import '../../workspace/presentation/workspace_screen.dart';
 import 'workspace_row.dart';
 
 /// "More" — secondary features via progressive disclosure (brief §5).
@@ -86,7 +90,15 @@ class MoreScreen extends ConsumerWidget {
 const _kMoreGroups = <(String, List<String>)>[
   (
     'Money',
-    ['/accounts', '/budget', '/goals', '/investments', '/net-worth', '/debts'],
+    [
+      '/accounts',
+      '/budget',
+      '/goals',
+      '/investments',
+      '/net-worth',
+      '/debts',
+      '/trips',
+    ],
   ),
   (
     'Plan ahead',
@@ -94,9 +106,18 @@ const _kMoreGroups = <(String, List<String>)>[
   ),
   (
     'Capture and tools',
-    ['/bill-scan', '/voice', '/detected-payments', '/insights', '/search'],
+    [
+      '/bill-scan',
+      '/voice',
+      '/detected-payments',
+      '/insights',
+      '/search',
+      '/calculator',
+      '/import',
+      '/export',
+    ],
   ),
-  ('App', ['/backup', '/settings']),
+  ('App', ['/workspace', '/billing', '/backup', '/settings']),
 ];
 
 class _MoreList extends StatelessWidget {
@@ -232,6 +253,18 @@ class _MorePaneDetail extends StatelessWidget {
         return const VoiceScreen();
       case '/insights':
         return const InsightsScreen();
+      case '/trips':
+        return const TripsScreen();
+      case '/calculator':
+        return const CalculatorScreen();
+      case '/import':
+        return const ImportScreen();
+      case '/export':
+        return const ExportScreen();
+      case '/workspace':
+        return const WorkspaceScreen();
+      case '/billing':
+        return const BillingScreen();
       case '/settings':
         return const SettingsScreen();
     }

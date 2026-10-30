@@ -12,8 +12,10 @@ import '../features/auth/presentation/reset_password_screen.dart';
 import '../features/backup/backup_screen.dart';
 import '../features/bill_scan/presentation/bill_scan_screen.dart';
 import '../features/budget/presentation/budget_screen.dart';
+import '../features/calculator/presentation/calculator_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/debts/debts_screen.dart';
+import '../features/export/presentation/export_screen.dart';
 import '../features/goals/presentation/goals_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/insights/presentation/insights_screen.dart';
@@ -33,8 +35,10 @@ import '../features/trackers/presentation/tracker_detail_screen.dart';
 import '../features/trackers/presentation/trackers_screen.dart';
 import '../features/transactions/presentation/transactions_screen.dart';
 import '../features/voice/presentation/voice_screen.dart';
+import '../features/web_link/presentation/web_link_screen.dart';
 import '../features/workspace/application/workspace_providers.dart';
 import '../features/workspace/presentation/no_workspace_screen.dart';
+import '../features/workspace/presentation/workspace_screen.dart';
 import '../navigation/app_shell.dart';
 import '../navigation/destinations.dart';
 
@@ -62,6 +66,12 @@ class _Routes {
   static const insurance = '/insurance';
   static const calendar = '/calendar';
   static const backup = '/backup';
+  static const trips = '/trips';
+  static const calculator = '/calculator';
+  static const import = '/import';
+  static const export = '/export';
+  static const workspace = '/workspace';
+  static const billing = '/billing';
 
   /// "More" entries that have a real screen rather than a milestone placeholder.
   static const realScreens = {
@@ -83,6 +93,12 @@ class _Routes {
     insurance,
     calendar,
     backup,
+    trips,
+    calculator,
+    import,
+    export,
+    workspace,
+    billing,
   };
 }
 
@@ -300,6 +316,36 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.backup,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const BackupScreen(),
+      ),
+      GoRoute(
+        path: _Routes.trips,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const TripsScreen(),
+      ),
+      GoRoute(
+        path: _Routes.calculator,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const CalculatorScreen(),
+      ),
+      GoRoute(
+        path: _Routes.import,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const ImportScreen(),
+      ),
+      GoRoute(
+        path: _Routes.export,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const ExportScreen(),
+      ),
+      GoRoute(
+        path: _Routes.workspace,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const WorkspaceScreen(),
+      ),
+      GoRoute(
+        path: _Routes.billing,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const BillingScreen(),
       ),
       GoRoute(
         path: _Routes.detectedPayments,
