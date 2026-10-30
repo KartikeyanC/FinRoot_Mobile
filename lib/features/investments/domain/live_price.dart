@@ -118,3 +118,13 @@ LiveHolding? liveFor(InvestmentRecord r, Map<String, double> prices) {
   if (price == null || !price.isFinite || price <= 0) return null;
   return LiveHolding(unitPrice: price, quantity: liveQuantity(r));
 }
+
+/// What a holding is worth now: live price x quantity when the symbol is
+/// priced and the quantity is known, else its stored current value. Pure -
+/// nothing is written back to the database.
+double effectiveCurrent(InvestmentRecord r, Map<String, double> prices) =>
+    liveFor(r, prices)?.value ?? r.current.amount.toDouble();
+
+/// Gain on a holding using [effectiveCurrent] (live value - invested).
+double effectiveGain(InvestmentRecord r, Map<String, double> prices) =>
+    effectiveCurrent(r, prices) - r.invested.amount.toDouble();

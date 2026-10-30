@@ -1,3 +1,4 @@
+import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/money/money.dart';
@@ -35,17 +36,24 @@ class PortfolioSummary {
   }
 }
 
-final portfolioSummaryProvider = Provider<PortfolioSummary>((ref) {
-  final records = ref.watch(investmentsProvider).value ?? const [];
+/// Totals for [records]. Holdings with a live price and quantity count at
+/// live value; others at their stored current value. Default [prices] is
+/// empty, i.e. stored values only.
+PortfolioSummary summarisePortfolio(
+  Iterable<InvestmentRecord> records, [
+  Map<String, double> prices = const {},
+]) {
   var invested = Money.zero();
   var current = Money.zero();
   final byAsset = <String, Money>{};
   for (final r in records) {
     // V1 sums figures as-is (INR assumption, like the web portfolio totals).
+    final value = Money(
+      Decimal.parse(effectiveCurrent(r, prices).toStringAsFixed(2)),
+    );
     invested = invested + Money(r.invested.amount);
-    current = current + Money(r.current.amount);
-    byAsset[r.asset] =
-        (byAsset[r.asset] ?? Money.zero()) + Money(r.current.amount);
+    current = current + value;
+    byAsset[r.asset] = (byAsset[r.asset] ?? Money.zero()) + value;
   }
   final sorted = byAsset.entries.toList()
     ..sort((a, b) => b.value.amount.compareTo(a.value.amount));
@@ -54,6 +62,12 @@ final portfolioSummaryProvider = Provider<PortfolioSummary>((ref) {
     current: current,
     byAsset: sorted,
   );
+}
+
+final portfolioSummaryProvider = Provider<PortfolioSummary>((ref) {
+  final records = ref.watch(investmentsProvider).value ?? const [];
+  final prices = ref.watch(holdingPricesProvider).value ?? const {};
+  return summarisePortfolio(records, prices);
 }, name: 'portfolioSummary');
 
 /// How often the Investments screen re-asks for live prices while open.

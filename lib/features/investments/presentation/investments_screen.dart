@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/error/failure.dart';
+import '../../../core/money/money.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../accounts/presentation/wealth_kit.dart';
@@ -173,8 +175,9 @@ class _HoldingTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final up = record.gain.amount.sign >= 0;
     final prices = ref.watch(holdingPricesProvider).value ?? const {};
+    final gain = effectiveGain(record, prices);
+    final up = gain >= 0;
     final live = liveFor(record, prices);
     final liveValue = live?.value;
     final symbol = resolveLiveSymbol(record)?.symbol;
@@ -205,7 +208,8 @@ class _HoldingTile extends ConsumerWidget {
       value: liveValue != null
           ? formatPrice(symbol ?? '', liveValue)
           : record.current.formatShort(),
-      gainLabel: '${up ? '+' : ''}${record.gain.formatShort()}',
+      gainLabel:
+          '${up ? '+' : ''}${Money(Decimal.parse(gain.toStringAsFixed(2))).formatShort()}',
       up: up,
       onTap: canWrite
           ? () => openInvestmentForm(context, editing: record)

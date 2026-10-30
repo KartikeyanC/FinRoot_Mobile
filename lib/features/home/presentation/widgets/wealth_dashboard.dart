@@ -15,6 +15,7 @@ import '../../../goals/application/goals_providers.dart';
 import '../../../insights/application/insights_providers.dart';
 import '../../../insights/domain/insight.dart';
 import '../../../investments/application/investments_providers.dart';
+import '../../../investments/domain/live_price.dart';
 import '../../../menus/application/menu_providers.dart';
 import '../../../recurring/application/recurring_providers.dart';
 import '../../../recurring/domain/recurring_item.dart';
@@ -37,6 +38,7 @@ class WealthDashboard extends ConsumerWidget {
     final accounts = ref.watch(workspaceAccountsProvider).value ?? const [];
     final portfolio = ref.watch(portfolioSummaryProvider);
     final investments = ref.watch(investmentsProvider).value ?? const [];
+    final livePrices = ref.watch(holdingPricesProvider).value ?? const <String, double>{};
     final debts = ref.watch(debtsProvider).value ?? const <Debt>[];
     final goals = ref.watch(goalsProvider).value ?? const [];
     final bills = ref.watch(recurringItemsProvider).value ?? const <RecurringItem>[];
@@ -127,7 +129,7 @@ class WealthDashboard extends ConsumerWidget {
           _InvestmentPanel(
             current: invCurrent,
             invested: invInvested,
-            series: cumulativeHoldings([for (final r in investments) r.current.amount.toDouble()]),
+            series: cumulativeHoldings([for (final r in investments) effectiveCurrent(r, livePrices)]),
           ),
         ],
       ],

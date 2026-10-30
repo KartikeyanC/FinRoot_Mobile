@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,10 +8,14 @@ import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../design/design.dart';
 import '../../accounts/presentation/wealth_kit.dart';
+import '../../price_alerts/domain/price_alert.dart' show formatPrice;
 import '../application/investment_editor_controller.dart';
+import '../application/investments_providers.dart';
+import '../data/live_price_gateway.dart';
 import '../data/symbol_search_gateway.dart';
 import '../domain/holding_fields.dart';
 import '../domain/investment.dart';
+import '../domain/live_price.dart';
 import '../domain/symbol_search.dart';
 
 Future<void> openInvestmentForm(
@@ -52,6 +57,63 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
 
   bool get _isEditing => widget.editing != null;
 
+  double get _qty => double.tryParse(_quantity.text.trim()) ?? 0;
+
+  /// Priceable asset with a ticker and a quantity: the current value comes
+  /// from the live price, not from the user.
+  bool get _autoValue =>
+      isPriceableAsset(_asset) &&
+      _ticker.text.trim().isNotEmpty &&
+      _qty > 0;
+
+  /// A throwaway record for the typed ticker/quantity, so the same symbol
+  /// resolution as the holding rows is used.
+  InvestmentRecord _probe() => InvestmentRecord(
+    id: '',
+    asset: _asset,
+    currency: 'INR',
+    fields: {
+      'ticker': _ticker.text.trim(),
+      if (_asset == 'mutual_funds') 'units': _quantity.text.trim()
+      else 'quantity': _quantity.text.trim(),
+    },
+    derived: const {},
+  );
+
+  LiveHolding? _liveNow() {
+    final prices = <String, double>{
+      ...(ref.read(holdingPricesProvider).value ?? const {}),
+      ..._fetched,
+    };
+    return liveFor(_probe(), prices);
+  }
+
+  /// Prices fetched for the typed ticker (it may not be a saved holding yet).
+  Map<String, double> _fetched = const {};
+  Timer? _priceTimer;
+  int _priceId = 0;
+
+  Future<Map<String, double>> _lookup() async {
+    final want = resolveLiveSymbol(_probe());
+    if (want == null) return const {};
+    try {
+      return await ref.read(livePriceGatewayProvider).fetch([want]);
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  void _schedulePrice() {
+    _priceTimer?.cancel();
+    if (!_autoValue) return;
+    final id = ++_priceId;
+    _priceTimer = Timer(const Duration(milliseconds: 500), () async {
+      final got = await _lookup();
+      if (!mounted || id != _priceId || got.isEmpty) return;
+      setState(() => _fetched = got);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -69,6 +131,8 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
 
   void _onTickerChanged(String v) {
     _searchTimer?.cancel();
+    _schedulePrice();
+    setState(() {});
     final id = ++_searchId;
     if (v.trim().length < minSymbolQuery) {
       setState(() {
@@ -94,6 +158,7 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
     _clearSearch();
     _ticker.text = hit.ticker;
     if (_name.text.trim().isEmpty) _name.text = hit.name;
+    _schedulePrice();
     setState(() {});
   }
 
@@ -112,7 +177,16 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
     _ticker.dispose();
     _quantity.dispose();
     _searchTimer?.cancel();
+    _priceTimer?.cancel();
     super.dispose();
+  }
+
+  /// Best-effort fresh live value for the typed ticker (null when the price
+  /// is not known yet); never throws.
+  Future<double?> _fetchLiveValue() async {
+    final known = _liveNow()?.value;
+    if (known != null) return known;
+    return liveFor(_probe(), await _lookup())?.value;
   }
 
   Future<void> _submit() async {
@@ -122,11 +196,22 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
 
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final Money current;
+    if (_autoValue) {
+      final live = (await _fetchLiveValue()) ?? _liveNow()?.value;
+      current = live != null
+          ? Money(Decimal.parse(live.toStringAsFixed(2)))
+          : (_isEditing
+                ? widget.editing!.current
+                : Money.tryParse(_invested.text)!);
+    } else {
+      current = Money.tryParse(_current.text)!;
+    }
     final draft = InvestmentDraft(
       asset: _asset,
       name: _name.text,
       invested: Money.tryParse(_invested.text)!,
-      current: Money.tryParse(_current.text)!,
+      current: current,
       goal: _goal,
       ticker: isPriceableAsset(_asset) ? _ticker.text : '',
       quantity: isPriceableAsset(_asset) ? _quantity.text : '',
@@ -242,14 +327,62 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
             hintText: '0',
             prefixIcon: Icon(Icons.numbers),
             helperText:
-                'With a ticker, the live value is price x quantity; the '
-                'current value below stays as the saved fallback.',
+                'With a ticker and quantity, the current value follows the '
+                'live price automatically.',
             helperMaxLines: 3,
           ),
+          onChanged: (_) {
+            _schedulePrice();
+            setState(() {});
+          },
           validator: InvestmentValidators.quantity,
         ),
       ),
     ];
+  }
+
+  Widget _autoValueRow(BuildContext context) {
+    final palette = context.palette;
+    ref.watch(holdingPricesProvider);
+    final value = _liveNow()?.value;
+    final symbol = resolveLiveSymbol(_probe())?.symbol ?? '';
+    return LabeledField(
+      label: 'Current value',
+      child: Container(
+        key: const ValueKey('auto-current-value'),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: palette.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: palette.line),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.sync_rounded, size: 18, color: palette.muted),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value != null
+                        ? formatPrice(symbol, value)
+                        : 'Calculated once the live price loads',
+                    style: AppTypography.bodyStrong.copyWith(
+                      color: palette.ink,
+                    ),
+                  ),
+                  Text(
+                    'Updates automatically from the live price',
+                    style: AppTypography.label.copyWith(color: palette.muted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -325,7 +458,10 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
                 InvestmentValidators.amount(v, label: 'the amount invested'),
           ),
         ),
-        LabeledField(
+        if (_autoValue)
+          _autoValueRow(context)
+        else
+          LabeledField(
           label: 'Current value',
           child: TextFormField(
             controller: _current,
