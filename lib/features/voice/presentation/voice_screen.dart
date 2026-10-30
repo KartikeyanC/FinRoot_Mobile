@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
+import '../../../core/widgets/date_time_field.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../quick_add/domain/quick_add_draft.dart';
@@ -299,37 +299,10 @@ class _ReviewState extends ConsumerState<_Review> {
                 onChanged: (v) => _c.editDraft(paymentMode: v),
               ),
               const SizedBox(height: AppSpacing.lg),
-              const _Label('Date'),
-              InkWell(
-                onTap: () async {
-                  final now = DateTime.now();
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: d.occurredAt.isAfter(now) ? now : d.occurredAt,
-                    firstDate: DateTime(now.year - 5),
-                    lastDate: now,
-                  );
-                  if (picked != null) {
-                    _c.editDraft(
-                      occurredAt: DateTime(
-                        picked.year,
-                        picked.month,
-                        picked.day,
-                        d.occurredAt.hour,
-                        d.occurredAt.minute,
-                      ),
-                    );
-                  }
-                },
-                borderRadius: AppRadius.field,
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.event_outlined),
-                  ),
-                  child: Text(
-                    DateFormat('EEE, d MMM yyyy').format(d.occurredAt),
-                  ),
-                ),
+              DateTimeField(
+                value: d.occurredAt,
+                lastDate: DateTime.now(),
+                onChanged: (v) => _c.editDraft(occurredAt: v),
               ),
               const SizedBox(height: AppSpacing.lg),
               const _Label('Note (optional)'),

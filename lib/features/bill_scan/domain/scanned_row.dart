@@ -34,13 +34,18 @@ class ScannedRow {
   final String unit;
   final ScanRowKind kind;
 
-  ScannedRow copyWith({String? name, String? category, Money? amount}) =>
+  ScannedRow copyWith({
+    String? name,
+    String? category,
+    Money? amount,
+    DateTime? date,
+  }) =>
       ScannedRow(
         id: id,
         name: name ?? this.name,
         category: category ?? this.category,
         amount: amount ?? this.amount,
-        date: date,
+        date: date ?? this.date,
         qty: qty,
         unit: unit,
         kind: kind,
@@ -58,7 +63,20 @@ List<ScannedRow> rowsFromScanResult(
   ScanMode mode,
   DateTime today,
 ) {
-  final date = result.date ?? today;
+  // A receipt usually prints only a date (parsed as midnight); every logged
+  // transaction needs a time too, so borrow the time of day from [today].
+  final printed = result.date;
+  final date = printed == null
+      ? today
+      : (printed.hour == 0 && printed.minute == 0
+            ? DateTime(
+                printed.year,
+                printed.month,
+                printed.day,
+                today.hour,
+                today.minute,
+              )
+            : printed);
   final fallbackCategory =
       result.items.isNotEmpty ? result.items.first.category : 'Shopping';
 

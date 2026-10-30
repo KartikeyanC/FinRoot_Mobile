@@ -161,7 +161,19 @@ class BillScanController extends Notifier<BillScanState> {
     final today = state.rows.isNotEmpty ? state.rows.first.date : DateTime.now();
     state = state.copyWith(
       mode: mode,
-      rows: rowsFromScanResult(result, mode, today),
+      // Keep the date and time already chosen on the review screen.
+      rows: [
+        for (final r in rowsFromScanResult(result, mode, today))
+          r.copyWith(date: today),
+      ],
+    );
+  }
+
+  /// Set the date and time the approved expense is logged at (all rows share
+  /// one moment — the ledger entry is a single transaction).
+  void setDateTime(DateTime when) {
+    state = state.copyWith(
+      rows: [for (final r in state.rows) r.copyWith(date: when)],
     );
   }
 

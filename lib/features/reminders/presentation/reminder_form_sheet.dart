@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
+import '../../../core/widgets/date_time_field.dart';
 import '../../../design/design.dart';
 import '../application/reminders_editor_controller.dart';
 import '../domain/reminder.dart';
@@ -63,18 +63,6 @@ class _ReminderFormSheetState extends ConsumerState<_ReminderFormSheet> {
     _amount.dispose();
     _notes.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickDate() async {
-    FocusScope.of(context).unfocus();
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _dueDate,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 10),
-    );
-    if (picked != null) setState(() => _dueDate = picked);
   }
 
   Future<void> _submit() async {
@@ -181,16 +169,13 @@ class _ReminderFormSheetState extends ConsumerState<_ReminderFormSheet> {
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              InkWell(
-                onTap: _pickDate,
-                borderRadius: AppRadius.field,
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Target date',
-                    prefixIcon: Icon(Icons.event_outlined),
-                  ),
-                  child: Text(DateFormat('EEE, d MMM yyyy').format(_dueDate)),
-                ),
+              DateTimeField(
+                value: _dueDate,
+                showTime: false,
+                dateLabel: 'Target date',
+                firstDate: DateTime(DateTime.now().year - 1),
+                lastDate: DateTime(DateTime.now().year + 10),
+                onChanged: (v) => setState(() => _dueDate = v),
               ),
               if (_context == ReminderContext.fixedDue) ...[
                 const SizedBox(height: AppSpacing.md),

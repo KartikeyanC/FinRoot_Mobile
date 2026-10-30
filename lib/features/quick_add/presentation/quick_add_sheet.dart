@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
-import '../../../core/time/relative_time.dart';
+import '../../../core/widgets/date_time_field.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../accounts/application/accounts_providers.dart';
@@ -107,27 +107,6 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     });
   }
 
-  Future<void> _pickDate() async {
-    FocusScope.of(context).unfocus();
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _occurredAt.isAfter(now) ? now : _occurredAt,
-      firstDate: DateTime(now.year - 5),
-      lastDate: now,
-    );
-    if (picked == null) return;
-    setState(() {
-      _occurredAt = DateTime(
-        picked.year,
-        picked.month,
-        picked.day,
-        _occurredAt.hour,
-        _occurredAt.minute,
-      );
-    });
-  }
-
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     setState(() => _error = null);
@@ -217,7 +196,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
                           occurredAt: _occurredAt,
                           onFrom: (v) => setState(() => _fromAccountId = v),
                           onTo: (v) => setState(() => _toAccountId = v),
-                          onPickDate: _pickDate,
+                          onOccurredAt: (v) => setState(() => _occurredAt = v),
                         )
                       : _EntryForm(
                           kind: _kind,
@@ -235,7 +214,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
                           onPaymentMode: (v) =>
                               setState(() => _paymentMode = v),
                           onAccount: (v) => setState(() => _accountId = v),
-                          onPickDate: _pickDate,
+                          onOccurredAt: (v) => setState(() => _occurredAt = v),
                         ),
                 ),
               ),
@@ -303,7 +282,7 @@ class _EntryForm extends StatelessWidget {
     required this.onCategory,
     required this.onPaymentMode,
     required this.onAccount,
-    required this.onPickDate,
+    required this.onOccurredAt,
   });
 
   final QuickAddKind kind;
@@ -320,7 +299,7 @@ class _EntryForm extends StatelessWidget {
   final ValueChanged<String?> onCategory;
   final ValueChanged<String?> onPaymentMode;
   final ValueChanged<String?> onAccount;
-  final VoidCallback onPickDate;
+  final ValueChanged<DateTime> onOccurredAt;
 
   @override
   Widget build(BuildContext context) {
@@ -406,7 +385,11 @@ class _EntryForm extends StatelessWidget {
           ),
         ],
         const SizedBox(height: AppSpacing.lg),
-        _DateField(occurredAt: occurredAt, onTap: onPickDate),
+        DateTimeField(
+          value: occurredAt,
+          onChanged: onOccurredAt,
+          lastDate: DateTime.now(),
+        ),
         const SizedBox(height: AppSpacing.lg),
         _NoteField(controller: note),
       ],
@@ -424,7 +407,7 @@ class _TransferForm extends StatelessWidget {
     required this.occurredAt,
     required this.onFrom,
     required this.onTo,
-    required this.onPickDate,
+    required this.onOccurredAt,
   });
 
   final TextEditingController amount;
@@ -435,7 +418,7 @@ class _TransferForm extends StatelessWidget {
   final DateTime occurredAt;
   final ValueChanged<String?> onFrom;
   final ValueChanged<String?> onTo;
-  final VoidCallback onPickDate;
+  final ValueChanged<DateTime> onOccurredAt;
 
   @override
   Widget build(BuildContext context) {
@@ -497,7 +480,11 @@ class _TransferForm extends StatelessWidget {
               QuickAddValidators.transferAccounts(fromId: fromId, toId: toId),
         ),
         const SizedBox(height: AppSpacing.lg),
-        _DateField(occurredAt: occurredAt, onTap: onPickDate),
+        DateTimeField(
+          value: occurredAt,
+          onChanged: onOccurredAt,
+          lastDate: DateTime.now(),
+        ),
         const SizedBox(height: AppSpacing.lg),
         _NoteField(controller: note),
       ],
@@ -690,33 +677,6 @@ class _SegmentLabel extends StatelessWidget {
       style: AppTypography.bodyStrong.copyWith(color: color),
     ),
   );
-}
-
-class _DateField extends StatelessWidget {
-  const _DateField({required this.occurredAt, required this.onTap});
-  final DateTime occurredAt;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const _Label('Date'),
-        InkWell(
-          onTap: onTap,
-          borderRadius: AppRadius.field,
-          child: InputDecorator(
-            decoration: _fieldDecoration(Icons.event_outlined),
-            child: Text(
-              RelativeTime.dayLabel(occurredAt),
-              style: _valueStyle(context),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class _NoteField extends StatelessWidget {

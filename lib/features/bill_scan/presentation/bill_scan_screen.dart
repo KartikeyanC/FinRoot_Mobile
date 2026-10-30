@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure.dart';
+import '../../../core/widgets/date_time_field.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../menus/application/menu_providers.dart';
@@ -265,6 +266,12 @@ class _Review extends ConsumerWidget {
                     : '${result.date!.day}/${result.date!.month}/${result.date!.year}',
                 status: '${parts.items.length} '
                     '${parts.items.length == 1 ? 'item' : 'items'} to review',
+              ),
+              const SizedBox(height: AppSpacing.md),
+              DateTimeField(
+                value: approval?.date,
+                lastDate: DateTime.now(),
+                onChanged: c.setDateTime,
               ),
               const SizedBox(height: AppSpacing.md),
               FilterPills<ScanMode>(

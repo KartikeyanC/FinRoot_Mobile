@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/time/relative_time.dart';
+import '../../../../core/widgets/date_time_field.dart';
 import '../../../../design/design.dart';
 import '../../domain/transaction.dart';
 import 'category_style.dart';
@@ -120,6 +121,7 @@ class TransactionTile extends StatelessWidget {
     final parts = <String>[
       if (txn.title != txn.category) txn.category,
       if (showDay) RelativeTime.dayLabel(txn.occurredAt),
+      DateTimeField.formatTime(txn.occurredAt).toLowerCase(),
       if (txn.paymentMode != null) txn.paymentMode!,
     ];
     return parts.isEmpty ? txn.type.name : parts.join(' · ');
