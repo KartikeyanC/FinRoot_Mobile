@@ -19,6 +19,7 @@ import '../../price_alerts/presentation/price_alerts_screen.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
+import '../domain/full_money.dart';
 import '../domain/holding_fields.dart';
 import '../domain/investment.dart';
 import '../domain/live_price.dart';
@@ -148,10 +149,10 @@ class _SummaryCard extends StatelessWidget {
 
     return MetricCard(
       eyebrow: 'Current value',
-      figure: summary.current.formatShort(),
-      figureSuffix: 'invested ${summary.invested.formatShort()}',
+      figure: fullMoney(summary.current),
+      figureSuffix: 'invested ${fullMoney(summary.invested)}',
       status:
-          '${up ? '+' : ''}${summary.gain.formatShort()} '
+          '${up ? '+' : ''}${fullMoney(summary.gain)} '
           '(${summary.returnPct.toStringAsFixed(1)}%) overall',
       statusColor: up ? finance.income : finance.expense,
       child: summary.byAsset.length > 1
@@ -206,10 +207,12 @@ class _HoldingTile extends ConsumerWidget {
       onHintTap: () => openInvestmentForm(context, editing: record),
       facts: facts,
       value: liveValue != null
-          ? formatPrice(symbol ?? '', liveValue)
-          : record.current.formatShort(),
+          ? ((symbol == null || formatPrice(symbol, 0).startsWith('₹'))
+              ? fullMoney(Money(Decimal.parse(liveValue.toStringAsFixed(2)), record.currency))
+              : formatPrice(symbol, liveValue))
+          : fullMoney(record.current),
       gainLabel:
-          '${up ? '+' : ''}${Money(Decimal.parse(gain.toStringAsFixed(2))).formatShort()}',
+          '${up ? '+' : ''}${fullMoney(Money(Decimal.parse(gain.toStringAsFixed(2))))}',
       up: up,
       onTap: canWrite
           ? () => openInvestmentForm(context, editing: record)

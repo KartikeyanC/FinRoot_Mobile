@@ -112,27 +112,34 @@ class HoldingCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      value,
-                      style: AppTypography.bodyStrong.copyWith(
-                        color: palette.ink,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    TonePill(
-                      gainLabel,
-                      up ? Tones.mint(context) : Tones.coral(context),
-                      dot: false,
-                    ),
-                  ],
-                ),
                 ?menu,
                 ?chevron,
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        value,
+                        style: AppTypography.title.copyWith(
+                          color: palette.ink,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                TonePill(
+                  gainLabel,
+                  up ? Tones.mint(context) : Tones.coral(context),
+                  dot: false,
+                ),
               ],
             ),
             if (facts != null)

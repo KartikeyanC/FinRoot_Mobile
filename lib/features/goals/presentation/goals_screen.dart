@@ -151,7 +151,7 @@ class _GoalCard extends ConsumerWidget {
                     children: [
                       Text(
                         goal.title,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.bodyStrong.copyWith(
                           color: palette.ink,

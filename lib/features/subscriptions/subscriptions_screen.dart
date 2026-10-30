@@ -166,13 +166,19 @@ class _SubTile extends ConsumerWidget {
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: soon
-                          ? TonePill(
-                              days < 0
-                                  ? 'Renewal passed'
-                                  : (days == 0
-                                        ? 'Renews today'
-                                        : 'Renews in $days ${days == 1 ? 'day' : 'days'}'),
-                              Tones.coral(context),
+                          ? Align(
+                              alignment: Alignment.centerLeft,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: TonePill(
+                                  days < 0
+                                      ? 'Renewal passed'
+                                      : (days == 0
+                                            ? 'Renews today'
+                                            : 'Renews in $days ${days == 1 ? 'day' : 'days'}'),
+                                  Tones.coral(context),
+                                ),
+                              ),
                             )
                           : Text(
                               parts.join(' · '),

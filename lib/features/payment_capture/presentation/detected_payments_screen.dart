@@ -152,7 +152,19 @@ class _SetupCard extends ConsumerWidget {
 
     return AppCard(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      child: Column(
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          listTileTheme: ListTileThemeData(
+            titleTextStyle: t.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: context.palette.ink,
+            ),
+            subtitleTextStyle: t.bodyMedium?.copyWith(
+              color: context.palette.muted,
+            ),
+          ),
+        ),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SwitchListTile(
@@ -253,6 +265,7 @@ class _SetupCard extends ConsumerWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

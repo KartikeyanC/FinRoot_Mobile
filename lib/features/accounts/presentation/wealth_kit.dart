@@ -156,10 +156,12 @@ class RowMenu extends StatelessWidget {
   Widget build(BuildContext context) => PopupMenuButton<String>(
     tooltip: tooltip,
     padding: EdgeInsets.zero,
-    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
-    icon: Icon(Icons.more_horiz_rounded, color: context.palette.muted),
     onSelected: onSelected,
     itemBuilder: (_) => items,
+    child: SizedBox.square(
+      dimension: 48,
+      child: Icon(Icons.more_vert_rounded, color: context.palette.muted),
+    ),
   );
 }
 

@@ -5,6 +5,7 @@ import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../core/widgets/date_time_field.dart';
 import '../../../design/design.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../application/reminders_editor_controller.dart';
 import '../domain/reminder.dart';
 
@@ -128,38 +129,41 @@ class _ReminderFormSheetState extends ConsumerState<_ReminderFormSheet> {
                 style: AppTypography.title.copyWith(color: context.palette.ink),
               ),
               const SizedBox(height: AppSpacing.lg),
-              TextFormField(
-                controller: _title,
-                autofocus: !_isEditing,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
-                  hintText: 'e.g. HDFC credit card bill',
-                  prefixIcon: Icon(Icons.label_outline),
+              LabeledField(
+                label: 'Name',
+                child: TextFormField(
+                  controller: _title,
+                  autofocus: !_isEditing,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. HDFC credit card bill',
+                    prefixIcon: Icon(Icons.label_outline),
+                  ),
+                  validator: ReminderValidators.title,
                 ),
-                validator: ReminderValidators.title,
               ),
-              const SizedBox(height: AppSpacing.md),
-              DropdownButtonFormField<ReminderContext>(
-                initialValue: _context,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Kind',
-                  prefixIcon: Icon(Icons.category_outlined),
+              LabeledField(
+                label: 'Kind',
+                child: DropdownButtonFormField<ReminderContext>(
+                  initialValue: _context,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.category_outlined),
+                  ),
+                  items: [
+                    for (final c in ReminderContext.values)
+                      DropdownMenuItem(
+                        value: c,
+                        child: Text(c.label, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (v) => setState(() => _context = v ?? _context),
                 ),
-                items: [
-                  for (final c in ReminderContext.values)
-                    DropdownMenuItem(
-                      value: c,
-                      child: Text(c.label, overflow: TextOverflow.ellipsis),
-                    ),
-                ],
-                onChanged: (v) => setState(() => _context = v ?? _context),
               ),
               Padding(
                 padding: const EdgeInsets.only(
-                  top: AppSpacing.xxs,
-                  left: AppSpacing.sm,
+                  bottom: AppSpacing.lg,
+                  left: AppSpacing.xs,
                 ),
                 child: Text(
                   _context.hint,
@@ -168,51 +172,57 @@ class _ReminderFormSheetState extends ConsumerState<_ReminderFormSheet> {
                   ),
                 ),
               ),
-              const SizedBox(height: AppSpacing.md),
-              DateTimeField(
-                value: _dueDate,
-                showTime: false,
-                dateLabel: 'Target date',
-                firstDate: DateTime(DateTime.now().year - 1),
-                lastDate: DateTime(DateTime.now().year + 10),
-                onChanged: (v) => setState(() => _dueDate = v),
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                child: DateTimeField(
+                  value: _dueDate,
+                  showTime: false,
+                  dateLabel: 'Target date',
+                  firstDate: DateTime(DateTime.now().year - 1),
+                  lastDate: DateTime(DateTime.now().year + 10),
+                  onChanged: (v) => setState(() => _dueDate = v),
+                ),
               ),
-              if (_context == ReminderContext.fixedDue) ...[
-                const SizedBox(height: AppSpacing.md),
-                DropdownButtonFormField<ReminderFrequency>(
-                  initialValue: _frequency,
-                  decoration: const InputDecoration(
-                    labelText: 'Repeat',
-                    prefixIcon: Icon(Icons.repeat),
+              if (_context == ReminderContext.fixedDue)
+                LabeledField(
+                  label: 'Repeat',
+                  child: DropdownButtonFormField<ReminderFrequency>(
+                    initialValue: _frequency,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.repeat),
+                    ),
+                    items: [
+                      for (final f in ReminderFrequency.values)
+                        DropdownMenuItem(value: f, child: Text(f.label)),
+                    ],
+                    onChanged: (v) =>
+                        setState(() => _frequency = v ?? _frequency),
                   ),
-                  items: [
-                    for (final f in ReminderFrequency.values)
-                      DropdownMenuItem(value: f, child: Text(f.label)),
-                  ],
-                  onChanged: (v) =>
-                      setState(() => _frequency = v ?? _frequency),
                 ),
-              ],
-              const SizedBox(height: AppSpacing.md),
-              TextFormField(
-                controller: _amount,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+              LabeledField(
+                label: 'Amount (optional)',
+                child: TextFormField(
+                  controller: _amount,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: '0',
+                    prefixIcon: Icon(Icons.currency_rupee),
+                  ),
+                  validator: ReminderValidators.amount,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'Amount (optional)',
-                  prefixIcon: Icon(Icons.currency_rupee),
-                ),
-                validator: ReminderValidators.amount,
               ),
-              const SizedBox(height: AppSpacing.md),
-              TextFormField(
-                controller: _notes,
-                maxLines: 2,
-                maxLength: 200,
-                decoration: const InputDecoration(
-                  labelText: 'Note (optional)',
-                  prefixIcon: Icon(Icons.notes),
+              LabeledField(
+                label: 'Note (optional)',
+                child: TextFormField(
+                  controller: _notes,
+                  maxLines: 2,
+                  maxLength: 200,
+                  decoration: const InputDecoration(
+                    hintText: 'Anything to remember',
+                    prefixIcon: Icon(Icons.notes),
+                  ),
                 ),
               ),
               if (_error != null) ...[

@@ -146,6 +146,7 @@ class _AccountFormSheetState extends ConsumerState<_AccountFormSheet> {
               hintText: '0',
               prefixIcon: Icon(Icons.currency_rupee),
               helperText: 'As of today. Change the date on the web app.',
+              helperMaxLines: 2,
             ),
             validator: AccountValidators.openingBalance,
           ),

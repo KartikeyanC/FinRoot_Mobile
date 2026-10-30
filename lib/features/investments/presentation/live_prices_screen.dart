@@ -16,6 +16,7 @@ import '../../price_alerts/domain/price_alert.dart'
     show alertLabelFor, formatPrice;
 import '../../price_alerts/presentation/price_alerts_screen.dart';
 import '../application/investments_providers.dart';
+import '../domain/full_money.dart';
 import '../domain/holding_fields.dart';
 import '../domain/investment.dart';
 import '../domain/live_price.dart';
@@ -159,7 +160,7 @@ String _unit(InvestmentRecord r, String symbol, double v) =>
 
 String _total(InvestmentRecord r, String symbol, double v) =>
     r.asset == 'mutual_funds'
-    ? Money(Decimal.parse(v.toStringAsFixed(2)), r.currency).formatShort()
+    ? fullMoney(Money(Decimal.parse(v.toStringAsFixed(2)), r.currency))
     : formatPrice(symbol, v);
 
 class _PriceRow extends ConsumerWidget {
@@ -212,7 +213,7 @@ class _PriceRow extends ConsumerWidget {
           Text(
             value != null
                 ? _total(record, symbol, value)
-                : record.current.formatShort(),
+                : fullMoney(record.current),
             style: AppTypography.bodyStrong.copyWith(
               color: palette.ink,
               fontFeatures: const [FontFeature.tabularFigures()],

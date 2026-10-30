@@ -244,23 +244,18 @@ class _AlertTile extends ConsumerWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  const SizedBox(height: 6),
+                  TonePill(pillLabel, pillTone, dot: false),
                 ],
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  trailingTop,
-                  style: AppTypography.bodyStrong.copyWith(
-                    color: palette.ink,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                TonePill(pillLabel, pillTone, dot: false),
-              ],
+            Text(
+              trailingTop,
+              style: AppTypography.bodyStrong.copyWith(
+                color: palette.ink,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
             if (canWrite)
               RowMenu(
@@ -403,6 +398,7 @@ class _AddAlertSheetState extends ConsumerState<_AddAlertSheet> {
             textCapitalization: TextCapitalization.characters,
             decoration: InputDecoration(
               hintText: 'ITC.NS',
+              helperMaxLines: 3,
               helperText: _looking
                   ? 'Looking up the price…'
                   : (_now != null
@@ -458,6 +454,7 @@ class _AddAlertSheetState extends ConsumerState<_AddAlertSheet> {
             decoration: InputDecoration(
               hintText: '0',
               prefixText: cur.isEmpty ? null : '$cur ',
+              helperMaxLines: 3,
               helperText: _direction == AlertDirection.below
                   ? 'Alert when the price is at or below this (a buy level)'
                   : 'Alert when the price is at or above this',

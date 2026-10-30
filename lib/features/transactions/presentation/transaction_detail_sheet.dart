@@ -377,6 +377,10 @@ class _TrackerRow extends ConsumerWidget {
                   .read(trackerEditorControllerProvider)
                   .assign(id, [txn.id]);
             }),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.only(right: AppSpacing.md),
+              alignment: Alignment.centerLeft,
+            ),
             icon: const Icon(Icons.playlist_add, size: 18),
             label: const Text('Assign to a tracker'),
           ),

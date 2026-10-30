@@ -5,6 +5,7 @@ import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../core/widgets/date_time_field.dart';
 import '../../../design/design.dart';
+import '../../accounts/presentation/wealth_kit.dart';
 import '../application/recurring_editor_controller.dart';
 import '../domain/recurring_item.dart';
 import '../domain/reminder_setting.dart';
@@ -170,92 +171,106 @@ class _RecurringFormSheetState extends ConsumerState<_RecurringFormSheet> {
                       _busy ? null : (s) => _setType(s.first),
                 ),
               const SizedBox(height: AppSpacing.md),
-              TextFormField(
-                controller: _name,
-                autofocus: !_isEditing,
-                textCapitalization: TextCapitalization.words,
-                decoration: InputDecoration(
-                  labelText: 'Name',
-                  hintText: _type == RecurringType.income
-                      ? 'e.g. Salary — Acme'
-                      : 'e.g. Apartment rent',
-                  prefixIcon: const Icon(Icons.label_outline),
-                ),
-                validator: RecurringValidators.name,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              DropdownButtonFormField<String>(
-                initialValue: _category,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  prefixIcon: Icon(Icons.sell_outlined),
-                ),
-                items: [
-                  for (final c in categoriesFor(_type))
-                    DropdownMenuItem(value: c, child: Text(c)),
-                ],
-                onChanged: (v) => setState(() => _category = v ?? _category),
-              ),
-              if (_type == RecurringType.income) ...[
-                const SizedBox(height: AppSpacing.md),
-                DropdownButtonFormField<String>(
-                  initialValue: _subtype,
-                  decoration: const InputDecoration(
-                    labelText: 'Subtype',
-                    prefixIcon: Icon(Icons.category_outlined),
+              LabeledField(
+                label: 'Name',
+                child: TextFormField(
+                  controller: _name,
+                  autofocus: !_isEditing,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    hintText: _type == RecurringType.income
+                        ? 'e.g. Salary — Acme'
+                        : 'e.g. Apartment rent',
+                    prefixIcon: const Icon(Icons.label_outline),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'active', child: Text('Active')),
-                    DropdownMenuItem(value: 'passive', child: Text('Passive')),
+                  validator: RecurringValidators.name,
+                ),
+              ),
+              LabeledField(
+                label: 'Category',
+                child: DropdownButtonFormField<String>(
+                  initialValue: _category,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.sell_outlined),
+                  ),
+                  items: [
+                    for (final c in categoriesFor(_type))
+                      DropdownMenuItem(value: c, child: Text(c)),
                   ],
-                  onChanged: (v) => setState(() => _subtype = v ?? _subtype),
+                  onChanged: (v) => setState(() => _category = v ?? _category),
                 ),
-              ],
-              const SizedBox(height: AppSpacing.md),
-              TextFormField(
-                controller: _amount,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Amount',
-                  prefixIcon: Icon(Icons.currency_rupee),
-                ),
-                validator: RecurringValidators.amount,
               ),
-              const SizedBox(height: AppSpacing.md),
-              DropdownButtonFormField<RecurringFrequency>(
-                initialValue: _frequency,
-                decoration: const InputDecoration(
-                  labelText: 'Frequency',
-                  prefixIcon: Icon(Icons.repeat),
+              if (_type == RecurringType.income)
+                LabeledField(
+                  label: 'Subtype',
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _subtype,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.category_outlined),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'active', child: Text('Active')),
+                      DropdownMenuItem(
+                        value: 'passive',
+                        child: Text('Passive'),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _subtype = v ?? _subtype),
+                  ),
                 ),
-                items: [
-                  for (final f in RecurringFrequency.values)
-                    DropdownMenuItem(value: f, child: Text(f.label)),
-                ],
-                onChanged: (v) => setState(() => _frequency = v ?? _frequency),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              DateTimeField(
-                value: _nextDue,
-                showTime: false,
-                dateLabel: 'Next due date',
-                firstDate: DateTime(DateTime.now().year - 1),
-                lastDate: DateTime(DateTime.now().year + 10),
-                onChanged: (v) => setState(() => _nextDue = v),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextFormField(
-                controller: _notes,
-                maxLines: 2,
-                maxLength: 500,
-                decoration: const InputDecoration(
-                  labelText: 'Notes (optional)',
-                  prefixIcon: Icon(Icons.notes),
+              LabeledField(
+                label: 'Amount',
+                child: TextFormField(
+                  controller: _amount,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: '0',
+                    prefixIcon: Icon(Icons.currency_rupee),
+                  ),
+                  validator: RecurringValidators.amount,
                 ),
-                validator: RecurringValidators.notes,
+              ),
+              LabeledField(
+                label: 'Frequency',
+                child: DropdownButtonFormField<RecurringFrequency>(
+                  initialValue: _frequency,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.repeat),
+                  ),
+                  items: [
+                    for (final f in RecurringFrequency.values)
+                      DropdownMenuItem(value: f, child: Text(f.label)),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _frequency = v ?? _frequency),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                child: DateTimeField(
+                  value: _nextDue,
+                  showTime: false,
+                  dateLabel: 'Next due date',
+                  firstDate: DateTime(DateTime.now().year - 1),
+                  lastDate: DateTime(DateTime.now().year + 10),
+                  onChanged: (v) => setState(() => _nextDue = v),
+                ),
+              ),
+              LabeledField(
+                label: 'Notes (optional)',
+                child: TextFormField(
+                  controller: _notes,
+                  maxLines: 2,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                    hintText: 'Anything to remember',
+                    prefixIcon: Icon(Icons.notes),
+                  ),
+                  validator: RecurringValidators.notes,
+                ),
               ),
               if (!_isEditing) ...[
                 const SizedBox(height: AppSpacing.xs),
@@ -271,21 +286,23 @@ class _RecurringFormSheetState extends ConsumerState<_RecurringFormSheet> {
                       : (v) => setState(() => _reminderOn = v),
                 ),
                 if (_reminderOn)
-                  DropdownButtonFormField<int>(
-                    initialValue: _reminderDays,
-                    decoration: const InputDecoration(
-                      labelText: 'How early',
-                      prefixIcon: Icon(Icons.schedule),
+                  LabeledField(
+                    label: 'How early',
+                    child: DropdownButtonFormField<int>(
+                      initialValue: _reminderDays,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.schedule),
+                      ),
+                      items: [
+                        for (final n in ReminderSetting.dayChoices)
+                          DropdownMenuItem(
+                            value: n,
+                            child: Text('$n ${n == 1 ? 'day' : 'days'} before'),
+                          ),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => _reminderDays = v ?? _reminderDays),
                     ),
-                    items: [
-                      for (final n in ReminderSetting.dayChoices)
-                        DropdownMenuItem(
-                          value: n,
-                          child: Text('$n ${n == 1 ? 'day' : 'days'} before'),
-                        ),
-                    ],
-                    onChanged: (v) =>
-                        setState(() => _reminderDays = v ?? _reminderDays),
                   ),
               ],
               if (_error != null) ...[

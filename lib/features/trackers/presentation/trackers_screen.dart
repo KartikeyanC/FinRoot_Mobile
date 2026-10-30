@@ -225,7 +225,7 @@ class _TrackerCard extends StatelessWidget {
                     children: [
                       Text(
                         trackerDisplayLabel(t.tracker.name),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.title.copyWith(
                           color: palette.ink,

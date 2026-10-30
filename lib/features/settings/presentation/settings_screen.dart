@@ -73,7 +73,7 @@ class SettingsScreen extends ConsumerWidget {
                   options: const [
                     FilterPill(ThemeMode.light, 'Light', icon: Icons.light_mode_outlined),
                     FilterPill(ThemeMode.dark, 'Dark', icon: Icons.dark_mode_outlined),
-                    FilterPill(ThemeMode.system, 'Follow system'),
+                    FilterPill(ThemeMode.system, 'System'),
                   ],
                   selected: themeMode,
                   onSelected: (mode) =>
@@ -202,9 +202,8 @@ class _ColorThemePicker extends ConsumerWidget {
           style: AppTypography.label.copyWith(color: palette.muted),
         ),
         const SizedBox(height: AppSpacing.md),
-        Wrap(
-          spacing: AppSpacing.md,
-          runSpacing: AppSpacing.md,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             for (final theme in AppColorTheme.values)
               _Swatch(

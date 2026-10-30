@@ -235,9 +235,7 @@ class SectionTitle extends StatelessWidget {
             header: true,
             child: Text(
               title,
-              style: AppTypography.section.copyWith(
-                color: context.palette.ink,
-              ),
+              style: AppTypography.section.copyWith(color: context.palette.ink),
             ),
           ),
         ),
@@ -285,26 +283,50 @@ class MetricCard extends StatelessWidget {
         children: [
           Eyebrow(eyebrow),
           const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.end,
-            spacing: AppSpacing.sm,
-            children: [
-              Text(
+          LayoutBuilder(
+            builder: (context, box) {
+              final figureText = Text(
                 figure,
+                maxLines: figure.contains(' ') ? 2 : 1,
+                overflow: TextOverflow.ellipsis,
                 style: AppTypography.display.copyWith(
                   color: palette.ink,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-              ),
-              if (figureSuffix != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    figureSuffix!,
-                    style: AppTypography.body.copyWith(color: palette.muted),
-                  ),
-                ),
-            ],
+              );
+              // A long amount (₹14,29,293.31 at a large text size) scales down
+              // to fit the card instead of wrapping mid-number; a name wraps.
+              return Wrap(
+                crossAxisAlignment: WrapCrossAlignment.end,
+                spacing: AppSpacing.sm,
+                children: [
+                  if (figure.contains(' '))
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: box.maxWidth),
+                      child: figureText,
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: box.maxWidth),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: figureText,
+                      ),
+                    ),
+                  if (figureSuffix != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        figureSuffix!,
+                        style: AppTypography.body.copyWith(
+                          color: palette.muted,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           if (status != null) ...[
             const SizedBox(height: AppSpacing.xs),
@@ -319,10 +341,7 @@ class MetricCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.lg),
             action!,
           ],
-          if (child != null) ...[
-            const SizedBox(height: AppSpacing.lg),
-            child!,
-          ],
+          if (child != null) ...[const SizedBox(height: AppSpacing.lg), child!],
         ],
       ),
     );
@@ -362,15 +381,18 @@ class StatStrip extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        stats[i].value,
-                        style: AppTypography.display.copyWith(
-                          fontSize: 24,
-                          height: 30 / 24,
-                          color: stats[i].color ?? palette.ink,
-                          fontFeatures: const [FontFeature.tabularFigures()],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          stats[i].value,
+                          style: AppTypography.display.copyWith(
+                            fontSize: 24,
+                            height: 30 / 24,
+                            color: stats[i].color ?? palette.ink,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         ),
                       ),
                     ),
@@ -409,7 +431,12 @@ class BarSegment {
 
 /// A thin, fully round, multi-colour bar with a dot legend under it.
 class SegmentedBar extends StatelessWidget {
-  const SegmentedBar(this.segments, {super.key, this.total, this.legend = true});
+  const SegmentedBar(
+    this.segments, {
+    super.key,
+    this.total,
+    this.legend = true,
+  });
 
   final List<BarSegment> segments;
 
@@ -559,7 +586,11 @@ class InfoPill extends StatelessWidget {
                   radius: 20,
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpacing.sm),
-                    child: Icon(Icons.close_rounded, size: 18, color: palette.muted),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: palette.muted,
+                    ),
                   ),
                 ),
             ],
@@ -643,8 +674,12 @@ class ListRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          if (leading != null) leading! else if (icon != null) IconTile(icon: icon!),
-          if (leading != null || icon != null) const SizedBox(width: AppSpacing.md),
+          if (leading != null)
+            leading!
+          else if (icon != null)
+            IconTile(icon: icon!),
+          if (leading != null || icon != null)
+            const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -739,7 +774,9 @@ class FilterPills<T> extends StatelessWidget {
                     child: Material(
                       color: on ? Colors.transparent : palette.card,
                       shape: StadiumBorder(
-                        side: BorderSide(color: on ? Colors.transparent : palette.line),
+                        side: BorderSide(
+                          color: on ? Colors.transparent : palette.line,
+                        ),
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: Ink(
@@ -819,7 +856,10 @@ class StatusPill extends StatelessWidget {
           Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(color: foreground, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: foreground,
+              shape: BoxShape.circle,
+            ),
           ),
           const SizedBox(width: 6),
         ],
@@ -886,7 +926,11 @@ class PillButton extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.22),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.arrow_forward_rounded, size: 16, color: Colors.white),
+            child: const Icon(
+              Icons.arrow_forward_rounded,
+              size: 16,
+              color: Colors.white,
+            ),
           ),
         ],
       ],
@@ -973,7 +1017,11 @@ class CardEmpty extends StatelessWidget {
           ],
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: AppSpacing.xl),
-            PillButton(label: actionLabel!, onPressed: onAction, icon: Icons.add_rounded),
+            PillButton(
+              label: actionLabel!,
+              onPressed: onAction,
+              icon: Icons.add_rounded,
+            ),
           ],
         ],
       ),
@@ -984,7 +1032,12 @@ class CardEmpty extends StatelessWidget {
 /// The page's own "+ Thing" action. Uses the shared gradient pill so every
 /// screen's add button matches.
 class AddFab extends StatelessWidget {
-  const AddFab({super.key, required this.label, required this.onPressed, this.icon = Icons.add_rounded});
+  const AddFab({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon = Icons.add_rounded,
+  });
 
   final String label;
   final VoidCallback onPressed;
