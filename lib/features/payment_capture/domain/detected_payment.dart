@@ -3,6 +3,7 @@ import 'package:decimal/decimal.dart';
 import '../../../core/money/money.dart';
 import '../../../domain/constants.dart';
 import '../../transactions/domain/transaction.dart';
+import 'sms_fields.dart';
 
 /// One notification the Android listener kept because it looked like a
 /// payment — raw text, not yet understood.
@@ -47,6 +48,8 @@ class DetectedPayment {
     this.counterparty,
     this.reference,
     this.paymentMode,
+    this.accountLast4,
+    this.bank,
   });
 
   final List<String> noticeIds;
@@ -65,6 +68,13 @@ class DetectedPayment {
 
   /// One of [kPaymentModes] when it can be told ("UPI", "Card").
   final String? paymentMode;
+
+  /// Last four digits of your account or card, when a bank alert names it.
+  /// Part of the ingest de-dup key (`ingest_hash.dart`).
+  final String? accountLast4;
+
+  /// The bank, from an SMS sender id ("AD-HDFCBK" → "HDFC Bank").
+  final String? bank;
 
   String get id => noticeIds.first;
 
@@ -87,6 +97,8 @@ class DetectedPayment {
     counterparty: counterparty ?? o.counterparty,
     reference: reference ?? o.reference,
     paymentMode: paymentMode ?? o.paymentMode,
+    accountLast4: accountLast4 ?? o.accountLast4,
+    bank: bank ?? o.bank,
   );
 }
 
@@ -137,6 +149,9 @@ const _upiApps = {
   'com.sbi.upi',
   'money.super.payments',
 };
+
+/// True for a notification posted by an SMS app — a bank alert, not an app.
+bool isSmsPackage(String packageName) => _smsApps.contains(packageName);
 
 String sourceLabel(String packageName) => _smsApps.contains(packageName)
     ? 'Bank SMS'
@@ -243,15 +258,23 @@ DetectedPayment? parsePaymentNotice(PaymentNotice n) {
   }
   assert(mode == null || kPaymentModes.contains(mode));
 
+  // A bank SMS prints when the bank booked it; prefer that minute to when the
+  // phone happened to receive it (both feed the de-dup key).
+  final occurredAt = isSms
+      ? alertTimeIn(text, receivedAt: n.postedAt) ?? n.postedAt
+      : n.postedAt;
+
   return DetectedPayment(
     noticeIds: [n.id],
     amount: amount,
     direction: direction,
-    occurredAt: n.postedAt,
+    occurredAt: occurredAt,
     sources: [sourceLabel(n.packageName)],
     counterparty: who,
     reference: ref,
     paymentMode: mode,
+    accountLast4: accountLast4In(text),
+    bank: isSms ? bankFromSender(n.title) : null,
   );
 }
 
