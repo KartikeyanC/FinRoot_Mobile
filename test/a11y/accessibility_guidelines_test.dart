@@ -17,6 +17,7 @@ import 'package:finroot_mobile/features/menus/application/menu_providers.dart';
 import 'package:finroot_mobile/features/more/presentation/more_screen.dart';
 import 'package:finroot_mobile/features/profile/profile_providers.dart';
 import 'package:finroot_mobile/features/quick_add/data/custom_categories.dart';
+import 'package:finroot_mobile/features/quick_add/data/custom_subcategories.dart';
 import 'package:finroot_mobile/features/quick_add/presentation/quick_add_sheet.dart';
 import 'package:finroot_mobile/features/summary/application/summary_providers.dart';
 import 'package:finroot_mobile/features/summary/domain/workspace_summary.dart';
@@ -240,6 +241,7 @@ void main() {
           currentTenantIdProvider.overrideWithValue('t1'),
           currentUserIdProvider.overrideWithValue('u1'),
           customExpenseCategoriesProvider.overrideWith(_NoCustomCategories.new),
+          customSubcategoriesProvider.overrideWith(_NoCustomSubs.new),
           workspaceAccountsProvider.overrideWith(
             (ref) => Stream.value(const []),
           ),
@@ -294,6 +296,11 @@ void main() {
 }
 
 /// No workspace categories, and no Supabase / connectivity plugin to fetch them.
+class _NoCustomSubs extends CustomSubcategories {
+  @override
+  Future<Map<String, List<String>>> build() async => const {};
+}
+
 class _NoCustomCategories extends CustomExpenseCategories {
   @override
   Future<List<String>> build() async => const [];

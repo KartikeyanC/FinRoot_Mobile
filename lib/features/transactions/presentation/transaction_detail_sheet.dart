@@ -10,6 +10,8 @@ import '../../../domain/constants.dart';
 import '../../../navigation/quick_add_entry.dart';
 import '../../accounts/application/accounts_providers.dart';
 import '../../quick_add/application/quick_add_controller.dart';
+import '../../quick_add/data/custom_subcategories.dart';
+import '../../quick_add/domain/expense_subcategories.dart';
 import '../../quick_add/domain/quick_add_draft.dart';
 import '../../trackers/application/tracker_editor_controller.dart';
 import '../../trackers/application/trackers_providers.dart';
@@ -76,6 +78,15 @@ class TransactionDetailView extends ConsumerWidget {
 
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
     final isTransfer = txn.type == TxnType.transfer;
+    // An expense's description is `Sub · note` (like the web): show the
+    // sub on its own row when it names a known one.
+    final subStore = txn.type == TxnType.expense
+        ? ref.watch(customSubcategoriesProvider).value ??
+              const <String, List<String>>{}
+        : const <String, List<String>>{};
+    final split = txn.type == TxnType.expense
+        ? splitDescription(txn.description, subOptionsFor(txn.category, subStore))
+        : (sub: null, note: (txn.description ?? '').trim());
     final style = CategoryStyle.of(context, txn.category, txn.type);
     final amountColor = switch (txn.type) {
       TxnType.income => finance.income,
@@ -209,8 +220,10 @@ class TransactionDetailView extends ConsumerWidget {
                 ] else
                   _AccountRow(label: 'Account', accountId: txn.accountId),
                 if (!isTransfer) _TrackerRow(txn: txn, canWrite: canWrite),
-                if ((txn.description ?? '').trim().isNotEmpty)
-                  _Row(label: 'Note', value: txn.description!.trim()),
+                if (split.sub != null)
+                  _Row(label: 'Subcategory', value: split.sub!),
+                if (split.note.isNotEmpty)
+                  _Row(label: 'Note', value: split.note),
               ],
             ),
           ),

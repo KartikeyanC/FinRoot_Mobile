@@ -12,6 +12,8 @@ import '../../transactions/domain/transaction.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/quick_add_controller.dart';
 import '../data/custom_categories.dart';
+import '../data/custom_subcategories.dart';
+import '../domain/expense_subcategories.dart';
 import '../domain/quick_add_draft.dart';
 import 'widgets/amount_input_field.dart';
 
@@ -52,6 +54,11 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
 
   late QuickAddKind _kind;
   String? _category;
+
+  /// Optional subcategory chip (expense); saved as `Sub · note` in the
+  /// description, like the web.
+  String? _sub;
+  final _subKey = GlobalKey();
   String? _paymentMode;
   String? _accountId;
   String? _fromAccountId;
@@ -68,7 +75,11 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     if (e != null) {
       _kind = QuickAddKind.values.byName(e.type.name);
       _amount.text = e.amount.amount.toString();
-      _note.text = e.description ?? '';
+      final split = _kind == QuickAddKind.expense
+          ? splitDescription(e.description, subOptionsFor(e.category, const {}))
+          : (sub: null, note: e.description ?? '');
+      _sub = split.sub;
+      _note.text = split.note;
       _occurredAt = e.occurredAt.toLocal();
       _paymentMode = e.paymentMode;
       _category = _kind == QuickAddKind.transfer ? null : e.category;
@@ -103,8 +114,67 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     setState(() {
       _kind = kind;
       _category = null;
+      _sub = null;
       _error = null;
     });
+  }
+
+  /// Custom subs finished loading while editing: a leading `Sub · ` that names
+  /// one of the person's own subs becomes the chip (only if the note is still
+  /// the stored text, so nothing the person typed is touched).
+  void _rehydrateSub(Map<String, List<String>> store) {
+    final e = widget.editing;
+    if (e == null || _kind != QuickAddKind.expense || _sub != null) return;
+    if (_note.text != (e.description ?? '').trim()) return;
+    final split = splitDescription(e.description, subOptionsFor(e.category, store));
+    if (split.sub == null) return;
+    setState(() {
+      _sub = split.sub;
+      _note.text = split.note;
+    });
+  }
+
+  Future<void> _addSub(String group) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _AddSubDialog(group: group),
+    );
+    if (name != null && mounted) setState(() => _sub = name);
+  }
+
+  Future<void> _removeSub(String category, String sub) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove subcategory?'),
+        content: Text(
+          '"$sub" is removed from your list for everyone in this workspace. '
+          'Past transactions keep it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: AppButtonStyles.destructive,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(customSubcategoriesProvider.notifier).remove({
+        category,
+        ?groupNameForCategory(category),
+      }, sub);
+      if (mounted && _sub == sub) setState(() => _sub = null);
+    } on Failure catch (f) {
+      messenger.showSnackBar(SnackBar(content: Text(f.message)));
+    }
   }
 
   Future<void> _submit() async {
@@ -124,7 +194,9 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
             amount: Money.tryParse(_amount.text)!,
             occurredAt: _occurredAt,
             category: _category,
-            note: _note.text,
+            note: _kind == QuickAddKind.expense
+                ? composeDescription(_sub, _note.text)
+                : _note.text,
             paymentMode: _paymentMode,
             accountId: _accountId,
             fromAccountId: _fromAccountId,
@@ -153,6 +225,13 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
     final accounts = ref.watch(workspaceAccountsProvider).value ?? const [];
     final palette = context.palette;
+    ref.listen(customSubcategoriesProvider, (_, next) {
+      final store = next.value;
+      if (store != null) _rehydrateSub(store);
+    });
+    final subStore = _kind == QuickAddKind.expense
+        ? ref.watch(customSubcategoriesProvider).value ?? const <String, List<String>>{}
+        : const <String, List<String>>{};
 
     return Padding(
       padding: EdgeInsets.only(
@@ -210,7 +289,16 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
                           accountId: _accountId,
                           accounts: accounts,
                           occurredAt: _occurredAt,
-                          onCategory: (v) => setState(() => _category = v),
+                          subStore: subStore,
+                          sub: _sub,
+                          onSub: (v) => setState(() => _sub = v),
+                          onAddSub: _addSub,
+                          onRemoveSub: _removeSub,
+                          onCategory: (v) => setState(() {
+                            if (v != _category) _sub = null;
+                            _category = v;
+                          }),
+                          subKey: _subKey,
                           onPaymentMode: (v) =>
                               setState(() => _paymentMode = v),
                           onAccount: (v) => setState(() => _accountId = v),
@@ -279,6 +367,12 @@ class _EntryForm extends StatelessWidget {
     required this.accountId,
     required this.accounts,
     required this.occurredAt,
+    required this.subStore,
+    required this.subKey,
+    required this.sub,
+    required this.onSub,
+    required this.onAddSub,
+    required this.onRemoveSub,
     required this.onCategory,
     required this.onPaymentMode,
     required this.onAccount,
@@ -296,6 +390,12 @@ class _EntryForm extends StatelessWidget {
   final String? accountId;
   final List<AccountEntity> accounts;
   final DateTime occurredAt;
+  final Map<String, List<String>> subStore;
+  final GlobalKey subKey;
+  final String? sub;
+  final ValueChanged<String?> onSub;
+  final ValueChanged<String> onAddSub;
+  final void Function(String category, String sub) onRemoveSub;
   final ValueChanged<String?> onCategory;
   final ValueChanged<String?> onPaymentMode;
   final ValueChanged<String?> onAccount;
@@ -335,8 +435,23 @@ class _EntryForm extends StatelessWidget {
                 ],
                 selected: category,
                 onSelected: (v) {
+                  // Close the keyboard so the subcategory chips that appear
+                  // below are in view.
+                  FocusScope.of(context).unfocus();
                   onCategory(v);
                   field.didChange(v);
+                  // Bring the subcategory chips (new below the category) into
+                  // view, even at large text sizes.
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    final c = subKey.currentContext;
+                    if (c != null && c.mounted) {
+                      Scrollable.ensureVisible(
+                        c,
+                        alignment: 0.15,
+                        duration: const Duration(milliseconds: 200),
+                      );
+                    }
+                  });
                 },
               ),
               if (field.hasError)
@@ -352,6 +467,18 @@ class _EntryForm extends StatelessWidget {
             ],
           ),
         ),
+        if (kind == QuickAddKind.expense &&
+            category != null &&
+            groupNameForCategory(category!) != null)
+          _SubcategorySection(
+            key: subKey,
+            category: category!,
+            store: subStore,
+            selected: sub,
+            onSelected: (v) => onSub(v == sub ? null : v),
+            onAdd: () => onAddSub(groupNameForCategory(category!)!),
+            onRemove: (s) => onRemoveSub(category!, s),
+          ),
         const SizedBox(height: AppSpacing.lg),
         const _Label('Payment mode (optional)'),
         _PillWrap(
@@ -597,11 +724,19 @@ class _PillWrap extends StatelessWidget {
     required this.options,
     required this.selected,
     required this.onSelected,
+    this.onLongPress,
+    this.trailing,
   });
 
   final List<String> options;
   final String? selected;
   final ValueChanged<String> onSelected;
+
+  /// Optional long-press on a chip (removing a custom subcategory).
+  final ValueChanged<String>? onLongPress;
+
+  /// An extra chip after the options (the "Add" chip).
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -633,6 +768,7 @@ class _PillWrap extends StatelessWidget {
                     : null,
                 child: InkWell(
                   onTap: () => onSelected(o),
+                  onLongPress: onLongPress == null ? null : () => onLongPress!(o),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.lg,
@@ -649,6 +785,164 @@ class _PillWrap extends StatelessWidget {
               ),
             ),
           ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
+/// "Subcategory" chips under the category: the person's own subs first, then
+/// the built-ins, then a "+ Add" chip. Optional - tap the chosen chip to clear.
+class _SubcategorySection extends StatelessWidget {
+  const _SubcategorySection({
+    super.key,
+    required this.category,
+    required this.store,
+    required this.selected,
+    required this.onSelected,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  final String category;
+  final Map<String, List<String>> store;
+  final String? selected;
+  final ValueChanged<String> onSelected;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final customLower = {
+      for (final c in customSubsFor(category, store)) c.toLowerCase(),
+    };
+    final options = subOptionsFor(category, store);
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _Label('Subcategory (optional)'),
+          _PillWrap(
+            options: [
+              // An edited row keeps a sub this list no longer has.
+              if (selected != null && !options.contains(selected)) selected!,
+              ...options,
+            ],
+            selected: selected,
+            onSelected: onSelected,
+            onLongPress: (s) {
+              if (customLower.contains(s.toLowerCase())) onRemove(s);
+            },
+            trailing: Semantics(
+              button: true,
+              label: 'Add subcategory',
+              excludeSemantics: true,
+              child: Material(
+                color: Colors.transparent,
+                shape: StadiumBorder(side: BorderSide(color: palette.line)),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: onAdd,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                      vertical: 9,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_rounded, size: 16, color: palette.accent),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Add',
+                          style: AppTypography.bodyStrong.copyWith(
+                            color: palette.accent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tiny dialog to create a subcategory under [group]; pops the saved name.
+class _AddSubDialog extends ConsumerStatefulWidget {
+  const _AddSubDialog({required this.group});
+  final String group;
+
+  @override
+  ConsumerState<_AddSubDialog> createState() => _AddSubDialogState();
+}
+
+class _AddSubDialogState extends ConsumerState<_AddSubDialog> {
+  final _name = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final saved = await ref
+          .read(customSubcategoriesProvider.notifier)
+          .add(widget.group, _name.text);
+      if (mounted) Navigator.pop(context, saved);
+    } on Failure catch (f) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = f.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New subcategory'),
+      content: TextField(
+        controller: _name,
+        autofocus: true,
+        maxLength: 40,
+        textCapitalization: TextCapitalization.words,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _busy ? null : _save(),
+        decoration: InputDecoration(
+          hintText: 'For example Swiggy',
+          helperText: 'Under ${widget.group}. Shared with your workspace.',
+          helperMaxLines: 2,
+          errorText: _error,
+          errorMaxLines: 3,
+          counterText: '',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _save,
+          child: const Text('Add'),
+        ),
       ],
     );
   }
