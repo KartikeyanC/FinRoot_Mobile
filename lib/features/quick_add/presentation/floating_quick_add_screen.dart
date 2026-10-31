@@ -10,6 +10,8 @@ import '../../sync/application/background_sync.dart';
 import '../../sync/application/sync_engine.dart';
 import '../application/quick_add_controller.dart';
 import '../data/custom_categories.dart';
+import '../data/custom_subcategories.dart';
+import '../domain/expense_subcategories.dart';
 import '../domain/quick_add_draft.dart';
 
 /// Route of the floating Quick Add. Opened only by Android's
@@ -108,14 +110,18 @@ class FloatingQuickAddScreen extends ConsumerStatefulWidget {
   final VoidCallback? close;
 
   @override
-  ConsumerState<FloatingQuickAddScreen> createState() => _FloatingQuickAddScreenState();
+  ConsumerState<FloatingQuickAddScreen> createState() =>
+      _FloatingQuickAddScreenState();
 }
 
-class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen> {
+class _FloatingQuickAddScreenState
+    extends ConsumerState<FloatingQuickAddScreen> {
   var _amount = '';
   QuickCategory? _category;
   // A workspace category picked instead of one of the six (they exclude each other).
   String? _custom;
+  // Optional subcategory under the picked category; saved as `Sub · note`.
+  String? _sub;
   String? _error;
   bool _saving = false;
 
@@ -141,13 +147,19 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
       _error = null;
     });
     try {
-      await ref.read(quickAddControllerProvider).submit(
-        kind: QuickAddKind.expense,
-        amount: Money.parse(_amount),
-        occurredAt: DateTime.now(),
-        category: _custom ?? _category?.category ?? uncategorised,
-        note: _custom == null ? _category?.note : null,
+      final note = composeDescription(
+        _sub,
+        (_custom == null ? _category?.note : null) ?? '',
       );
+      await ref
+          .read(quickAddControllerProvider)
+          .submit(
+            kind: QuickAddKind.expense,
+            amount: Money.parse(_amount),
+            occurredAt: DateTime.now(),
+            category: _custom ?? _category?.category ?? uncategorised,
+            note: note.isEmpty ? null : note,
+          );
       // The write is local, so this returns at once; the window hides, then
       // closes once the entry has been pushed.
       await ref.read(quickLogAfterSaveProvider)();
@@ -170,6 +182,7 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
       setState(() {
         _custom = name;
         _category = null;
+        _sub = null;
       });
     }
   }
@@ -178,6 +191,14 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
+    final pickedCategory = _custom ?? _category?.category;
+    final subs = pickedCategory == null
+        ? const <String>[]
+        : subOptionsFor(
+            pickedCategory,
+            ref.watch(customSubcategoriesProvider).value ??
+                const <String, List<String>>{},
+          );
 
     return Material(
       type: MaterialType.transparency,
@@ -193,7 +214,9 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
           SafeArea(
             child: Align(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenGutter),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.screenGutter,
+                ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: Card(
@@ -206,7 +229,12 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
                         children: [
                           Row(
                             children: [
-                              Expanded(child: Text('⚡ Quick Log', style: tt.titleLarge)),
+                              Expanded(
+                                child: Text(
+                                  '⚡ Quick Log',
+                                  style: tt.titleLarge,
+                                ),
+                              ),
                               IconButton(
                                 tooltip: 'Close',
                                 icon: const Icon(Icons.close),
@@ -224,7 +252,9 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
                               maxLines: 1,
                               style: tt.displaySmall?.copyWith(
                                 fontWeight: FontWeight.w600,
-                                color: _amount.isEmpty ? scheme.onSurfaceVariant : scheme.onSurface,
+                                color: _amount.isEmpty
+                                    ? scheme.onSurfaceVariant
+                                    : scheme.onSurface,
                               ),
                             ),
                           ),
@@ -242,15 +272,23 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
                                   onSelected: (on) => setState(() {
                                     _category = on ? c : null;
                                     _custom = null;
+                                    _sub = null;
                                   }),
                                 ),
-                              for (final name in ref.watch(customExpenseCategoriesProvider).value ?? const <String>[])
+                              for (final name
+                                  in ref
+                                          .watch(
+                                            customExpenseCategoriesProvider,
+                                          )
+                                          .value ??
+                                      const <String>[])
                                 ChoiceChip(
                                   label: Text('🏷️ $name'),
                                   selected: name == _custom,
                                   onSelected: (on) => setState(() {
                                     _custom = on ? name : null;
                                     _category = null;
+                                    _sub = null;
                                   }),
                                 ),
                               ActionChip(
@@ -260,21 +298,70 @@ class _FloatingQuickAddScreenState extends ConsumerState<FloatingQuickAddScreen>
                               ),
                             ],
                           ),
+                          if (subs.isNotEmpty) ...[
+                            const SizedBox(height: AppSpacing.sm),
+                            Text(
+                              'Subcategory (optional)',
+                              textAlign: TextAlign.center,
+                              style: tt.labelMedium,
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                            // One scrollable row, not a wrapping block: a block of
+                            // chips would push Save off a small screen.
+                            LayoutBuilder(
+                              builder: (context, box) => SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minWidth: box.maxWidth,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      for (final sub in subs)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: AppSpacing.xs / 2,
+                                          ),
+                                          child: ChoiceChip(
+                                            label: Text(sub),
+                                            selected: sub == _sub,
+                                            onSelected: (on) => setState(
+                                              () => _sub = on ? sub : null,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                           if (_error != null) ...[
                             const SizedBox(height: AppSpacing.sm),
                             Text(
                               _error!,
                               textAlign: TextAlign.center,
-                              style: tt.bodyMedium?.copyWith(color: scheme.error),
+                              style: tt.bodyMedium?.copyWith(
+                                color: scheme.error,
+                              ),
                             ),
                           ],
                           const SizedBox(height: AppSpacing.md),
-                          _Numpad(onKey: _press, onClear: () => setState(() => _amount = '')),
+                          _Numpad(
+                            onKey: _press,
+                            onClear: () => setState(() => _amount = ''),
+                          ),
                           const SizedBox(height: AppSpacing.md),
                           FilledButton(
                             onPressed: _saving ? null : _save,
-                            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                            child: Text(_saving ? 'SAVING…' : 'SAVE TO FINROOT'),
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(52),
+                            ),
+                            child: Text(
+                              _saving ? 'SAVING…' : 'SAVE TO FINROOT',
+                            ),
                           ),
                         ],
                       ),
@@ -319,9 +406,14 @@ class _Numpad extends StatelessWidget {
                     child: TextButton(
                       onPressed: () => onKey(key),
                       onLongPress: key == backspaceKey ? onClear : null,
-                      style: TextButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
                       child: key == backspaceKey
-                          ? const Icon(Icons.backspace_outlined, semanticLabel: 'Delete')
+                          ? const Icon(
+                              Icons.backspace_outlined,
+                              semanticLabel: 'Delete',
+                            )
                           : Text(key, style: tt.headlineSmall),
                     ),
                   ),
@@ -359,7 +451,9 @@ class _AddCategoryDialogState extends ConsumerState<_AddCategoryDialog> {
       _error = null;
     });
     try {
-      final saved = await ref.read(customExpenseCategoriesProvider.notifier).add(_name.text);
+      final saved = await ref
+          .read(customExpenseCategoriesProvider.notifier)
+          .add(_name.text);
       if (mounted) Navigator.of(context).pop(saved);
     } on Failure catch (f) {
       if (mounted) {

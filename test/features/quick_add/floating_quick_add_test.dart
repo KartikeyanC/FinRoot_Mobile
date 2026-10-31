@@ -3,6 +3,7 @@ import 'package:finroot_mobile/core/money/money.dart';
 import 'package:finroot_mobile/design/design.dart';
 import 'package:finroot_mobile/features/quick_add/application/quick_add_controller.dart';
 import 'package:finroot_mobile/features/quick_add/data/custom_categories.dart';
+import 'package:finroot_mobile/features/quick_add/data/custom_subcategories.dart';
 import 'package:finroot_mobile/features/quick_add/domain/quick_add_draft.dart';
 import 'package:finroot_mobile/features/quick_add/presentation/floating_quick_add_screen.dart';
 import 'package:flutter/material.dart';
@@ -50,6 +51,12 @@ class _FakeCustom extends CustomExpenseCategories {
   }
 }
 
+/// Custom subcategories without Supabase.
+class _FakeSubs extends CustomSubcategories {
+  @override
+  Future<Map<String, List<String>>> build() async => const {};
+}
+
 Future<({_FakeQuickAdd quickAdd, List<int> closed, List<String> events})> _pump(
   WidgetTester tester, {
   Failure? fail,
@@ -67,6 +74,7 @@ Future<({_FakeQuickAdd quickAdd, List<int> closed, List<String> events})> _pump(
       overrides: [
         quickAddControllerProvider.overrideWith((ref) => fake = _FakeQuickAdd(ref, fail: fail)),
         customExpenseCategoriesProvider.overrideWith(() => _FakeCustom(custom)),
+        customSubcategoriesProvider.overrideWith(_FakeSubs.new),
         quickLogAfterSaveProvider.overrideWithValue(() async => events.add('pushed')),
       ],
       child: MaterialApp(
@@ -158,6 +166,21 @@ void main() {
     await tester.pump();
     expect(h.quickAdd.calls.single.category, 'Food & Dining');
     expect(h.quickAdd.calls.single.note, 'Groceries');
+  });
+
+  testWidgets('a picked subcategory saves as "Sub · note"', (tester) async {
+    final h = await _pump(tester);
+    expect(find.text('Subcategory (optional)'), findsNothing, reason: 'nothing until a pill is picked');
+    await _type(tester, '600');
+    await tester.tap(find.text('🛒 Grocery'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('Snacks'));
+    await tester.tap(find.text('Snacks'));
+    await tester.pump();
+    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.pump();
+    expect(h.quickAdd.calls.single.category, 'Food & Dining');
+    expect(h.quickAdd.calls.single.note, 'Snacks · Groceries');
   });
 
   testWidgets('no pill picked saves as Other', (tester) async {
