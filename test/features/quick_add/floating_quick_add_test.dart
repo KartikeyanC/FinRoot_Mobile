@@ -55,6 +55,16 @@ class _FakeCustom extends CustomExpenseCategories {
 class _FakeSubs extends CustomSubcategories {
   @override
   Future<Map<String, List<String>>> build() async => const {};
+
+  @override
+  Future<String> add(String group, String name) async {
+    final current = state.value ?? const <String, List<String>>{};
+    state = AsyncData({
+      ...current,
+      group: [...?current[group], name.trim()],
+    });
+    return name.trim();
+  }
 }
 
 Future<({_FakeQuickAdd quickAdd, List<int> closed, List<String> events})> _pump(
@@ -101,6 +111,18 @@ Future<void> _type(WidgetTester tester, String digits) async {
   await tester.pump();
 }
 
+/// Scrolls the subcategory row until [label] is on screen (it builds lazily).
+Future<void> _showChip(WidgetTester tester, Finder chip) async {
+  await tester.scrollUntilVisible(
+    chip,
+    120,
+    scrollable: find.byWidgetPredicate(
+      (w) => w is Scrollable && w.axisDirection == AxisDirection.right,
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   test('amounts are checked before anything is saved', () {
     expect(amountProblem(''), isNotNull);
@@ -137,7 +159,10 @@ void main() {
     await _pump(tester);
     expect(find.byType(TextField), findsNothing);
     expect(find.text('₹ 0.00'), findsOneWidget);
-    expect(find.byType(ChoiceChip), findsNWidgets(6));
+    for (final c in quickCategories) {
+      expect(find.text(c.label), findsOneWidget);
+    }
+    expect(find.text('New'), findsOneWidget, reason: 'the add-category tile');
   });
 
   testWidgets('numpad + pill + Save adds the expense and closes', (tester) async {
@@ -145,9 +170,9 @@ void main() {
     await _type(tester, '249.50');
     expect(find.text('₹ 249.50'), findsOneWidget);
 
-    await tester.tap(find.text('⚡ Bills'));
+    await tester.tap(find.text('Bills'));
     await tester.pump();
-    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.tap(find.byKey(const Key('quick-log-save')));
     await tester.pump();
 
     expect(h.quickAdd.calls.single.kind, QuickAddKind.expense);
@@ -160,9 +185,9 @@ void main() {
   testWidgets('Grocery saves under Food & Dining with a note', (tester) async {
     final h = await _pump(tester);
     await _type(tester, '600');
-    await tester.tap(find.text('🛒 Grocery'));
+    await tester.tap(find.text('Grocery'));
     await tester.pump();
-    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.tap(find.byKey(const Key('quick-log-save')));
     await tester.pump();
     expect(h.quickAdd.calls.single.category, 'Food & Dining');
     expect(h.quickAdd.calls.single.note, 'Groceries');
@@ -170,23 +195,55 @@ void main() {
 
   testWidgets('a picked subcategory saves as "Sub · note"', (tester) async {
     final h = await _pump(tester);
-    expect(find.text('Subcategory (optional)'), findsNothing, reason: 'nothing until a pill is picked');
+    expect(find.text('Subcategory · optional'), findsNothing, reason: 'nothing until a pill is picked');
     await _type(tester, '600');
-    await tester.tap(find.text('🛒 Grocery'));
+    await tester.tap(find.text('Grocery'));
     await tester.pump();
-    await tester.ensureVisible(find.text('Snacks'));
+    await _showChip(tester, find.text('Snacks'));
     await tester.tap(find.text('Snacks'));
     await tester.pump();
-    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.tap(find.byKey(const Key('quick-log-save')));
     await tester.pump();
     expect(h.quickAdd.calls.single.category, 'Food & Dining');
     expect(h.quickAdd.calls.single.note, 'Snacks · Groceries');
   });
 
+  testWidgets('the summary says where the save will go before Save is tapped', (tester) async {
+    await _pump(tester);
+    expect(find.text('No category · saves as Other'), findsOneWidget);
+    await tester.tap(find.text('Grocery'));
+    await tester.pump();
+    await _showChip(tester, find.text('Snacks'));
+    await tester.tap(find.text('Snacks'));
+    await tester.pump();
+    expect(find.text('Grocery › Snacks'), findsOneWidget);
+    await _type(tester, '45');
+    expect(find.text('Save ₹ 45'), findsOneWidget, reason: 'the button names the amount');
+  });
+
+  testWidgets('New under a category adds a subcategory and picks it', (tester) async {
+    final h = await _pump(tester);
+    await tester.tap(find.text('Food'));
+    await tester.pump();
+    await _showChip(tester, find.widgetWithText(ActionChip, 'New'));
+    await tester.tap(find.widgetWithText(ActionChip, 'New'));
+    await tester.pumpAndSettle();
+    expect(find.text('New subcategory in Food & Dining'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Tea');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+    expect(find.text('Food › Tea'), findsOneWidget);
+    await _type(tester, '20');
+    await tester.tap(find.byKey(const Key('quick-log-save')));
+    await tester.pump();
+    expect(h.quickAdd.calls.single.category, 'Food & Dining');
+    expect(h.quickAdd.calls.single.note, 'Tea');
+  });
+
   testWidgets('no pill picked saves as Other', (tester) async {
     final h = await _pump(tester);
     await _type(tester, '80');
-    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.tap(find.byKey(const Key('quick-log-save')));
     await tester.pump();
     expect(h.quickAdd.calls.single.category, 'Other');
     expect(h.quickAdd.calls.single.note, isNull);
@@ -211,9 +268,9 @@ void main() {
   testWidgets('a workspace category saves under its own name', (tester) async {
     final h = await _pump(tester, custom: ['Petrol']);
     await _type(tester, '500');
-    await tester.tap(find.text('🏷️ Petrol'));
+    await tester.tap(find.text('Petrol'));
     await tester.pump();
-    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.tap(find.byKey(const Key('quick-log-save')));
     await tester.pump();
     expect(h.quickAdd.calls.single.category, 'Petrol');
     expect(h.quickAdd.calls.single.note, isNull);
@@ -221,7 +278,7 @@ void main() {
 
   testWidgets('Add category names one, picks it and saves with it', (tester) async {
     final h = await _pump(tester);
-    await tester.tap(find.text('Add category'));
+    await tester.tap(find.text('New'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Shopping');
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
@@ -231,10 +288,10 @@ void main() {
     await tester.enterText(find.byType(TextField), 'Pets');
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await tester.pumpAndSettle();
-    expect(find.text('🏷️ Pets'), findsOneWidget);
+    expect(find.text('Pets'), findsWidgets);
 
     await _type(tester, '350');
-    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.tap(find.byKey(const Key('quick-log-save')));
     await tester.pump();
     expect(h.quickAdd.calls.single.category, 'Pets');
   });
@@ -249,7 +306,7 @@ void main() {
 
   testWidgets('no amount: says so and stays open', (tester) async {
     final h = await _pump(tester);
-    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.tap(find.byKey(const Key('quick-log-save')));
     await tester.pump();
     expect(find.text('Enter the amount you paid.'), findsOneWidget);
     expect(h.quickAdd.calls, isEmpty);
@@ -262,7 +319,7 @@ void main() {
       fail: const PermissionFailure(message: 'Only owners and admins can add.'),
     );
     await _type(tester, '100');
-    await tester.tap(find.text('SAVE TO FINROOT'));
+    await tester.tap(find.byKey(const Key('quick-log-save')));
     await tester.pump();
     expect(find.text('Only owners and admins can add.'), findsOneWidget);
     expect(h.closed, isEmpty);

@@ -187,11 +187,36 @@ class _FloatingQuickAddScreenState
     }
   }
 
+  Future<void> _addSub(String group) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _AddSubDialog(group: group),
+    );
+    if (name != null && mounted) setState(() => _sub = name);
+  }
+
+  void _pickQuick(QuickCategory c) => setState(() {
+    // Tapping the picked tile again un-picks it.
+    _category = identical(c, _category) ? null : c;
+    _custom = null;
+    _sub = null;
+  });
+
+  void _pickCustom(String name) => setState(() {
+    _custom = name == _custom ? null : name;
+    _category = null;
+    _sub = null;
+  });
+
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     final pickedCategory = _custom ?? _category?.category;
+    final pickedLabel = _custom ?? _category?.label;
+    final group = pickedCategory == null
+        ? null
+        : groupNameForCategory(pickedCategory);
     final subs = pickedCategory == null
         ? const <String>[]
         : subOptionsFor(
@@ -199,6 +224,16 @@ class _FloatingQuickAddScreenState
             ref.watch(customSubcategoriesProvider).value ??
                 const <String, List<String>>{},
           );
+    final customs =
+        ref.watch(customExpenseCategoriesProvider).value ?? const <String>[];
+
+    // What the save will file under, said before the tap rather than after:
+    // "no pick" used to save as Other without a word.
+    final summary = pickedLabel == null
+        ? 'No category · saves as Other'
+        : _sub == null
+        ? pickedLabel
+        : '$pickedLabel › $_sub';
 
     return Material(
       type: MaterialType.transparency,
@@ -222,7 +257,15 @@ class _FloatingQuickAddScreenState
                   child: Card(
                     elevation: 8,
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(AppSpacing.lg),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.sm,
+                        AppSpacing.lg,
+                        AppSpacing.lg,
+                      ),
+                      // Every block shares the card's one left edge; nothing is
+                      // centred except the amount, so rows of different length
+                      // no longer zig-zag.
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -232,7 +275,7 @@ class _FloatingQuickAddScreenState
                               Expanded(
                                 child: Text(
                                   '⚡ Quick Log',
-                                  style: tt.titleLarge,
+                                  style: tt.titleMedium,
                                 ),
                               ),
                               IconButton(
@@ -242,102 +285,113 @@ class _FloatingQuickAddScreenState
                               ),
                             ],
                           ),
-                          Semantics(
-                            liveRegion: true,
-                            label: 'Amount',
-                            child: Text(
-                              amountPreview(_amount),
-                              key: const Key('quick-add-amount'),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              style: tt.displaySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: _amount.isEmpty
-                                    ? scheme.onSurfaceVariant
-                                    : scheme.onSurface,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.md),
-                          Wrap(
-                            spacing: AppSpacing.xs,
-                            runSpacing: AppSpacing.xs,
-                            alignment: WrapAlignment.center,
+                          const _SectionLabel('Category'),
+                          const SizedBox(height: AppSpacing.xs),
+                          _CategoryGrid(
                             children: [
                               for (final c in quickCategories)
-                                ChoiceChip(
-                                  label: Text('${c.emoji} ${c.label}'),
+                                _CategoryTile(
+                                  emoji: c.emoji,
+                                  label: c.label,
                                   selected: identical(c, _category),
-                                  // Tapping the picked pill again un-picks it.
-                                  onSelected: (on) => setState(() {
-                                    _category = on ? c : null;
-                                    _custom = null;
-                                    _sub = null;
-                                  }),
+                                  onTap: () => _pickQuick(c),
                                 ),
-                              for (final name
-                                  in ref
-                                          .watch(
-                                            customExpenseCategoriesProvider,
-                                          )
-                                          .value ??
-                                      const <String>[])
-                                ChoiceChip(
-                                  label: Text('🏷️ $name'),
+                              for (final name in customs)
+                                _CategoryTile(
+                                  emoji: '🏷️',
+                                  label: name,
                                   selected: name == _custom,
-                                  onSelected: (on) => setState(() {
-                                    _custom = on ? name : null;
-                                    _category = null;
-                                    _sub = null;
-                                  }),
+                                  onTap: () => _pickCustom(name),
                                 ),
-                              ActionChip(
-                                avatar: const Icon(Icons.add, size: 18),
-                                label: const Text('Add category'),
-                                onPressed: _saving ? null : _addCategory,
+                              _CategoryTile(
+                                icon: Icons.add,
+                                label: 'Add category',
+                                selected: false,
+                                onTap: _saving ? null : _addCategory,
                               ),
                             ],
                           ),
-                          if (subs.isNotEmpty) ...[
-                            const SizedBox(height: AppSpacing.sm),
-                            Text(
-                              'Subcategory (optional)',
-                              textAlign: TextAlign.center,
-                              style: tt.labelMedium,
-                            ),
+                          if (group != null) ...[
+                            const SizedBox(height: AppSpacing.md),
+                            const _SectionLabel('Subcategory · optional'),
                             const SizedBox(height: AppSpacing.xs),
-                            // One scrollable row, not a wrapping block: a block of
-                            // chips would push Save off a small screen.
-                            LayoutBuilder(
-                              builder: (context, box) => SingleChildScrollView(
+                            // One left-aligned row that scrolls: a part-hidden last
+                            // chip at the edge says "there is more", and the row
+                            // never pushes Save off a small screen.
+                            SizedBox(
+                              height: 40,
+                              child: ListView(
                                 scrollDirection: Axis.horizontal,
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    minWidth: box.maxWidth,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      for (final sub in subs)
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: AppSpacing.xs / 2,
-                                          ),
-                                          child: ChoiceChip(
-                                            label: Text(sub),
-                                            selected: sub == _sub,
-                                            onSelected: (on) => setState(
-                                              () => _sub = on ? sub : null,
-                                            ),
-                                          ),
+                                children: [
+                                  for (final sub in subs)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        right: AppSpacing.xs,
+                                      ),
+                                      child: ChoiceChip(
+                                        label: Text(sub),
+                                        selected: sub == _sub,
+                                        onSelected: (on) => setState(
+                                          () => _sub = on ? sub : null,
                                         ),
-                                    ],
+                                      ),
+                                    ),
+                                  ActionChip(
+                                    avatar: const Icon(Icons.add, size: 18),
+                                    label: const Text('New'),
+                                    tooltip:
+                                        'Add a subcategory to $pickedLabel',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _addSub(group),
                                   ),
-                                ),
+                                ],
                               ),
                             ),
                           ],
+                          const SizedBox(height: AppSpacing.md),
+                          // The amount sits on top of the keys that type it, so eye
+                          // and thumb work in one place at the bottom of the card.
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.lg,
+                              vertical: AppSpacing.sm,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHighest,
+                              borderRadius: AppRadius.tile,
+                            ),
+                            child: Column(
+                              children: [
+                                Semantics(
+                                  liveRegion: true,
+                                  label: 'Amount',
+                                  child: Text(
+                                    amountPreview(_amount),
+                                    key: const Key('quick-add-amount'),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    style: tt.displaySmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: _amount.isEmpty
+                                          ? scheme.onSurfaceVariant
+                                          : scheme.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  summary,
+                                  key: const Key('quick-log-summary'),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: tt.bodySmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                           if (_error != null) ...[
                             const SizedBox(height: AppSpacing.sm),
                             Text(
@@ -348,19 +402,24 @@ class _FloatingQuickAddScreenState
                               ),
                             ),
                           ],
-                          const SizedBox(height: AppSpacing.md),
+                          const SizedBox(height: AppSpacing.sm),
                           _Numpad(
                             onKey: _press,
                             onClear: () => setState(() => _amount = ''),
                           ),
                           const SizedBox(height: AppSpacing.md),
                           FilledButton(
+                            key: const Key('quick-log-save'),
                             onPressed: _saving ? null : _save,
                             style: FilledButton.styleFrom(
                               minimumSize: const Size.fromHeight(52),
                             ),
                             child: Text(
-                              _saving ? 'SAVING…' : 'SAVE TO FINROOT',
+                              _saving
+                                  ? 'Saving…'
+                                  : _amount.isEmpty
+                                  ? 'Save'
+                                  : 'Save ${amountPreview(_amount)}',
                             ),
                           ),
                         ],
@@ -377,7 +436,129 @@ class _FloatingQuickAddScreenState
   }
 }
 
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Text(
+      text,
+      style: tt.labelMedium?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+/// Four equal columns: every tile is the same size and starts on the same
+/// edge, however long its name. More than three rows scroll inside the grid
+/// so a workspace with many categories cannot push the keypad off screen.
+class _CategoryGrid extends StatelessWidget {
+  const _CategoryGrid({required this.children});
+  final List<Widget> children;
+
+  static const _columns = 4;
+  static const _tileHeight = 64.0;
+  static const _maxRows = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = (children.length / _columns).ceil().clamp(1, _maxRows);
+    return SizedBox(
+      height: rows * _tileHeight + (rows - 1) * AppSpacing.sm,
+      child: GridView(
+        padding: EdgeInsets.zero,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: _columns,
+          mainAxisSpacing: AppSpacing.sm,
+          crossAxisSpacing: AppSpacing.sm,
+          mainAxisExtent: _tileHeight,
+        ),
+        children: children,
+      ),
+    );
+  }
+}
+
+class _CategoryTile extends StatelessWidget {
+  const _CategoryTile({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.emoji,
+    this.icon,
+  });
+
+  final String label;
+  final String? emoji;
+  final IconData? icon;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final isAdd = icon != null;
+    return Semantics(
+      button: true,
+      selected: isAdd ? null : selected,
+      label: label,
+      excludeSemantics: true,
+      child: Material(
+        color: selected
+            ? scheme.primaryContainer
+            : scheme.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.tile,
+          side: BorderSide(
+            color: selected
+                ? scheme.primary
+                : isAdd
+                ? scheme.outlineVariant
+                : Colors.transparent,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (isAdd)
+                  Icon(icon, size: 22, color: scheme.primary)
+                else
+                  Text(emoji!, style: const TextStyle(fontSize: 22)),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  isAdd ? 'New' : label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: tt.labelSmall?.copyWith(
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected
+                        ? scheme.onPrimaryContainer
+                        : isAdd
+                        ? scheme.primary
+                        : scheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 3×4 keys: 1–9, then '.', 0 and backspace. Long-press backspace to clear.
+/// Each key is a visible tile, so it reads as a keypad rather than loose text.
 class _Numpad extends StatelessWidget {
   const _Numpad({required this.onKey, required this.onClear});
 
@@ -394,6 +575,7 @@ class _Numpad extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         for (final row in _rows)
@@ -402,24 +584,102 @@ class _Numpad extends StatelessWidget {
               for (final key in row)
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.xs / 2),
+                    padding: const EdgeInsets.all(3),
                     child: TextButton(
                       onPressed: () => onKey(key),
                       onLongPress: key == backspaceKey ? onClear : null,
                       style: TextButton.styleFrom(
-                        minimumSize: const Size.fromHeight(52),
+                        minimumSize: const Size.fromHeight(
+                          AppSpacing.minTouchTarget,
+                        ),
+                        backgroundColor: scheme.surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: AppRadius.field,
+                        ),
                       ),
                       child: key == backspaceKey
                           ? const Icon(
                               Icons.backspace_outlined,
                               semanticLabel: 'Delete',
                             )
-                          : Text(key, style: tt.headlineSmall),
+                          : Text(key, style: tt.titleLarge),
                     ),
                   ),
                 ),
             ],
           ),
+      ],
+    );
+  }
+}
+
+/// Name a new subcategory under [group] for the whole workspace (the web lists
+/// it too); pops with the saved name.
+class _AddSubDialog extends ConsumerStatefulWidget {
+  const _AddSubDialog({required this.group});
+  final String group;
+
+  @override
+  ConsumerState<_AddSubDialog> createState() => _AddSubDialogState();
+}
+
+class _AddSubDialogState extends ConsumerState<_AddSubDialog> {
+  final _name = TextEditingController();
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _add() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final saved = await ref
+          .read(customSubcategoriesProvider.notifier)
+          .add(widget.group, _name.text);
+      if (mounted) Navigator.of(context).pop(saved);
+    } on Failure catch (f) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = f.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('New subcategory in ${widget.group}'),
+      content: TextField(
+        controller: _name,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        maxLength: 40,
+        onSubmitted: (_) => _busy ? null : _add(),
+        decoration: InputDecoration(
+          labelText: 'Name',
+          hintText: 'e.g. Tea, Bus ticket',
+          errorText: _error,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _add,
+          child: Text(_busy ? 'Adding…' : 'Add'),
+        ),
       ],
     );
   }
