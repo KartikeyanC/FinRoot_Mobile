@@ -106,21 +106,25 @@ void main() {
     await tester.pump(const Duration(milliseconds: 10));
 
     expect(find.text('ITC'), findsOneWidget);
-    expect(find.text('Qty 4'), findsOneWidget);
-    expect(find.text('Avg ₹210'), findsOneWidget);
-    expect(find.textContaining('2 buys'), findsOneWidget);
-    expect(find.text('₹250'), findsOneWidget);
-    expect(find.byKey(const Key('holding-live')), findsOneWidget);
+    expect(find.text('Qty. 4  •  Avg. 210.00  •  2 buys'), findsOneWidget);
+    // The alarm tag after Invested: just the alarm and the amount.
+    expect(find.text('250.00'), findsOneWidget);
+    // 4 shares at 265 live = 1,060 on 840 invested.
+    expect(find.text('Total 1,060.00', findRichText: true), findsOneWidget);
     expect(find.text('28 Oct 2026'), findsNothing);
 
+    // The row opens its sheet: LTP, the alert and each purchase.
     await tester.tap(find.text('ITC'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('265.00'), findsOneWidget);
+    expect(find.text('Falls to 250.00'), findsOneWidget);
     expect(find.text('28 Oct 2026'), findsOneWidget);
     expect(find.text('29 Oct 2026'), findsOneWidget);
-    expect(find.text('Total'), findsOneWidget);
+    Navigator.of(tester.element(find.text('28 Oct 2026'))).pop();
+    await tester.pumpAndSettle();
 
-    // The bell chip in row 1 opens this stock's alerts, in place.
-    await tester.tap(find.byKey(const Key('holding-alert-chip')));
+    // The alarm tag opens this stock's alerts, in place.
+    await tester.tap(find.byKey(const Key('holding-alarm')));
     await tester.pumpAndSettle();
     expect(find.text('Price alerts · ITC'), findsOneWidget);
     expect(find.text('Add another alert'), findsOneWidget);

@@ -69,9 +69,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 10));
 
     expect(find.text('ITC'), findsOneWidget);
-    expect(find.text('CURRENT VALUE'), findsOneWidget);
-    // total gain 3000 - 1000 = +2000 → "+₹2.0k (6.7%)"
-    expect(find.textContaining('6.7%'), findsOneWidget);
+    expect(find.text('Invested'), findsOneWidget);
+    expect(find.text('Current'), findsOneWidget);
+    expect(find.text('30,000.00'), findsOneWidget);
+    expect(find.text('32,000.00'), findsOneWidget);
+    // total gain 3000 - 1000 = +2000 on 30000 invested → +6.67%
+    expect(
+      tester.widget<Text>(find.byKey(const Key('summary-pnl'))).data,
+      '+2,000.00',
+    );
+    expect(find.text('+6.67%'), findsOneWidget);
+    expect(find.text('Holdings · 2'), findsOneWidget);
   });
 
   testWidgets('a holding card reads qty/avg | %, name | profit, '
@@ -99,8 +107,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 10));
 
-    expect(find.textContaining('Qty 10'), findsOneWidget);
-    expect(find.textContaining('Avg ₹200'), findsOneWidget);
+    expect(find.text('Qty. 10  •  Avg. 200.00'), findsOneWidget);
     expect(find.byKey(const Key('holding-pct')), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const Key('holding-pct'))).data,
@@ -108,11 +115,17 @@ void main() {
     );
     expect(
       tester.widget<Text>(find.byKey(const Key('holding-gain'))).data,
-      startsWith('+₹500'),
+      '+500.00',
     );
-    expect(find.textContaining('Invested', findRichText: true), findsOneWidget);
-    expect(find.textContaining('Total', findRichText: true), findsOneWidget);
-    expect(find.textContaining('₹2,500', findRichText: true), findsWidgets);
+    expect(find.text('Invested 2,000.00', findRichText: true), findsOneWidget);
+    expect(find.text('Total 2,500.00', findRichText: true), findsOneWidget);
+
+    // Tapping the row opens its detail sheet with Edit and Delete.
+    await tester.tap(find.text('ITC'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit holding'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+    expect(find.text('P&L'), findsWidgets);
   });
 
   testWidgets('price alerts are a tab of Investments', (tester) async {
@@ -120,7 +133,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 10));
 
-    expect(find.text('Holdings'), findsWidgets);
+    expect(find.text('Holdings · 1'), findsOneWidget);
     await tester.tap(find.text('Price alerts'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 10));

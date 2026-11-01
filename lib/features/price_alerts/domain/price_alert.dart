@@ -254,13 +254,11 @@ List<PriceAlert> alertsToNotify(
       a,
 ];
 
-/// The "Price alert" label a holding shows for one stock — same rule as the
-/// web's `alertColumnFor`: the watching alert nearest to firing ("↓ ₹250",
-/// with "+1" when there are more), else the latest trigger ("Hit ₹257.5").
-({String text, bool triggered})? alertLabelFor(
-  String symbol,
-  List<PriceAlert> alerts,
-) {
+/// The alert a holding shows for one stock — same rule as the web's
+/// `alertColumnFor`: the watching alert nearest to firing (with how many
+/// more are watching), else the latest one that fired.
+({double price, AlertDirection direction, int more, bool triggered})?
+alertTargetFor(String symbol, List<PriceAlert> alerts) {
   final mine = alerts.where((a) => a.symbol == symbol).toList();
   if (mine.isEmpty) return null;
   final watching = mine.where((a) => a.isActive).toList()
@@ -274,16 +272,37 @@ List<PriceAlert> alertsToNotify(
     });
   if (watching.isNotEmpty) {
     final pick = watching.first;
-    final arrow = pick.direction == AlertDirection.below ? '↓' : '↑';
-    final more = watching.length > 1 ? ' +${watching.length - 1}' : '';
-    return (text: '$arrow ${formatPrice(symbol, pick.target)}$more', triggered: false);
+    return (
+      price: pick.target,
+      direction: pick.direction,
+      more: watching.length - 1,
+      triggered: false,
+    );
   }
   mine.sort(
     (x, y) => (y.triggeredAt ?? DateTime(0)).compareTo(x.triggeredAt ?? DateTime(0)),
   );
   final last = mine.first;
   return (
-    text: 'Hit ${formatPrice(symbol, last.triggeredPrice ?? last.target)}',
+    price: last.triggeredPrice ?? last.target,
+    direction: last.direction,
+    more: 0,
     triggered: true,
   );
+}
+
+/// The "Price alert" label for one stock: "↓ ₹250" (with "+1" when more are
+/// watching), else the latest trigger ("Hit ₹257.5").
+({String text, bool triggered})? alertLabelFor(
+  String symbol,
+  List<PriceAlert> alerts,
+) {
+  final t = alertTargetFor(symbol, alerts);
+  if (t == null) return null;
+  if (t.triggered) {
+    return (text: 'Hit ${formatPrice(symbol, t.price)}', triggered: true);
+  }
+  final arrow = t.direction == AlertDirection.below ? '↓' : '↑';
+  final more = t.more > 0 ? ' +${t.more}' : '';
+  return (text: '$arrow ${formatPrice(symbol, t.price)}$more', triggered: false);
 }

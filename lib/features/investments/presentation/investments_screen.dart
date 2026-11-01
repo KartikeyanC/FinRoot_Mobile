@@ -1,31 +1,21 @@
 import 'dart:async';
 
-import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/error/failure.dart';
-import '../../../core/money/money.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../accounts/presentation/wealth_kit.dart';
 import '../../menus/application/menu_providers.dart';
 import '../../menus/presentation/menu_locked_view.dart';
 import '../../price_alerts/application/price_alerts_providers.dart';
-import '../../price_alerts/domain/price_alert.dart'
-    show formatPrice;
 import '../../price_alerts/presentation/price_alerts_screen.dart';
 import '../../workspace/application/workspace_providers.dart';
-import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
-import '../domain/full_money.dart';
-import '../domain/holding_fields.dart';
-import '../domain/investment.dart';
-import '../domain/live_price.dart';
+import '../domain/holding_figures.dart';
 import '../domain/stock_lots.dart';
-import 'holding_card.dart';
+import 'holding_row.dart';
 import 'investment_form_sheet.dart';
-import 'stock_group_tile.dart';
 
 /// The two tabs of the Investments screen.
 enum InvestmentsTab { holdings, alerts }
@@ -69,7 +59,9 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen> {
     }
 
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
-    final hasHoldings = ref.watch(investmentsProvider).value?.isNotEmpty ?? false;
+    final records = ref.watch(investmentsProvider).value ?? const [];
+    final hasHoldings = records.isNotEmpty;
+    final holdingCount = groupPortfolio(records).length;
     final alerts = ref.watch(priceAlertsProvider).value ?? const [];
     final watching = alerts.where((a) => a.isActive).length;
 
@@ -92,7 +84,10 @@ class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen> {
         selected: _tab,
         onSelected: (t) => setState(() => _tab = t),
         options: [
-          const FilterPill(InvestmentsTab.holdings, 'Holdings'),
+          FilterPill(
+            InvestmentsTab.holdings,
+            holdingCount == 0 ? 'Holdings' : 'Holdings · $holdingCount',
+          ),
           FilterPill(
             InvestmentsTab.alerts,
             watching == 0 ? 'Price alerts' : 'Price alerts · $watching',
@@ -132,186 +127,157 @@ class _HoldingsView extends ConsumerWidget {
         ),
         data: (list) => list.isEmpty
             ? _Empty(canWrite: canWrite)
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenGutter,
-                  AppSpacing.xs,
-                  AppSpacing.screenGutter,
-                  96,
-                ),
-                children: [
-                  const _LivePriceTicker(),
-                  _SummaryCard(summary: summary),
-                  const SectionTitle('Holdings'),
-                  // Several purchases of one stock show as one holding.
-                  for (final item in groupPortfolio(list))
-                    switch (item) {
-                      GroupedHolding(:final group) => StockGroupTile(
-                        key: ValueKey(group.key),
-                        group: group,
-                        canWrite: canWrite,
-                      ),
-                      SingleHolding(:final record) => _HoldingTile(
-                        record: record,
-                        canWrite: canWrite,
-                      ),
-                    },
-                ],
+            : _HoldingsList(
+                summary: summary,
+                // Several purchases of one stock show as one holding.
+                items: groupPortfolio(list),
+                canWrite: canWrite,
               ),
       ),
     );
   }
 }
 
-String _qty(double v) =>
-    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+/// The summary card, then the holdings as flat full-width rows with a
+/// hairline between them — the broker-list layout, where every figure sits
+/// on one right edge.
+class _HoldingsList extends StatelessWidget {
+  const _HoldingsList({
+    required this.summary,
+    required this.items,
+    required this.canWrite,
+  });
 
-Tone _toneForAsset(BuildContext c, String asset) => switch (asset) {
-  'stocks' => Tones.sky(c),
-  'mutual_funds' => Tones.violet(c),
-  'bonds' => Tones.teal(c),
-  'fd' || 'rd' => Tones.butter(c),
-  'pf' => Tones.mint(c),
-  'gold' => Tones.butter(c),
-  'real_estate' => Tones.rose(c),
-  'crypto' => Tones.violet(c),
-  _ => Tones.accent(c),
-};
+  final PortfolioSummary summary;
+  final List<PortfolioItem> items;
+  final bool canWrite;
 
+  @override
+  Widget build(BuildContext context) {
+    final line = Divider(height: 1, thickness: 1, color: context.palette.line);
+    return ListView(
+      padding: const EdgeInsets.only(top: AppSpacing.xs, bottom: 96),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenGutter,
+            0,
+            AppSpacing.screenGutter,
+            AppSpacing.lg,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _LivePriceTicker(),
+              _SummaryCard(summary: summary),
+            ],
+          ),
+        ),
+        line,
+        for (final item in items) ...[
+          HoldingRow(
+            key: ValueKey(switch (item) {
+              GroupedHolding(:final group) => 'g:${group.key}',
+              SingleHolding(:final record) => record.id,
+            }),
+            item: item,
+            canWrite: canWrite,
+          ),
+          line,
+        ],
+      ],
+    );
+  }
+}
+
+/// Invested | Current on top, then P&L with its return as a pill.
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({required this.summary});
   final PortfolioSummary summary;
 
   @override
   Widget build(BuildContext context) {
-    final finance = context.finance;
+    final palette = context.palette;
     final up = summary.gain.amount.sign >= 0;
-    final colors = [
-      for (final e in summary.byAsset) _toneForAsset(context, e.key).fg,
-    ];
-
-    return MetricCard(
-      eyebrow: 'Current value',
-      figure: fullMoney(summary.current),
-      figureSuffix: 'invested ${fullMoney(summary.invested)}',
-      status:
-          '${up ? '+' : ''}${fullMoney(summary.gain)} '
-          '(${summary.returnPct.toStringAsFixed(1)}%) overall',
-      statusColor: up ? finance.income : finance.expense,
-      child: summary.byAsset.length > 1
-          ? SplitBar([
-              for (var i = 0; i < summary.byAsset.length; i++)
-                BarSegment(
-                  assetLabel(summary.byAsset[i].key),
-                  summary.byAsset[i].value.amount.toDouble(),
-                  colors[i],
-                ),
-            ])
-          : null,
+    final cur = summary.current.currency;
+    const tabular = [FontFeature.tabularFigures()];
+    final label = AppTypography.label.copyWith(
+      color: palette.muted,
+      fontWeight: FontWeight.w500,
+      fontSize: 13,
     );
-  }
-}
+    final figure = AppTypography.title.copyWith(
+      color: palette.ink,
+      fontFeatures: tabular,
+    );
 
-class _HoldingTile extends ConsumerWidget {
-  const _HoldingTile({required this.record, required this.canWrite});
-  final InvestmentRecord record;
-  final bool canWrite;
+    Widget cell(String name, double v, CrossAxisAlignment align) => Column(
+      crossAxisAlignment: align,
+      children: [
+        Text(name, style: label),
+        const SizedBox(height: 4),
+        Text(plainAmount(v, cur), style: figure),
+      ],
+    );
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final prices = ref.watch(holdingPricesProvider).value ?? const {};
-    final gain = effectiveGain(record, prices);
-    final up = gain >= 0;
-    final live = liveFor(record, prices);
-    final liveValue = live?.value;
-    final symbol = resolveLiveSymbol(record)?.symbol;
-    final lot = toLot(record);
-
-    String cash(double v) =>
-        fullMoney(Money(Decimal.parse(v.toStringAsFixed(2)), record.currency));
-    final avg = lot.price <= 0
-        ? null
-        : (symbol != null && !formatPrice(symbol, 0).startsWith('₹')
-              ? formatPrice(symbol, lot.price)
-              : trimPaise(cash(lot.price)));
-    final qtyBits = [
-      if (lot.qty > 0) 'Qty ${_qty(lot.qty)}',
-      if (lot.qty > 0 && avg != null) 'Avg $avg',
-    ];
-    final invested = record.invested.amount.toDouble();
-    // Stocks and other priced assets can carry an alert; a deposit can't.
-    final canAlert = symbol != null || isPriceableAsset(record.asset);
-    final alerts = ref.watch(priceAlertsProvider).value ?? const [];
-    void needTicker() {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add the ticker first to set a price alert')),
-      );
-      openInvestmentForm(context, editing: record);
-    }
-
-    return HoldingCard(
-      title: record.name,
-      facts: qtyBits.isEmpty ? [assetLabel(record.asset)] : qtyBits,
-      pctLabel: returnPctLabel(gain, invested),
-      gainLabel: '${up ? '+' : ''}${cash(gain)}',
-      up: up,
-      invested: fullMoney(record.invested),
-      total: liveValue != null
-          ? ((symbol == null || formatPrice(symbol, 0).startsWith('₹'))
-                ? cash(liveValue)
-                : formatPrice(symbol, liveValue))
-          : fullMoney(record.current),
-      livePrice: live != null && symbol != null
-          ? formatPrice(symbol, live.unitPrice)
-          : null,
-      alert: canAlert
-          ? HoldingAlertChip(
-              symbol: symbol,
-              name: record.name,
-              canWrite: canWrite,
-              onNeedTicker: needTicker,
-            )
-          : null,
-      onTap: canWrite
-          ? () => openInvestmentForm(context, editing: record)
-          : null,
-      menu: canWrite
-          ? RowMenu(
-              onSelected: (v) => switch (v) {
-                'edit' => openInvestmentForm(context, editing: record),
-                'alert' when symbol == null => needTicker(),
-                'alert' => openHoldingAlerts(
-                  context,
-                  ref,
-                  symbol: symbol!,
-                  name: record.name,
-                ),
-                _ => _confirmDelete(context, ref),
-              },
-              items: holdingMenuItems(
-                context,
-                canAlert: canAlert,
-                hasAlert:
-                    symbol != null && alerts.any((a) => a.symbol == symbol),
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            runSpacing: AppSpacing.sm,
+            spacing: AppSpacing.md,
+            children: [
+              cell(
+                'Invested',
+                summary.invested.amount.toDouble(),
+                CrossAxisAlignment.start,
               ),
-            )
-          : null,
+              cell(
+                'Current',
+                summary.current.amount.toDouble(),
+                CrossAxisAlignment.end,
+              ),
+            ],
+          ),
+          Divider(height: AppSpacing.xl, color: palette.line),
+          Row(
+            children: [
+              Text('P&L', style: AppTypography.body.copyWith(color: palette.muted)),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: AppSpacing.sm,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      signedAmount(summary.gain.amount.toDouble(), cur),
+                      key: const Key('summary-pnl'),
+                      style: AppTypography.title.copyWith(
+                        color: up ? context.finance.income : context.finance.expense,
+                        fontFeatures: tabular,
+                      ),
+                    ),
+                    TonePill(
+                      signedPct(
+                        summary.invested.amount.sign == 0
+                            ? null
+                            : summary.returnPct,
+                      ),
+                      up ? Tones.mint(context) : Tones.coral(context),
+                      dot: false,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
-  }
-
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final ok = await confirmDestructive(
-      context,
-      title: 'Delete "${record.name}"?',
-    );
-    if (!ok) return;
-    try {
-      await ref.read(investmentEditorControllerProvider).delete(record.id);
-      messenger.showSnackBar(const SnackBar(content: Text('Holding deleted')));
-    } on Failure catch (f) {
-      messenger.showSnackBar(SnackBar(content: Text(f.message)));
-    }
   }
 }
 
