@@ -85,6 +85,7 @@ void main() {
           menuStatusProvider(FeatureMenu.investments).overrideWithValue(MenuStatus.available),
           investmentsProvider.overrideWith((ref) async => [_day2, _day1]),
           holdingPricesProvider.overrideWith((ref) async => {'yahoo:ITC.NS': 265.0}),
+          alertPricesProvider.overrideWith((ref) async => {'yahoo:ITC.NS': 265.0}),
           priceAlertsProvider.overrideWith(
             (ref) async => [
               PriceAlert(
@@ -105,9 +106,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 10));
 
     expect(find.text('ITC'), findsOneWidget);
-    expect(find.text('2 purchases · 4 shares'), findsOneWidget);
-    expect(find.textContaining('Avg price ₹210'), findsOneWidget);
-    expect(find.textContaining('Price alert ↓ ₹250'), findsOneWidget);
+    expect(find.textContaining('Qty 4 · Avg ₹210'), findsOneWidget);
+    expect(find.textContaining('2 buys'), findsOneWidget);
+    expect(find.text('↓ ₹250'), findsOneWidget);
+    expect(find.byKey(const Key('holding-live')), findsOneWidget);
     expect(find.text('28 Oct 2026'), findsNothing);
 
     await tester.tap(find.text('ITC'));
@@ -115,5 +117,11 @@ void main() {
     expect(find.text('28 Oct 2026'), findsOneWidget);
     expect(find.text('29 Oct 2026'), findsOneWidget);
     expect(find.text('Total'), findsOneWidget);
+
+    // The bell chip in row 1 opens this stock's alerts, in place.
+    await tester.tap(find.byKey(const Key('holding-alert-chip')));
+    await tester.pumpAndSettle();
+    expect(find.text('Price alerts · ITC'), findsOneWidget);
+    expect(find.text('Add another alert'), findsOneWidget);
   });
 }

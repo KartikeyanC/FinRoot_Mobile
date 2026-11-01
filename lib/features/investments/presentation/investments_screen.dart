@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
@@ -14,7 +13,7 @@ import '../../menus/application/menu_providers.dart';
 import '../../menus/presentation/menu_locked_view.dart';
 import '../../price_alerts/application/price_alerts_providers.dart';
 import '../../price_alerts/domain/price_alert.dart'
-    show alertLabelFor, formatPrice;
+    show formatPrice;
 import '../../price_alerts/presentation/price_alerts_screen.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/investment_editor_controller.dart';
@@ -28,14 +27,37 @@ import 'holding_card.dart';
 import 'investment_form_sheet.dart';
 import 'stock_group_tile.dart';
 
+/// The two tabs of the Investments screen.
+enum InvestmentsTab { holdings, alerts }
+
 /// Investments (M11) — a simple portfolio: invested vs current per holding,
-/// totals and a return figure. Menu-gated (ADR-0002). Online-only (not cached).
-/// The web keeps the per-asset calculators and demat integration.
-class InvestmentsScreen extends ConsumerWidget {
-  const InvestmentsScreen({super.key});
+/// totals and a return figure, with the price alerts as a second tab so they
+/// sit next to the holdings they watch. Menu-gated (ADR-0002). Online-only
+/// (not cached). The web keeps the per-asset calculators and demat
+/// integration.
+class InvestmentsScreen extends ConsumerStatefulWidget {
+  const InvestmentsScreen({
+    super.key,
+    this.initialTab = InvestmentsTab.holdings,
+    this.alertSymbol,
+    this.alertName,
+  });
+
+  final InvestmentsTab initialTab;
+
+  /// When set, the Price alerts tab opens the add-alert sheet pre-filled.
+  final String? alertSymbol;
+  final String? alertName;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<InvestmentsScreen> createState() => _InvestmentsScreenState();
+}
+
+class _InvestmentsScreenState extends ConsumerState<InvestmentsScreen> {
+  late var _tab = widget.initialTab;
+
+  @override
+  Widget build(BuildContext context) {
     final locked =
         ref.watch(menuStatusProvider(FeatureMenu.investments)) ==
         MenuStatus.locked;
@@ -46,82 +68,103 @@ class InvestmentsScreen extends ConsumerWidget {
       );
     }
 
-    final records = ref.watch(investmentsProvider);
-    final summary = ref.watch(portfolioSummaryProvider);
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
-    final hasHoldings = records.value?.isNotEmpty ?? false;
+    final hasHoldings = ref.watch(investmentsProvider).value?.isNotEmpty ?? false;
+    final alerts = ref.watch(priceAlertsProvider).value ?? const [];
+    final watching = alerts.where((a) => a.isActive).length;
+
+    final Widget? fab = !canWrite
+        ? null
+        : switch (_tab) {
+            InvestmentsTab.holdings when hasHoldings => AddFab(
+              label: 'Holding',
+              onPressed: () => openInvestmentForm(context),
+            ),
+            InvestmentsTab.alerts when alerts.isNotEmpty =>
+              const PriceAlertFab(),
+            _ => null,
+          };
 
     return AppPage(
       title: 'Investments',
       padBody: false,
-      floatingActionButton: canWrite && hasHoldings
-          ? AddFab(
-              label: 'Holding',
-              onPressed: () => openInvestmentForm(context),
-            )
-          : null,
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(investmentsProvider);
-          ref.invalidate(holdingPricesProvider);
-        },
-        child: records.when(
-          loading: () => const LoadingView(),
-          error: (e, _) => ErrorView(
-            e,
-            onRetry: () => ref.invalidate(investmentsProvider),
+      header: FilterPills<InvestmentsTab>(
+        selected: _tab,
+        onSelected: (t) => setState(() => _tab = t),
+        options: [
+          const FilterPill(InvestmentsTab.holdings, 'Holdings'),
+          FilterPill(
+            InvestmentsTab.alerts,
+            watching == 0 ? 'Price alerts' : 'Price alerts · $watching',
           ),
-          data: (list) => list.isEmpty
-              ? _Empty(canWrite: canWrite)
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenGutter,
-                    AppSpacing.xs,
-                    AppSpacing.screenGutter,
-                    96,
-                  ),
-                  children: [
-                    const _LivePriceTicker(),
-                    _SummaryCard(summary: summary),
-                    const SizedBox(height: AppSpacing.md),
-                    const _AlertsPill(),
-                    const SectionTitle('Holdings'),
-                    // Several purchases of one stock show as one holding.
-                    for (final item in groupPortfolio(list))
-                      switch (item) {
-                        GroupedHolding(:final group) => StockGroupTile(
-                          key: ValueKey(group.key),
-                          group: group,
-                          canWrite: canWrite,
-                        ),
-                        SingleHolding(:final record) => _HoldingTile(
-                          record: record,
-                          canWrite: canWrite,
-                        ),
-                      },
-                  ],
-                ),
+        ],
+      ),
+      floatingActionButton: fab,
+      body: switch (_tab) {
+        InvestmentsTab.holdings => _HoldingsView(canWrite: canWrite),
+        InvestmentsTab.alerts => PriceAlertsView(
+          initialSymbol: widget.alertSymbol,
+          initialName: widget.alertName,
         ),
+      },
+    );
+  }
+}
+
+class _HoldingsView extends ConsumerWidget {
+  const _HoldingsView({required this.canWrite});
+  final bool canWrite;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final records = ref.watch(investmentsProvider);
+    final summary = ref.watch(portfolioSummaryProvider);
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(investmentsProvider);
+        ref.invalidate(holdingPricesProvider);
+      },
+      child: records.when(
+        loading: () => const LoadingView(),
+        error: (e, _) => ErrorView(
+          e,
+          onRetry: () => ref.invalidate(investmentsProvider),
+        ),
+        data: (list) => list.isEmpty
+            ? _Empty(canWrite: canWrite)
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenGutter,
+                  AppSpacing.xs,
+                  AppSpacing.screenGutter,
+                  96,
+                ),
+                children: [
+                  const _LivePriceTicker(),
+                  _SummaryCard(summary: summary),
+                  const SectionTitle('Holdings'),
+                  // Several purchases of one stock show as one holding.
+                  for (final item in groupPortfolio(list))
+                    switch (item) {
+                      GroupedHolding(:final group) => StockGroupTile(
+                        key: ValueKey(group.key),
+                        group: group,
+                        canWrite: canWrite,
+                      ),
+                      SingleHolding(:final record) => _HoldingTile(
+                        record: record,
+                        canWrite: canWrite,
+                      ),
+                    },
+                ],
+              ),
       ),
     );
   }
 }
 
-class _AlertsPill extends ConsumerWidget {
-  const _AlertsPill();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final alerts = ref.watch(priceAlertsProvider).value ?? const [];
-    final watching = alerts.where((a) => a.isActive).length;
-    return InfoPill(
-      icon: Icons.notifications_active_outlined,
-      text: 'Price alerts',
-      detail: watching == 0 ? 'Set a buy price' : '$watching watching',
-      onTap: () => context.push(priceAlertsPath),
-    );
-  }
-}
+String _qty(double v) =>
+    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
 Tone _toneForAsset(BuildContext c, String asset) => switch (asset) {
   'stocks' => Tones.sky(c),
@@ -183,37 +226,53 @@ class _HoldingTile extends ConsumerWidget {
     final liveValue = live?.value;
     final symbol = resolveLiveSymbol(record)?.symbol;
     final lot = toLot(record);
-    final alerts = ref.watch(priceAlertsProvider).value ?? const [];
 
-    final avg = lot.price > 0 && symbol != null
-        ? formatPrice(symbol, lot.price)
-        : null;
-    final alert = symbol == null ? null : alertLabelFor(symbol, alerts);
-    final facts = record.asset == 'stocks' && (avg != null || alert != null)
-        ? HoldingFacts(avgPrice: avg, alert: alert)
-        : null;
+    String cash(double v) =>
+        fullMoney(Money(Decimal.parse(v.toStringAsFixed(2)), record.currency));
+    final avg = lot.price <= 0
+        ? null
+        : (symbol != null && !formatPrice(symbol, 0).startsWith('₹')
+              ? formatPrice(symbol, lot.price)
+              : trimPaise(cash(lot.price)));
+    final qtyBits = [
+      if (lot.qty > 0) 'Qty ${_qty(lot.qty)}',
+      if (lot.qty > 0 && avg != null) 'Avg $avg',
+    ];
+    final invested = record.invested.amount.toDouble();
 
     return HoldingCard(
-      icon: assetIcon(record.asset),
-      tone: _toneForAsset(context, record.asset),
       title: record.name,
-      subtitle: assetLabel(record.asset),
-      live: live != null && symbol != null
-          ? 'Live ${formatPrice(symbol, live.unitPrice)} · $symbol'
-          : null,
-      hint: symbol == null && canWrite && isPriceableAsset(record.asset)
-          ? 'Add a ticker to see the live price'
-          : null,
-      onHintTap: () => openInvestmentForm(context, editing: record),
-      facts: facts,
-      value: liveValue != null
-          ? ((symbol == null || formatPrice(symbol, 0).startsWith('₹'))
-              ? fullMoney(Money(Decimal.parse(liveValue.toStringAsFixed(2)), record.currency))
-              : formatPrice(symbol, liveValue))
-          : fullMoney(record.current),
-      gainLabel:
-          '${up ? '+' : ''}${fullMoney(Money(Decimal.parse(gain.toStringAsFixed(2))))}',
+      topLeft: qtyBits.isEmpty
+          ? assetLabel(record.asset)
+          : qtyBits.join(' · '),
+      pctLabel: returnPctLabel(gain, invested),
+      gainLabel: '${up ? '+' : ''}${cash(gain)}',
       up: up,
+      invested: fullMoney(record.invested),
+      total: liveValue != null
+          ? ((symbol == null || formatPrice(symbol, 0).startsWith('₹'))
+                ? cash(liveValue)
+                : formatPrice(symbol, liveValue))
+          : fullMoney(record.current),
+      livePrice: live != null && symbol != null
+          ? formatPrice(symbol, live.unitPrice)
+          : null,
+      // Stocks and other priced assets can carry an alert; a deposit can't.
+      alert: symbol != null || isPriceableAsset(record.asset)
+          ? HoldingAlertChip(
+              symbol: symbol,
+              name: record.name,
+              canWrite: canWrite,
+              onNeedTicker: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Add the ticker first to set a price alert'),
+                  ),
+                );
+                openInvestmentForm(context, editing: record);
+              },
+            )
+          : null,
       onTap: canWrite
           ? () => openInvestmentForm(context, editing: record)
           : null,

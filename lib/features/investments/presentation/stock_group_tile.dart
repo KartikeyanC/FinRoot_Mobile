@@ -7,8 +7,8 @@ import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../design/design.dart';
 import '../../accounts/presentation/wealth_kit.dart';
-import '../../price_alerts/application/price_alerts_providers.dart';
-import '../../price_alerts/domain/price_alert.dart' show alertLabelFor;
+import '../../price_alerts/presentation/price_alerts_screen.dart'
+    show HoldingAlertChip;
 import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
 import '../domain/live_price.dart';
@@ -51,29 +51,30 @@ class _StockGroupTileState extends ConsumerState<StockGroupTile> {
         .map((l) => liveFor(l.record, prices))
         .firstWhere((x) => x != null, orElse: () => null);
 
-    final summary = [
-      '${g.lots.length} purchases',
-      if (g.qty > 0) '${_qty(g.qty)} shares',
-    ].join(' · ');
     final symbol = resolveLiveSymbol(g.lots.first.record)?.symbol;
-    final alerts = ref.watch(priceAlertsProvider).value ?? const [];
-    final alert = symbol == null ? null : alertLabelFor(symbol, alerts);
 
     return HoldingCard(
-      icon: Icons.stacked_line_chart,
-      tone: Tones.sky(context),
       title: g.name,
-      subtitle: summary,
-      live: live != null ? 'Live ${_money(live.unitPrice, g.currency)}' : null,
-      facts: (g.avgPrice > 0 || alert != null)
-          ? HoldingFacts(
-              avgPrice: g.avgPrice > 0 ? _money(g.avgPrice, g.currency) : null,
-              alert: alert,
-            )
-          : null,
-      value: _money(current, g.currency),
+      topLeft: [
+        if (g.qty > 0) 'Qty ${_qty(g.qty)}',
+        if (g.avgPrice > 0) 'Avg ${trimPaise(_money(g.avgPrice, g.currency))}',
+        '${g.lots.length} buys',
+      ].join(' · '),
+      pctLabel: returnPctLabel(gain, g.invested),
       gainLabel: '${up ? '+' : ''}${_money(gain, g.currency)}',
       up: up,
+      invested: _money(g.invested, g.currency),
+      total: _money(current, g.currency),
+      livePrice: live == null
+          ? null
+          : trimPaise(_money(live.unitPrice, g.currency)),
+      alert: HoldingAlertChip(
+        symbol: symbol,
+        name: g.name,
+        canWrite: widget.canWrite,
+        onNeedTicker: () =>
+            openInvestmentForm(context, editing: g.lots.first.record),
+      ),
       onTap: () => setState(() => _open = !_open),
       chevron: Icon(
         _open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
@@ -199,52 +200,5 @@ class _LotRow extends ConsumerWidget {
     } on Failure catch (f) {
       messenger.showSnackBar(SnackBar(content: Text(f.message)));
     }
-  }
-}
-
-/// "Avg price ₹210" and "Price alert ↓ ₹250" chips under a stock holding.
-/// Shows nothing when neither is known.
-class HoldingFacts extends StatelessWidget {
-  const HoldingFacts({super.key, this.avgPrice, this.alert});
-  final String? avgPrice;
-  final ({String text, bool triggered})? alert;
-
-  @override
-  Widget build(BuildContext context) {
-    if (avgPrice == null && alert == null) return const SizedBox.shrink();
-    final palette = context.palette;
-    Widget fact(String label, String value, Color color) => Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: '$label ',
-            style: AppTypography.label.copyWith(
-              color: palette.muted,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          TextSpan(
-            text: value,
-            style: AppTypography.label.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-    return Wrap(
-      spacing: AppSpacing.lg,
-      runSpacing: AppSpacing.xxs,
-      children: [
-        if (avgPrice != null) fact('Avg price', avgPrice!, palette.ink),
-        if (alert != null)
-          fact(
-            'Price alert',
-            alert!.text,
-            alert!.triggered ? context.finance.income : palette.accentText,
-          ),
-      ],
-    );
   }
 }

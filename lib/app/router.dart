@@ -263,9 +263,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: priceAlertsPath,
         parentNavigatorKey: _rootKey,
-        builder: (_, state) => PriceAlertsScreen(
-          initialSymbol: state.uri.queryParameters['symbol'],
-          initialName: state.uri.queryParameters['name'],
+        builder: (_, state) => InvestmentsScreen(
+          initialTab: InvestmentsTab.alerts,
+          alertSymbol: state.uri.queryParameters['symbol'],
+          alertName: state.uri.queryParameters['name'],
         ),
       ),
       GoRoute(

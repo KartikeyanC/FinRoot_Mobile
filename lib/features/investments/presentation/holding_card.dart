@@ -1,152 +1,218 @@
 import 'package:flutter/material.dart';
 
 import '../../../design/design.dart';
-import '../../accounts/presentation/wealth_kit.dart';
 
-/// The shared holding row: symbol tile, name, asset/units line, optional live
-/// line and facts, current value and a gain pill at the right. Used by single
+/// "+12.4%" / "-3.0%" — the return on what was paid (same as current price
+/// against the average price). An em dash when nothing was invested.
+String returnPctLabel(double gain, double invested) {
+  if (invested <= 0) return '—';
+  final pct = gain / invested * 100;
+  return '${pct >= 0 ? '+' : ''}${pct.toStringAsFixed(2)}%';
+}
+
+/// "₹410.00" → "₹410": per-share prices in row 1 drop whole-rupee paise so
+/// the average, the alert and the live price fit on one line. "₹410.55"
+/// stays as it is.
+String trimPaise(String price) => price.replaceFirst(RegExp(r'\.00$'), '');
+
+/// The shared holding card, three rows with labels on the left and figures
+/// on the right:
+///
+///   Qty 10 · Avg ₹210  [🔔 ↓ ₹200]   ₹236  +12.38%
+///   ITC                                  +₹260.00
+///   Invested ₹2,100.00           Total ₹2,360.00
+///
+/// Row 1 holds every per-share price — average, the price-alert chip, the
+/// live price and the move from the average — so they compare at a glance.
+/// No footer: every card is the same three rows tall. Used by single
 /// holdings and by grouped stock lots.
 class HoldingCard extends StatelessWidget {
   const HoldingCard({
     super.key,
-    required this.icon,
-    required this.tone,
     required this.title,
-    required this.subtitle,
-    required this.value,
+    required this.topLeft,
+    required this.pctLabel,
     required this.gainLabel,
     required this.up,
-    this.live,
-    this.hint,
-    this.onHintTap,
-    this.facts,
+    required this.invested,
+    required this.total,
+    this.alert,
+    this.livePrice,
     this.menu,
     this.chevron,
     this.onTap,
     this.expanded,
   });
 
-  final IconData icon;
-  final Tone tone;
   final String title;
-  final String subtitle;
-  final String value;
+
+  /// "Qty 10 · Avg ₹210", or the asset type when there is no quantity.
+  final String topLeft;
+  final String pctLabel;
   final String gainLabel;
   final bool up;
-  final String? live;
+  final String invested;
 
-  /// A muted one-line nudge under the title (e.g. add a ticker).
-  final String? hint;
-  final VoidCallback? onHintTap;
-  final Widget? facts;
+  /// Invested + profit: what the holding is worth now.
+  final String total;
+
+  /// The price-alert chip, right after the average price.
+  final Widget? alert;
+
+  /// The live price per share, shown before the return %.
+  final String? livePrice;
   final Widget? menu;
   final Widget? chevron;
   final VoidCallback? onTap;
 
-  /// Extra content below the row (the list of purchases).
+  /// Extra content below the card (the list of purchases).
   final Widget? expanded;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final finance = context.finance;
+    final gainColor = up ? finance.income : finance.expense;
+    const tabular = [FontFeature.tabularFigures()];
+    final small = AppTypography.label.copyWith(
+      color: palette.muted,
+      fontWeight: FontWeight.w500,
+    );
+
+    Widget labelled(String label, String value, {TextAlign? align}) =>
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: '$label ', style: small),
+              TextSpan(
+                text: value,
+                style: AppTypography.label.copyWith(
+                  color: palette.ink,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: tabular,
+                ),
+              ),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: align,
+        );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
         onTap: onTap,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.md,
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.sm,
+          AppSpacing.md,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                ToneTile(icon: icon, tone: tone),
-                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.bodyStrong.copyWith(
-                          color: palette.ink,
-                          fontSize: 15,
-                        ),
-                      ),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.label.copyWith(
-                          color: palette.muted,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (hint != null)
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: onHintTap,
-                          child: Text(
-                            hint!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.label.copyWith(
-                              color: palette.faint,
+                      // Top: quantity and average price | return %.
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    topLeft,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: small,
+                                  ),
+                                ),
+                                if (alert != null) ...[
+                                  const SizedBox(width: 6),
+                                  alert!,
+                                ],
+                              ],
                             ),
                           ),
-                        ),
-                      if (live != null)
-                        Text(
-                          live!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.label.copyWith(
-                            color: finance.income,
+                          const SizedBox(width: AppSpacing.sm),
+                          if (livePrice != null) ...[
+                            Text(
+                              livePrice!,
+                              key: const Key('holding-live'),
+                              style: small.copyWith(
+                                color: palette.ink,
+                                fontFeatures: tabular,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Text(
+                            pctLabel,
+                            key: const Key('holding-pct'),
+                            style: AppTypography.label.copyWith(
+                              color: gainColor,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: tabular,
+                            ),
                           ),
-                        ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // Middle: name | profit.
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.bodyStrong.copyWith(
+                                color: palette.ink,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Text(
+                            gainLabel,
+                            key: const Key('holding-gain'),
+                            style: AppTypography.bodyStrong.copyWith(
+                              color: gainColor,
+                              fontSize: 16,
+                              fontFeatures: tabular,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // Bottom: invested | total (invested + profit).
+                      Row(
+                        children: [
+                          Expanded(child: labelled('Invested', invested)),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: labelled(
+                              'Total',
+                              total,
+                              align: TextAlign.end,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
+                if (menu != null || chevron != null)
+                  const SizedBox(width: AppSpacing.xxs),
                 ?menu,
                 ?chevron,
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        value,
-                        style: AppTypography.title.copyWith(
-                          color: palette.ink,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                TonePill(
-                  gainLabel,
-                  up ? Tones.mint(context) : Tones.coral(context),
-                  dot: false,
-                ),
-              ],
-            ),
-            if (facts != null)
-              Padding(
-                padding: const EdgeInsets.only(top: AppSpacing.sm),
-                child: facts,
-              ),
             ?expanded,
           ],
         ),

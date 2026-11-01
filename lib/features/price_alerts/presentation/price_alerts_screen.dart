@@ -13,13 +13,44 @@ import '../../workspace/application/workspace_providers.dart';
 import '../application/price_alerts_providers.dart';
 import '../domain/price_alert.dart';
 
-/// Route of the Price alerts screen (also what a tapped alert notification opens).
+/// Route of the Price alerts tab of Investments (also what a tapped alert
+/// notification opens).
 const priceAlertsPath = '/price-alerts';
 
+/// The "+ Alert" button that opens the new-alert sheet.
+class PriceAlertFab extends ConsumerWidget {
+  const PriceAlertFab({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => AddFab(
+    label: 'Alert',
+    icon: Icons.add_alert_outlined,
+    onPressed: () => openPriceAlertSheet(context, ref),
+  );
+}
+
+/// Opens the new-alert sheet, pre-filled when [symbol] is given.
+Future<void> openPriceAlertSheet(
+  BuildContext context,
+  WidgetRef ref, {
+  String? symbol,
+  String? name,
+}) async {
+  // Ask now, from a tap: Android 13+ needs the permission to post alerts.
+  unawaited(ref.read(notificationServiceProvider).requestPermission());
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => _AddAlertSheet(symbol: symbol, name: name),
+  );
+}
+
 /// Price alerts: decide the price you would buy at, and get a notification
-/// when the stock reaches it. The same list as the web dashboard.
-class PriceAlertsScreen extends ConsumerStatefulWidget {
-  const PriceAlertsScreen({super.key, this.initialSymbol, this.initialName});
+/// when the stock reaches it. The same list as the web dashboard. No page
+/// chrome, so it can sit inside the Investments screen as a tab.
+class PriceAlertsView extends ConsumerStatefulWidget {
+  const PriceAlertsView({super.key, this.initialSymbol, this.initialName});
 
   /// When set (from the Live prices list) the add-alert sheet opens
   /// pre-filled for this symbol.
@@ -27,10 +58,10 @@ class PriceAlertsScreen extends ConsumerStatefulWidget {
   final String? initialName;
 
   @override
-  ConsumerState<PriceAlertsScreen> createState() => _PriceAlertsScreenState();
+  ConsumerState<PriceAlertsView> createState() => _PriceAlertsViewState();
 }
 
-class _PriceAlertsScreenState extends ConsumerState<PriceAlertsScreen> {
+class _PriceAlertsViewState extends ConsumerState<PriceAlertsView> {
   Timer? _timer;
 
   @override
@@ -47,7 +78,12 @@ class _PriceAlertsScreenState extends ConsumerState<PriceAlertsScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           unawaited(
-            _openAddSheet(context, symbol: sym, name: widget.initialName),
+            openPriceAlertSheet(
+              context,
+              ref,
+              symbol: sym,
+              name: widget.initialName,
+            ),
           );
         }
       });
@@ -65,103 +101,76 @@ class _PriceAlertsScreenState extends ConsumerState<PriceAlertsScreen> {
     final alerts = ref.watch(priceAlertsProvider);
     final prices = ref.watch(alertPricesProvider).value ?? const {};
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
-    final hasAlerts = alerts.value?.isNotEmpty ?? false;
 
-    return AppPage(
-      title: 'Price alerts',
-      padBody: false,
-      floatingActionButton: canWrite && hasAlerts
-          ? AddFab(
-              label: 'Alert',
-              icon: Icons.add_alert_outlined,
-              onPressed: () => _openAddSheet(context),
-            )
-          : null,
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(priceAlertsProvider);
-          ref.invalidate(alertPricesProvider);
-        },
-        child: alerts.when(
-          loading: () => const LoadingView(),
-          error: (e, _) => ErrorView(
-            e,
-            onRetry: () => ref.invalidate(priceAlertsProvider),
-          ),
-          data: (list) {
-            if (list.isEmpty) {
-              return EmptyView(
-                icon: Icons.notifications_active_outlined,
-                title: 'No price alerts yet',
-                message:
-                    'Pick a stock you like but find too expensive today, '
-                    'set the price you would be happy to pay, and you '
-                    'will get a notification when it reaches it.',
-                action: canWrite
-                    ? FilledButton(
-                        onPressed: () => _openAddSheet(context),
-                        child: const Text('Add an alert'),
-                      )
-                    : null,
-              );
-            }
-            final watching = list.where((a) => a.isActive).toList();
-            final triggered = list.where((a) => !a.isActive).toList();
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenGutter,
-                AppSpacing.xs,
-                AppSpacing.screenGutter,
-                96,
-              ),
-              children: [
-                StatStrip([
-                  Stat('${watching.length}', 'Watching'),
-                  Stat(
-                    '${triggered.length}',
-                    'Triggered',
-                    color: triggered.isEmpty ? null : context.finance.income,
-                  ),
-                ]),
-                const SizedBox(height: AppSpacing.md),
-                const InfoPill(
-                  icon: Icons.schedule_rounded,
-                  text: 'Checked every minute while open',
-                ),
-                if (watching.isNotEmpty) const SectionTitle('Watching'),
-                for (final a in watching)
-                  _AlertTile(
-                    alert: a,
-                    price: prices[a.priceKey],
-                    canWrite: canWrite,
-                  ),
-                if (triggered.isNotEmpty) const SectionTitle('Triggered'),
-                for (final a in triggered)
-                  _AlertTile(
-                    alert: a,
-                    price: prices[a.priceKey],
-                    canWrite: canWrite,
-                  ),
-              ],
-            );
-          },
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(priceAlertsProvider);
+        ref.invalidate(alertPricesProvider);
+      },
+      child: alerts.when(
+        loading: () => const LoadingView(),
+        error: (e, _) => ErrorView(
+          e,
+          onRetry: () => ref.invalidate(priceAlertsProvider),
         ),
+        data: (list) {
+          if (list.isEmpty) {
+            return EmptyView(
+              icon: Icons.notifications_active_outlined,
+              title: 'No price alerts yet',
+              message:
+                  'Pick a stock you like but find too expensive today, '
+                  'set the price you would be happy to pay, and you '
+                  'will get a notification when it reaches it.',
+              action: canWrite
+                  ? FilledButton(
+                      onPressed: () => openPriceAlertSheet(context, ref),
+                      child: const Text('Add an alert'),
+                    )
+                  : null,
+            );
+          }
+          final watching = list.where((a) => a.isActive).toList();
+          final triggered = list.where((a) => !a.isActive).toList();
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenGutter,
+              AppSpacing.xs,
+              AppSpacing.screenGutter,
+              96,
+            ),
+            children: [
+              StatStrip([
+                Stat('${watching.length}', 'Watching'),
+                Stat(
+                  '${triggered.length}',
+                  'Triggered',
+                  color: triggered.isEmpty ? null : context.finance.income,
+                ),
+              ]),
+              const SizedBox(height: AppSpacing.md),
+              const InfoPill(
+                icon: Icons.schedule_rounded,
+                text: 'Checked every minute while open',
+              ),
+              if (watching.isNotEmpty) const SectionTitle('Watching'),
+              for (final a in watching)
+                _AlertTile(
+                  alert: a,
+                  price: prices[a.priceKey],
+                  canWrite: canWrite,
+                ),
+              if (triggered.isNotEmpty) const SectionTitle('Triggered'),
+              for (final a in triggered)
+                _AlertTile(
+                  alert: a,
+                  price: prices[a.priceKey],
+                  canWrite: canWrite,
+                ),
+            ],
+          );
+        },
       ),
-    );
-  }
-
-  Future<void> _openAddSheet(
-    BuildContext context, {
-    String? symbol,
-    String? name,
-  }) async {
-    // Ask now, from a tap: Android 13+ needs the permission to post alerts.
-    unawaited(ref.read(notificationServiceProvider).requestPermission());
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _AddAlertSheet(symbol: symbol, name: name),
     );
   }
 }
@@ -463,6 +472,171 @@ class _AddAlertSheetState extends ConsumerState<_AddAlertSheet> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The bell chip in the first row of a holding card, next to the average
+/// price — both are per-share prices, so "Avg ₹410  🔔 ↓ ₹400" reads at a
+/// glance. Watching: accent, with the target. Fired: green "Hit …". None: a
+/// quiet "Alert" that sets one. Without a ticker it asks for one first
+/// ([onNeedTicker]), which replaces the old "add a ticker" line.
+class HoldingAlertChip extends ConsumerWidget {
+  const HoldingAlertChip({
+    super.key,
+    required this.symbol,
+    required this.name,
+    required this.canWrite,
+    this.onNeedTicker,
+  });
+
+  final String? symbol;
+  final String name;
+  final bool canWrite;
+  final VoidCallback? onNeedTicker;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sym = symbol;
+    final alerts = ref.watch(priceAlertsProvider).value ?? const [];
+    final label = sym == null ? null : alertLabelFor(sym, alerts);
+    if (label == null && !canWrite) return const SizedBox.shrink();
+
+    final palette = context.palette;
+    final Tone? tone = label == null
+        ? null
+        : (label.triggered ? Tones.mint(context) : Tones.accent(context));
+    final fg = tone?.fg ?? palette.muted;
+
+    final VoidCallback? onTap = switch ((sym, label)) {
+      (null, _) => onNeedTicker,
+      (final s?, null) => () => openPriceAlertSheet(
+        context,
+        ref,
+        symbol: s,
+        name: name,
+      ),
+      (final s?, _) => () => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => _HoldingAlertsSheet(symbol: s, name: name),
+      ),
+    };
+
+    return Semantics(
+      button: true,
+      label: label == null ? 'Set a price alert' : 'Price alert ${label.text}',
+      child: GestureDetector(
+        key: const Key('holding-alert-chip'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          // A bigger hit area than the chip itself.
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: tone?.bg,
+              borderRadius: BorderRadius.circular(999),
+              border: tone == null ? Border.all(color: palette.line) : null,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  label == null
+                      ? Icons.add_alert_outlined
+                      : (label.triggered
+                            ? Icons.notifications_rounded
+                            : Icons.notifications_active_outlined),
+                  size: 12,
+                  color: fg,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  label?.text ?? 'Alert',
+                  style: AppTypography.label.copyWith(
+                    color: fg,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The alerts of one stock, opened from its holding card: each one can be
+/// re-armed or deleted, and another added, without leaving Investments.
+class _HoldingAlertsSheet extends ConsumerWidget {
+  const _HoldingAlertsSheet({required this.symbol, required this.name});
+  final String symbol;
+  final String name;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
+    final prices = ref.watch(alertPricesProvider).value ?? const {};
+    final mine = (ref.watch(priceAlertsProvider).value ?? const [])
+        .where((a) => a.symbol == symbol)
+        .toList()
+      ..sort((x, y) => (x.isActive ? 0 : 1).compareTo(y.isActive ? 0 : 1));
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.screenGutter,
+          0,
+          AppSpacing.screenGutter,
+          AppSpacing.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Price alerts · $name',
+              style: AppTypography.title.copyWith(color: palette.ink),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            if (mine.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: Text(
+                  'No alerts left for $symbol.',
+                  style: AppTypography.body.copyWith(color: palette.muted),
+                ),
+              ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final a in mine)
+                    _AlertTile(
+                      alert: a,
+                      price: prices[a.priceKey],
+                      canWrite: canWrite,
+                    ),
+                ],
+              ),
+            ),
+            if (canWrite)
+              FilledButton.icon(
+                icon: const Icon(Icons.add_alert_outlined),
+                label: const Text('Add another alert'),
+                onPressed: () =>
+                    openPriceAlertSheet(context, ref, symbol: symbol, name: name),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
