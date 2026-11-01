@@ -117,6 +117,16 @@ void main() {
       tester.widget<Text>(find.byKey(const Key('holding-gain'))).data,
       '+500.00',
     );
+    // Shown as "Invt.", read aloud as "Invested".
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Text &&
+            w.textSpan?.toPlainText(includeSemanticsLabels: false) ==
+                'Invt. 2,000.00',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Invested 2,000.00', findRichText: true), findsOneWidget);
     expect(find.text('Total 2,500.00', findRichText: true), findsOneWidget);
 

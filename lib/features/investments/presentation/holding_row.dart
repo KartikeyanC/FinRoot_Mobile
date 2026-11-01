@@ -22,9 +22,10 @@ import 'investment_form_sheet.dart';
 ///
 ///   Qty. 10 • Avg. 410.00                       +6.83%
 ///   ITC Limited                                +280.00
-///   Invested 4,100.00  [⏰ 400.00]       Total 4,380.00
+///   Invt. 4,100.00  [⏰ 400.00]          Total 4,380.00
 ///
-/// The alarm tag sits after Invested, where a status tag belongs. No ⋮ menu
+/// "Invt." is short for invested, like Qty. and Avg. (a screen reader still
+/// hears "Invested"). The alarm tag sits after it, where a status tag belongs. No ⋮ menu
 /// on the row (it pushed the right edge in): tap the row for the detail
 /// sheet — LTP, the price alert, each purchase, Edit and Delete. Nothing is
 /// ever cut off; a long name or a large text size wraps instead.
@@ -140,7 +141,11 @@ class HoldingRow extends ConsumerWidget {
                         Text.rich(
                           TextSpan(
                             children: [
-                              TextSpan(text: 'Invested ', style: muted),
+                              TextSpan(
+                                text: 'Invt. ',
+                                semanticsLabel: 'Invested ',
+                                style: muted,
+                              ),
                               TextSpan(
                                 text: plainAmount(h.invested, h.currency),
                                 style: strong,
