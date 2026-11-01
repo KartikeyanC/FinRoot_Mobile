@@ -106,9 +106,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 10));
 
     expect(find.text('ITC'), findsOneWidget);
-    expect(find.textContaining('Qty 4 · Avg ₹210'), findsOneWidget);
+    expect(find.text('Qty 4'), findsOneWidget);
+    expect(find.text('Avg ₹210'), findsOneWidget);
     expect(find.textContaining('2 buys'), findsOneWidget);
-    expect(find.text('↓ ₹250'), findsOneWidget);
+    expect(find.text('₹250'), findsOneWidget);
     expect(find.byKey(const Key('holding-live')), findsOneWidget);
     expect(find.text('28 Oct 2026'), findsNothing);
 

@@ -239,12 +239,19 @@ class _HoldingTile extends ConsumerWidget {
       if (lot.qty > 0 && avg != null) 'Avg $avg',
     ];
     final invested = record.invested.amount.toDouble();
+    // Stocks and other priced assets can carry an alert; a deposit can't.
+    final canAlert = symbol != null || isPriceableAsset(record.asset);
+    final alerts = ref.watch(priceAlertsProvider).value ?? const [];
+    void needTicker() {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add the ticker first to set a price alert')),
+      );
+      openInvestmentForm(context, editing: record);
+    }
 
     return HoldingCard(
       title: record.name,
-      topLeft: qtyBits.isEmpty
-          ? assetLabel(record.asset)
-          : qtyBits.join(' · '),
+      facts: qtyBits.isEmpty ? [assetLabel(record.asset)] : qtyBits,
       pctLabel: returnPctLabel(gain, invested),
       gainLabel: '${up ? '+' : ''}${cash(gain)}',
       up: up,
@@ -257,20 +264,12 @@ class _HoldingTile extends ConsumerWidget {
       livePrice: live != null && symbol != null
           ? formatPrice(symbol, live.unitPrice)
           : null,
-      // Stocks and other priced assets can carry an alert; a deposit can't.
-      alert: symbol != null || isPriceableAsset(record.asset)
+      alert: canAlert
           ? HoldingAlertChip(
               symbol: symbol,
               name: record.name,
               canWrite: canWrite,
-              onNeedTicker: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Add the ticker first to set a price alert'),
-                  ),
-                );
-                openInvestmentForm(context, editing: record);
-              },
+              onNeedTicker: needTicker,
             )
           : null,
       onTap: canWrite
@@ -278,17 +277,23 @@ class _HoldingTile extends ConsumerWidget {
           : null,
       menu: canWrite
           ? RowMenu(
-              onSelected: (v) {
-                if (v == 'edit') {
-                  openInvestmentForm(context, editing: record);
-                } else if (v == 'delete') {
-                  _confirmDelete(context, ref);
-                }
+              onSelected: (v) => switch (v) {
+                'edit' => openInvestmentForm(context, editing: record),
+                'alert' when symbol == null => needTicker(),
+                'alert' => openHoldingAlerts(
+                  context,
+                  ref,
+                  symbol: symbol!,
+                  name: record.name,
+                ),
+                _ => _confirmDelete(context, ref),
               },
-              items: const [
-                PopupMenuItem(value: 'edit', child: Text('Edit')),
-                PopupMenuItem(value: 'delete', child: Text('Delete')),
-              ],
+              items: holdingMenuItems(
+                context,
+                canAlert: canAlert,
+                hasAlert:
+                    symbol != null && alerts.any((a) => a.symbol == symbol),
+              ),
             )
           : null,
     );

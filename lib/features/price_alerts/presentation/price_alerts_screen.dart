@@ -476,10 +476,10 @@ class _AddAlertSheetState extends ConsumerState<_AddAlertSheet> {
   }
 }
 
-/// The bell chip in the first row of a holding card, next to the average
-/// price — both are per-share prices, so "Avg ₹410  🔔 ↓ ₹400" reads at a
-/// glance. Watching: accent, with the target. Fired: green "Hit …". None: a
-/// quiet "Alert" that sets one. Without a ticker it asks for one first
+/// The alarm chip in the first row of a holding card, next to the average
+/// price — both are per-share prices, so "Avg ₹410  ⏰ ₹400" reads at a
+/// glance. Just the alarm and the amount: watching in the accent colour,
+/// fired in green. None: a quiet "Alert" that sets one. Without a ticker it asks for one first
 /// ([onNeedTicker]), which replaces the old "add a ticker" line.
 class HoldingAlertChip extends ConsumerWidget {
   const HoldingAlertChip({
@@ -508,21 +508,9 @@ class HoldingAlertChip extends ConsumerWidget {
         : (label.triggered ? Tones.mint(context) : Tones.accent(context));
     final fg = tone?.fg ?? palette.muted;
 
-    final VoidCallback? onTap = switch ((sym, label)) {
-      (null, _) => onNeedTicker,
-      (final s?, null) => () => openPriceAlertSheet(
-        context,
-        ref,
-        symbol: s,
-        name: name,
-      ),
-      (final s?, _) => () => showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (_) => _HoldingAlertsSheet(symbol: s, name: name),
-      ),
-    };
+    final VoidCallback? onTap = sym == null
+        ? onNeedTicker
+        : () => openHoldingAlerts(context, ref, symbol: sym, name: name);
 
     return Semantics(
       button: true,
@@ -546,16 +534,16 @@ class HoldingAlertChip extends ConsumerWidget {
               children: [
                 Icon(
                   label == null
-                      ? Icons.add_alert_outlined
+                      ? Icons.alarm_add_rounded
                       : (label.triggered
-                            ? Icons.notifications_rounded
-                            : Icons.notifications_active_outlined),
-                  size: 12,
+                            ? Icons.alarm_on_rounded
+                            : Icons.alarm_rounded),
+                  size: 13,
                   color: fg,
                 ),
                 const SizedBox(width: 3),
                 Text(
-                  label?.text ?? 'Alert',
+                  label == null ? 'Alert' : _amountOnly(label.text),
                   style: AppTypography.label.copyWith(
                     color: fg,
                     fontSize: 11.5,
@@ -570,6 +558,26 @@ class HoldingAlertChip extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// A holding's alerts, from its chip or its menu: the new-alert sheet when
+/// the stock has none yet, else the list of its alerts.
+Future<void> openHoldingAlerts(
+  BuildContext context,
+  WidgetRef ref, {
+  required String symbol,
+  required String name,
+}) {
+  final alerts = ref.read(priceAlertsProvider).value ?? const [];
+  if (!alerts.any((a) => a.symbol == symbol)) {
+    return openPriceAlertSheet(context, ref, symbol: symbol, name: name);
+  }
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => _HoldingAlertsSheet(symbol: symbol, name: name),
+  );
 }
 
 /// The alerts of one stock, opened from its holding card: each one can be
@@ -640,3 +648,8 @@ class _HoldingAlertsSheet extends ConsumerWidget {
     );
   }
 }
+
+/// "↓ ₹400 +1" → "₹400 +1", "Hit ₹402" → "₹402": the chip shows the alarm
+/// icon and the amount only.
+String _amountOnly(String label) =>
+    label.replaceFirst(RegExp(r'^(↓|↑|Hit)\s*'), '');

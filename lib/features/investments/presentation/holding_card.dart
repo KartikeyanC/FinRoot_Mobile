@@ -18,19 +18,19 @@ String trimPaise(String price) => price.replaceFirst(RegExp(r'\.00$'), '');
 /// The shared holding card, three rows with labels on the left and figures
 /// on the right:
 ///
-///   Qty 10 · Avg ₹210  [🔔 ↓ ₹200]   ₹236  +12.38%
-///   ITC                                  +₹260.00
-///   Invested ₹2,100.00           Total ₹2,360.00
+///   Qty 10 · Avg ₹210 · [⏰ ₹200] · LTP ₹236      +12.38%
+///   ITC                                           +₹260.00
+///   Invested ₹2,100.00                    Total ₹2,360.00
 ///
-/// Row 1 holds every per-share price — average, the price-alert chip, the
-/// live price and the move from the average — so they compare at a glance.
-/// No footer: every card is the same three rows tall. Used by single
-/// holdings and by grouped stock lots.
+/// Row 1 holds every per-share price — average, the price-alert chip and the
+/// live price — with the move from the average on the right. Nothing is
+/// ever cut off: on a narrow phone or with large text a row wraps onto a
+/// second line instead. Used by single holdings and by grouped stock lots.
 class HoldingCard extends StatelessWidget {
   const HoldingCard({
     super.key,
     required this.title,
-    required this.topLeft,
+    required this.facts,
     required this.pctLabel,
     required this.gainLabel,
     required this.up,
@@ -46,8 +46,8 @@ class HoldingCard extends StatelessWidget {
 
   final String title;
 
-  /// "Qty 10 · Avg ₹210", or the asset type when there is no quantity.
-  final String topLeft;
+  /// ["Qty 10", "Avg ₹210"], or the asset type when there is no quantity.
+  final List<String> facts;
   final String pctLabel;
   final String gainLabel;
   final bool up;
@@ -59,7 +59,7 @@ class HoldingCard extends StatelessWidget {
   /// The price-alert chip, right after the average price.
   final Widget? alert;
 
-  /// The live price per share, shown before the return %.
+  /// The live price per share, last in row 1.
   final String? livePrice;
   final Widget? menu;
   final Widget? chevron;
@@ -79,7 +79,7 @@ class HoldingCard extends StatelessWidget {
       fontWeight: FontWeight.w500,
     );
 
-    Widget labelled(String label, String value, {TextAlign? align}) =>
+    Widget labelled(String label, String value) =>
         Text.rich(
           TextSpan(
             children: [
@@ -94,9 +94,6 @@ class HoldingCard extends StatelessWidget {
               ),
             ],
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: align,
         );
 
     return Padding(
@@ -118,46 +115,49 @@ class HoldingCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Top: quantity and average price | return %.
+                      // Top: qty · avg · alert · live | return %.
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: Row(
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 2,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                Flexible(
-                                  child: Text(
-                                    topLeft,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: small,
+                                for (final f in facts) Text(f, style: small),
+                                ?alert,
+                                if (livePrice != null)
+                                  Text.rich(
+                                    key: const Key('holding-live'),
+                                    TextSpan(
+                                      children: [
+                                        TextSpan(text: 'LTP ', style: small),
+                                        TextSpan(
+                                          text: livePrice,
+                                          style: small.copyWith(
+                                            color: palette.ink,
+                                            fontWeight: FontWeight.w700,
+                                            fontFeatures: tabular,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                if (alert != null) ...[
-                                  const SizedBox(width: 6),
-                                  alert!,
-                                ],
                               ],
                             ),
                           ),
                           const SizedBox(width: AppSpacing.sm),
-                          if (livePrice != null) ...[
-                            Text(
-                              livePrice!,
-                              key: const Key('holding-live'),
-                              style: small.copyWith(
-                                color: palette.ink,
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Text(
+                              pctLabel,
+                              key: const Key('holding-pct'),
+                              style: AppTypography.label.copyWith(
+                                color: gainColor,
+                                fontWeight: FontWeight.w700,
                                 fontFeatures: tabular,
                               ),
-                            ),
-                            const SizedBox(width: 6),
-                          ],
-                          Text(
-                            pctLabel,
-                            key: const Key('holding-pct'),
-                            style: AppTypography.label.copyWith(
-                              color: gainColor,
-                              fontWeight: FontWeight.w700,
-                              fontFeatures: tabular,
                             ),
                           ),
                         ],
@@ -169,8 +169,6 @@ class HoldingCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                               style: AppTypography.bodyStrong.copyWith(
                                 color: palette.ink,
                                 fontSize: 16,
@@ -191,17 +189,15 @@ class HoldingCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       // Bottom: invested | total (invested + profit).
-                      Row(
+                      // Ends of the row when both fit; Total drops below
+                      // Invested when they don't, never cut.
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        spacing: AppSpacing.sm,
+                        runSpacing: 2,
                         children: [
-                          Expanded(child: labelled('Invested', invested)),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: labelled(
-                              'Total',
-                              total,
-                              align: TextAlign.end,
-                            ),
-                          ),
+                          labelled('Invested', invested),
+                          labelled('Total', total),
                         ],
                       ),
                     ],
@@ -219,4 +215,41 @@ class HoldingCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The rows of a holding's ⋮ menu: Edit, Price alert (for priced assets),
+/// Delete — each with an icon, and Delete in the expense colour so it never reads as routine.
+List<PopupMenuItem<String>> holdingMenuItems(
+  BuildContext context, {
+  required bool hasAlert,
+  bool canAlert = true,
+  String editLabel = 'Edit holding',
+}) {
+  final palette = context.palette;
+  final danger = context.finance.expense;
+  PopupMenuItem<String> item(
+    String value,
+    IconData icon,
+    String label, [
+    Color? color,
+  ]) => PopupMenuItem(
+    value: value,
+    child: Row(
+      children: [
+        Icon(icon, size: 20, color: color ?? palette.muted),
+        const SizedBox(width: AppSpacing.md),
+        Text(label, style: TextStyle(color: color ?? palette.ink)),
+      ],
+    ),
+  );
+  return [
+    item('edit', Icons.edit_outlined, editLabel),
+    if (canAlert)
+      item(
+        'alert',
+        hasAlert ? Icons.alarm_rounded : Icons.alarm_add_rounded,
+        hasAlert ? 'Price alerts' : 'Set price alert',
+      ),
+    item('delete', Icons.delete_outline_rounded, 'Delete', danger),
+  ];
 }

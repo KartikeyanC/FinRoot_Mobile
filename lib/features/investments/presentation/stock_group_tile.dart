@@ -55,11 +55,11 @@ class _StockGroupTileState extends ConsumerState<StockGroupTile> {
 
     return HoldingCard(
       title: g.name,
-      topLeft: [
+      facts: [
         if (g.qty > 0) 'Qty ${_qty(g.qty)}',
         if (g.avgPrice > 0) 'Avg ${trimPaise(_money(g.avgPrice, g.currency))}',
         '${g.lots.length} buys',
-      ].join(' · '),
+      ],
       pctLabel: returnPctLabel(gain, g.invested),
       gainLabel: '${up ? '+' : ''}${_money(gain, g.currency)}',
       up: up,
