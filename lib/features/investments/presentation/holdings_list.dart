@@ -12,7 +12,7 @@ import 'holding_row.dart';
 /// The holdings, split by type so stocks and mutual funds never blur
 /// together:
 ///
-///   All 7 │ Stocks 4 │ Mutual Funds 2 │ Gold 1     ← type tabs (with counts)
+///   All 7 │ Stocks 4 │ Mutual Funds 2 │ Gold 1     ← type tabs (swipe too)
 ///   [ Invested | Current · P&L ]                   ← totals for that type
 ///   ── Stocks · 4 ───────────────── +2,499.72      ← "All" groups by type
 ///   rows…
@@ -63,8 +63,13 @@ class _HoldingsListState extends ConsumerState<HoldingsList> {
       canWrite: widget.canWrite,
     );
 
-    return ListView(
-      padding: const EdgeInsets.only(top: AppSpacing.xs, bottom: 96),
+    // Tab 0 is All, then one per type, in the same order as the tab row.
+    final index = asset == null
+        ? 0
+        : types.indexWhere((t) => t.asset == asset) + 1;
+
+    final list = ListView(
+      padding: const EdgeInsets.only(bottom: 96),
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -73,22 +78,7 @@ class _HoldingsListState extends ConsumerState<HoldingsList> {
             AppSpacing.screenGutter,
             AppSpacing.lg,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ?widget.header,
-              if (types.length > 1) ...[
-                _TypeTabs(
-                  total: widget.items.length,
-                  types: types,
-                  selected: asset,
-                  onSelected: (a) => setState(() => _asset = a),
-                ),
-                const SizedBox(height: AppSpacing.md),
-              ],
-              _SummaryCard(summary: summary),
-            ],
-          ),
+          child: _SummaryCard(summary: summary),
         ),
         line,
         if (asset == null && types.length > 1)
@@ -108,6 +98,50 @@ class _HoldingsListState extends ConsumerState<HoldingsList> {
           ]
         else
           for (final i in shown) ...[row(i), line],
+      ],
+    );
+
+    // The tab row stays put while the list scrolls under it.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenGutter,
+            AppSpacing.xs,
+            AppSpacing.screenGutter,
+            0,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ?widget.header,
+              if (types.length > 1) ...[
+                _TypeTabs(
+                  total: widget.items.length,
+                  types: types,
+                  selected: asset,
+                  onSelected: (a) => setState(() => _asset = a),
+                ),
+                const SizedBox(height: AppSpacing.md),
+              ],
+            ],
+          ),
+        ),
+        Expanded(
+          // Swipe right-to-left for the next type, left-to-right for the
+          // previous one; the tab row follows.
+          child: types.length > 1
+              ? SwipeTabs(
+                  index: index,
+                  count: types.length + 1,
+                  onChanged: (i) => setState(
+                    () => _asset = i == 0 ? null : types[i - 1].asset,
+                  ),
+                  child: list,
+                )
+              : list,
+        ),
       ],
     );
   }
@@ -134,60 +168,63 @@ class _TypeTabs extends StatelessWidget {
 
     Widget tab(String? asset, String label, int count) {
       final on = asset == selected;
-      return Semantics(
-        button: true,
+      return RevealWhenSelected(
         selected: on,
-        label: '$label, $count',
-        excludeSemantics: true,
-        child: InkWell(
-          key: Key('asset-tab-${asset ?? 'all'}'),
-          onTap: () => onSelected(asset),
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.sm,
-              AppSpacing.sm,
-              AppSpacing.sm,
-              6,
-            ),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: on ? palette.accentText : Colors.transparent,
-                  width: 2,
+        child: Semantics(
+          button: true,
+          selected: on,
+          label: '$label, $count',
+          excludeSemantics: true,
+          child: InkWell(
+            key: Key('asset-tab-${asset ?? 'all'}'),
+            onTap: () => onSelected(asset),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.sm,
+                AppSpacing.sm,
+                AppSpacing.sm,
+                6,
+              ),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: on ? palette.accentText : Colors.transparent,
+                    width: 2,
+                  ),
                 ),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: AppTypography.bodyStrong.copyWith(
-                    color: on ? palette.accentText : palette.muted,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: on ? Tones.accent(context).bg : palette.card,
-                    borderRadius: BorderRadius.circular(999),
-                    border: on ? null : Border.all(color: palette.line),
-                  ),
-                  child: Text(
-                    '$count',
-                    style: AppTypography.label.copyWith(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: AppTypography.bodyStrong.copyWith(
                       color: on ? palette.accentText : palette.muted,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11.5,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: on ? Tones.accent(context).bg : palette.card,
+                      borderRadius: BorderRadius.circular(999),
+                      border: on ? null : Border.all(color: palette.line),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: AppTypography.label.copyWith(
+                        color: on ? palette.accentText : palette.muted,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

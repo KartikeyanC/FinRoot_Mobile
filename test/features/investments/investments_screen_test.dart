@@ -182,7 +182,7 @@ void main() {
 
     // Mutual Funds: only the fund, and the card totals only the fund.
     await tester.tap(find.byKey(const Key('asset-tab-mutual_funds')));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('Parag Parikh Flexi Cap'), findsOneWidget);
     expect(find.text('ITC'), findsNothing);
     expect(find.text('HDFC Bank'), findsNothing);
@@ -194,7 +194,7 @@ void main() {
 
     // Stocks: the two stocks.
     await tester.tap(find.byKey(const Key('asset-tab-stocks')));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('ITC'), findsOneWidget);
     expect(find.text('HDFC Bank'), findsOneWidget);
     expect(find.text('Parag Parikh Flexi Cap'), findsNothing);
@@ -202,6 +202,41 @@ void main() {
       tester.widget<Text>(find.byKey(const Key('summary-pnl'))).data,
       '+100.00',
     );
+  });
+
+  testWidgets('swiping moves between the type tabs', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        records: [
+          _rec('ITC', '1000', '1200'),
+          _rec('Parag Parikh Flexi Cap', '5000', '5500', asset: 'mutual_funds'),
+        ],
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 10));
+
+    // Right-to-left: All → Stocks.
+    await tester.fling(find.text('ITC'), const Offset(-300, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('Parag Parikh Flexi Cap'), findsNothing);
+    expect(find.text('ITC'), findsOneWidget);
+
+    // Right-to-left again: Stocks → Mutual Funds.
+    await tester.fling(find.text('ITC'), const Offset(-300, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('ITC'), findsNothing);
+    expect(find.text('Parag Parikh Flexi Cap'), findsOneWidget);
+
+    // Left-to-right: back to Stocks.
+    await tester.fling(
+      find.text('Parag Parikh Flexi Cap'),
+      const Offset(300, 0),
+      1000,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('ITC'), findsOneWidget);
+    expect(find.text('Parag Parikh Flexi Cap'), findsNothing);
   });
 
   testWidgets('one type only: no type tabs', (tester) async {
