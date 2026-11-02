@@ -11,10 +11,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-InvestmentRecord _rec(String name, String invested, String current) =>
+InvestmentRecord _rec(
+  String name,
+  String invested,
+  String current, {
+  String asset = 'stocks',
+}) =>
     InvestmentRecord(
       id: name,
-      asset: 'stocks',
+      asset: asset,
       currency: 'INR',
       fields: {
         'name': name,
@@ -148,5 +153,61 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 10));
     expect(find.text('No price alerts yet'), findsOneWidget);
+  });
+
+  testWidgets('stocks and mutual funds are split by type', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        records: [
+          _rec('ITC', '1000', '1200'),
+          _rec('Parag Parikh Flexi Cap', '5000', '5500', asset: 'mutual_funds'),
+          _rec('HDFC Bank', '2000', '1900'),
+        ],
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 10));
+
+    // All: every row, under a header per type, stocks first.
+    expect(find.byKey(const Key('asset-tab-all')), findsOneWidget);
+    expect(find.text('Stocks  ·  2'), findsOneWidget);
+    expect(find.text('Mutual Funds  ·  1'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('type-header-stocks'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('type-header-mutual_funds'))).dy,
+      ),
+    );
+    expect(find.text('8,000.00'), findsOneWidget); // invested, everything
+
+    // Mutual Funds: only the fund, and the card totals only the fund.
+    await tester.tap(find.byKey(const Key('asset-tab-mutual_funds')));
+    await tester.pump();
+    expect(find.text('Parag Parikh Flexi Cap'), findsOneWidget);
+    expect(find.text('ITC'), findsNothing);
+    expect(find.text('HDFC Bank'), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('summary-pnl'))).data,
+      '+500.00',
+    );
+    expect(find.byKey(const Key('type-header-stocks')), findsNothing);
+
+    // Stocks: the two stocks.
+    await tester.tap(find.byKey(const Key('asset-tab-stocks')));
+    await tester.pump();
+    expect(find.text('ITC'), findsOneWidget);
+    expect(find.text('HDFC Bank'), findsOneWidget);
+    expect(find.text('Parag Parikh Flexi Cap'), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('summary-pnl'))).data,
+      '+100.00',
+    );
+  });
+
+  testWidgets('one type only: no type tabs', (tester) async {
+    await tester.pumpWidget(_host(records: [_rec('ITC', '100', '120')]));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(find.byKey(const Key('asset-tab-all')), findsNothing);
   });
 }

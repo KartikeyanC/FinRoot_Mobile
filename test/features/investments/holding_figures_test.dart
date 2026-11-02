@@ -78,4 +78,37 @@ void main() {
       expect(h.returnPct, 0);
     });
   });
+
+  group('splitting by type', () {
+    InvestmentRecord rec(String id, String asset) => InvestmentRecord(
+      id: id,
+      asset: asset,
+      currency: 'INR',
+      fields: {'name': id, 'invested': '100', 'current': '110', '_mobile': '1'},
+      derived: const {},
+    );
+
+    test('types come in the usual order, each with its row count', () {
+      final items = groupPortfolio([
+        rec('gold', 'gold'),
+        rec('fund1', 'mutual_funds'),
+        rec('infy', 'stocks'),
+        rec('fund2', 'mutual_funds'),
+        rec('odd', 'something_new'),
+      ]);
+      expect(
+        [for (final t in assetBreakdown(items)) '${t.asset}:${t.count}'],
+        ['stocks:1', 'mutual_funds:2', 'gold:1', 'something_new:1'],
+      );
+    });
+
+    test('a stock bought twice counts as one row of its type', () {
+      final items = groupPortfolio([
+        _buy('a', '2', '200', '2026-10-28'),
+        _buy('b', '2', '220', '2026-10-29'),
+      ]);
+      expect(assetBreakdown(items).single, (asset: 'stocks', count: 1));
+      expect(recordsOf(items.single), hasLength(2));
+    });
+  });
 }

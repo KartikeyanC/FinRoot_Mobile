@@ -10,7 +10,6 @@ import '../../price_alerts/presentation/price_alerts_screen.dart'
     show openHoldingAlerts;
 import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
-import '../domain/holding_fields.dart';
 import '../domain/holding_figures.dart';
 import '../domain/investment.dart';
 import '../domain/stock_lots.dart';
@@ -153,7 +152,7 @@ class HoldingRow extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        if (h.symbol != null || isPriceableAsset(h.asset))
+                        if (h.canAlert)
                           HoldingAlarmTag(
                             symbol: h.symbol,
                             name: h.name,
