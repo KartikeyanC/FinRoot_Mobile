@@ -1,5 +1,4 @@
 import 'package:drift/drift.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import '../../../core/error/failure.dart';
 import '../../../core/logging/app_logger.dart';
@@ -36,10 +35,11 @@ class OutboxRunResult {
 /// whole run — there is no point trying the next entry while the connection is
 /// down.
 class OutboxProcessor {
-  OutboxProcessor(this._db, this._gateway);
+  OutboxProcessor(this._db, this._gateway, {this.maxAttempts = 6});
 
   final AppDatabase _db;
   final MutationGateway _gateway;
+  final int maxAttempts;
 
   final _log = AppLog.of('sync.outbox');
   SyncOutboxDao get _dao => _db.syncOutboxDao;
@@ -53,14 +53,7 @@ class OutboxProcessor {
       await _dao.markInFlight(entry.id);
       try {
         final result = await _gateway.apply(entry);
-        // The server has it now. Refreshing the cached row from its reply is
-        // best-effort: if that throws, the entry must still be cleared (it
-        // used to stay "in flight" forever), and the next pull fixes the row.
-        try {
-          await _reconcileSuccess(entry, result);
-        } catch (error) {
-          _log.warning('saved, but the cache refresh failed: ${error.runtimeType}');
-        }
+        await _reconcileSuccess(entry, result);
         await _dao.markSynced(entry.id);
         synced++;
         _log.info('${entry.operation.name} ${result.status}');
@@ -68,7 +61,7 @@ class OutboxProcessor {
         final disposition = classifyMutationFailure(f);
         switch (disposition) {
           case FailureDisposition.holdBackendMissing:
-            await _dao.markRetry(entry.id, describeFailure(f));
+            await _dao.markRetry(entry.id, f.message);
             _log.warning(
               'apply_transaction_mutation not deployed — holding queue',
             );
@@ -82,12 +75,15 @@ class OutboxProcessor {
             );
 
           case FailureDisposition.retry:
-            // Temporary (no signal, a timeout, a login refresh): never the
-            // entry's fault, so it is never parked as "didn't sync" — it was,
-            // after [maxAttempts] tries, and that is what kept showing the
-            // red banner. The engine's cool-off spaces the retries out.
-            await _dao.markRetry(entry.id, describeFailure(f));
-            retried++;
+            final fresh = await _dao.byMutationId(entry.mutationId);
+            if (fresh != null && fresh.attempts >= maxAttempts) {
+              await _dao.markFailed(entry.id, f.message);
+              await _flagCacheFailed(entry);
+              failed++;
+            } else {
+              await _dao.markRetry(entry.id, f.message);
+              retried++;
+            }
             return OutboxRunResult(
               synced: synced,
               failed: failed,
@@ -97,7 +93,7 @@ class OutboxProcessor {
             );
 
           case FailureDisposition.permanent:
-            await _dao.markFailed(entry.id, describeFailure(f));
+            await _dao.markFailed(entry.id, f.message);
             await _flagCacheFailed(entry);
             failed++;
             _log.warning('${entry.operation.name} failed permanently');
@@ -152,21 +148,4 @@ class OutboxProcessor {
       _db.localTransactions,
     )..where((t) => t.id.equals(entry.entityLocalId))).go();
   }
-}
-
-/// The failure as the person sees it, plus the server's own words and code
-/// when there are any — "That didn't pass a check" alone gave nobody a way to
-/// tell what was wrong.
-String describeFailure(Failure f) {
-  final cause = f.cause;
-  if (cause is PostgrestException) {
-    final detail = [
-      if (cause.code != null && cause.code!.isNotEmpty) cause.code,
-      cause.message,
-      if (cause.details != null && '${cause.details}'.isNotEmpty) '${cause.details}',
-    ].join(' · ');
-    return '${f.message} ($detail)';
-  }
-  if (cause != null && f is UnexpectedFailure) return '${f.message} ($cause)';
-  return f.message;
 }

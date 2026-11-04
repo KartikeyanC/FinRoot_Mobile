@@ -17,7 +17,7 @@ void main() {
   setUp(() {
     db = AppDatabase.forTesting();
     gateway = FakeMutationGateway();
-    processor = OutboxProcessor(db, gateway);
+    processor = OutboxProcessor(db, gateway, maxAttempts: 3);
   });
   tearDown(() => db.close());
 
@@ -107,94 +107,23 @@ void main() {
   });
 
   test(
-    'a temporary failure is never parked as "didn\'t sync", however often',
+    'attempts cap: a persistently failing entry is parked as failed',
     () async {
-      // This used to give up after a few tries and show the red banner for
-      // an entry that had nothing wrong with it.
       await seedPendingCreate('c');
       gateway.always = const NetworkFailure();
 
-      for (var i = 0; i < 10; i++) {
+      for (var i = 0; i < 3; i++) {
         await processor.run();
       }
       final entry = await db.syncOutboxDao.byMutationId('m-c');
-      expect(entry!.status, OutboxStatus.pending);
-      expect(await db.syncOutboxDao.countFailed(), 0);
+      expect(entry!.status, OutboxStatus.failed);
+      expect(entry.attempts, 3);
       final row = await (db.select(
         db.localTransactions,
       )..where((t) => t.id.equals('c'))).getSingle();
-      expect(row.syncStatus, LocalSyncStatus.pendingCreate);
-
-      gateway.always = null;
-      gateway.enqueueResult(const MutationResult(status: 'applied', deleted: false));
-      await processor.run();
-      expect(await db.syncOutboxDao.byMutationId('m-c'), isNull, reason: 'sent once the network is back');
+      expect(row.syncStatus, LocalSyncStatus.failed);
     },
   );
-
-  test('an entry left in flight by a closed app is sent again', () async {
-    await seedPendingCreate('orphan');
-    final e = await db.syncOutboxDao.byMutationId('m-orphan');
-    await db.syncOutboxDao.markInFlight(e!.id); // the app died right here
-
-    // Moments later another sender must not grab it (it may still be going)…
-    expect(await db.syncOutboxDao.pendingBatch(), isEmpty);
-    // …but once it is clearly abandoned, it goes out again.
-    final later = DateTime.now().add(const Duration(minutes: 3));
-    expect((await db.syncOutboxDao.pendingBatch(now: later)).single.mutationId, 'm-orphan');
-  });
-
-  test('if refreshing the cache after a save throws, the entry still clears', () async {
-    await seedPendingCreate('r');
-    // A server row the cache can't read (no id) — the save itself worked.
-    gateway.enqueueResult(
-      const MutationResult(status: 'applied', deleted: false, transaction: {'amount': 1}),
-    );
-    await processor.run();
-    expect(await db.syncOutboxDao.byMutationId('m-r'), isNull);
-  });
-
-  test('a refused change keeps the server\'s own reason and code', () async {
-    await seedPendingCreate('why');
-    gateway.enqueueError(
-      const ValidationFailure(
-        "That didn't pass a check. Review the details and try again.",
-        cause: PostgrestException(
-          message: 'new row violates check constraint "transactions_type_check"',
-          code: '23514',
-        ),
-      ),
-    );
-    await processor.run();
-    final e = await db.syncOutboxDao.byMutationId('m-why');
-    expect(e!.status, OutboxStatus.failed);
-    expect(e.lastError, contains('23514'));
-    expect(e.lastError, contains('transactions_type_check'));
-  });
-
-  test('Retry starts the attempt count again', () async {
-    await seedPendingCreate('x');
-    final e = await db.syncOutboxDao.byMutationId('m-x');
-    for (var i = 0; i < 5; i++) {
-      await db.syncOutboxDao.markInFlight(e!.id);
-    }
-    await db.syncOutboxDao.markFailed(e!.id, 'boom');
-    await db.syncOutboxDao.requeueFailed();
-    final again = await db.syncOutboxDao.byMutationId('m-x');
-    expect(again!.status, OutboxStatus.pending);
-    expect(again.attempts, 0);
-  });
-
-  test('self-heal only re-tries changes refused a while ago', () async {
-    await seedPendingCreate('old');
-    final e = await db.syncOutboxDao.byMutationId('m-old');
-    await db.syncOutboxDao.markInFlight(e!.id);
-    await db.syncOutboxDao.markFailed(e.id, 'boom');
-
-    final now = DateTime.now();
-    expect(await db.syncOutboxDao.requeueFailed(olderThan: now.subtract(const Duration(minutes: 30))), 0);
-    expect(await db.syncOutboxDao.requeueFailed(olderThan: now.add(const Duration(minutes: 1))), 1);
-  });
 
   test('permanent failure → failed + cache flagged, run continues', () async {
     await seedPendingCreate('perm');

@@ -43,40 +43,13 @@ class SyncOutboxDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
-  /// How long an entry may sit "in flight" before it counts as abandoned.
-  /// An app (or the floating Quick Log window) closed mid-send leaves its
-  /// entry in flight; without this it was never sent again.
-  static const staleInFlight = Duration(minutes: 2);
-
-  /// Oldest-first batch of entries ready to send: pending ones, plus any left
-  /// in flight by a send that never finished. Resending is safe — creates
-  /// carry the phone's own id, so a repeat is recognised as already applied.
-  Future<List<OutboxEntry>> pendingBatch({int limit = 50, DateTime? now}) {
-    final cutoff = (now ?? DateTime.now()).toUtc().subtract(staleInFlight);
+  /// Oldest-first batch of entries ready to send.
+  Future<List<OutboxEntry>> pendingBatch({int limit = 50}) {
     return (select(syncOutbox)
-          ..where(
-            (t) =>
-                t.status.equalsValue(OutboxStatus.pending) |
-                (t.status.equalsValue(OutboxStatus.inFlight) &
-                    (t.lastAttemptAt.isNull() |
-                        t.lastAttemptAt.isSmallerThanValue(cutoff))),
-          )
+          ..where((t) => t.status.equalsValue(OutboxStatus.pending))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
           ..limit(limit))
         .get();
-  }
-
-  /// Entries the server refused, oldest first — for the "didn't sync" details.
-  Stream<List<OutboxEntry>> watchFailed() {
-    return (select(syncOutbox)
-          ..where((t) => t.status.equalsValue(OutboxStatus.failed))
-          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
-        .watch();
-  }
-
-  /// Drop one entry without sending it (the person chose "Discard").
-  Future<void> discard(int id) {
-    return (delete(syncOutbox)..where((t) => t.id.equals(id))).go();
   }
 
   Future<OutboxEntry?> byMutationId(String mutationId) {
@@ -144,25 +117,11 @@ class SyncOutboxDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
-  /// Put failed entries back in the queue with a fresh attempt count (the old
-  /// count made a retried entry fail again at once). With [olderThan], only
-  /// entries last tried before then — the sync engine's periodic self-heal,
-  /// so a problem fixed on the server clears without anyone tapping Retry.
-  Future<int> requeueFailed({DateTime? olderThan}) {
-    final q = update(syncOutbox)
-      ..where((t) {
-        final failed = t.status.equalsValue(OutboxStatus.failed);
-        if (olderThan == null) return failed;
-        return failed &
-            (t.lastAttemptAt.isNull() |
-                t.lastAttemptAt.isSmallerThanValue(olderThan.toUtc()));
-      });
-    return q.write(
-      const SyncOutboxCompanion(
-        status: Value(OutboxStatus.pending),
-        attempts: Value(0),
-      ),
-    );
+  /// User asked to retry everything that had failed.
+  Future<void> requeueFailed() {
+    return (update(syncOutbox)
+          ..where((t) => t.status.equalsValue(OutboxStatus.failed)))
+        .write(const SyncOutboxCompanion(status: Value(OutboxStatus.pending)));
   }
 
   Future<void> clearForTenant(String tenantId) {
