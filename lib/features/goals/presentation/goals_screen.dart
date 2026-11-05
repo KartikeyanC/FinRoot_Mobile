@@ -51,19 +51,52 @@ class GoalsScreen extends ConsumerWidget {
           error: (e, _) => ErrorView(e),
           data: (list) => list.isEmpty
               ? _Empty(canWrite: canWrite)
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenGutter,
-                    AppSpacing.xs,
-                    AppSpacing.screenGutter,
-                    96,
+              // Long-press a goal to tick several and delete them together.
+              : BulkSelectScope(
+                  builder: (context, sel) => ListView(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.screenGutter,
+                      AppSpacing.xs,
+                      AppSpacing.screenGutter,
+                      96,
+                    ),
+                    children: [
+                      if (sel.active)
+                        SelectionBar(
+                          selection: sel,
+                          shown: [for (final g in list) g.id],
+                          onDelete: () => deleteSelected(
+                            context,
+                            selection: sel,
+                            one: 'goal',
+                            many: 'goals',
+                            message: "Money already set aside stays where it is. This can't be undone.",
+                            delete: ref
+                                .read(goalEditorControllerProvider)
+                                .delete,
+                          ),
+                        )
+                      else
+                        _Summary(goals: list),
+                      const SizedBox(height: AppSpacing.lg),
+                      for (var i = 0; i < list.length; i++)
+                        SelectableTile(
+                          key: ValueKey(list[i].id),
+                          selecting: sel.active,
+                          selected: sel.contains(list[i].id),
+                          onToggle: () => sel.toggle(list[i].id),
+                          onLongPress: canWrite
+                              ? () => sel.start(list[i].id)
+                              : null,
+                          label: list[i].title,
+                          child: _GoalCard(
+                            goal: list[i],
+                            index: i,
+                            canWrite: canWrite,
+                          ),
+                        ),
+                    ],
                   ),
-                  children: [
-                    _Summary(goals: list),
-                    const SizedBox(height: AppSpacing.lg),
-                    for (var i = 0; i < list.length; i++)
-                      _GoalCard(goal: list[i], index: i, canWrite: canWrite),
-                  ],
                 ),
         ),
       ),

@@ -207,6 +207,7 @@ class LedgerRow extends StatelessWidget {
     this.value,
     this.valueColor,
     this.valueKey,
+    this.valueLabel,
     this.detail,
     this.detailTag,
     this.detailRight,
@@ -224,6 +225,10 @@ class LedgerRow extends StatelessWidget {
   final String? value;
   final Color? valueColor;
   final Key? valueKey;
+
+  /// What a screen reader says for [value] ("Expense ₹200", not
+  /// "minus rupee sign 200").
+  final String? valueLabel;
   final String? detail;
 
   /// A small status widget after [detail] (an alarm tag, a "Due" pill).
@@ -286,6 +291,7 @@ class LedgerRow extends StatelessWidget {
               : Text(
                   value!,
                   key: valueKey,
+                  semanticsLabel: valueLabel,
                   style: main.copyWith(
                     color: valueColor ?? palette.ink,
                     fontFeatures: _tabular,
@@ -321,7 +327,9 @@ class LedgerRow extends StatelessWidget {
       button: true,
       selected: selecting ? selected : null,
       child: Material(
-        color: selected ? palette.accent.withValues(alpha: 0.10) : Colors.transparent,
+        color: selected
+            ? palette.accent.withValues(alpha: 0.10)
+            : Colors.transparent,
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
@@ -333,7 +341,7 @@ class LedgerRow extends StatelessWidget {
             child: selecting
                 ? Row(
                     children: [
-                      _Check(on: selected),
+                      SelectCheck(on: selected),
                       const SizedBox(width: AppSpacing.md),
                       Expanded(child: content),
                     ],
@@ -346,8 +354,9 @@ class LedgerRow extends StatelessWidget {
   }
 }
 
-class _Check extends StatelessWidget {
-  const _Check({required this.on});
+/// The tick circle that leads a row while its list is selecting.
+class SelectCheck extends StatelessWidget {
+  const SelectCheck({super.key, required this.on});
   final bool on;
 
   @override
@@ -360,7 +369,10 @@ class _Check extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: on ? palette.accent : Colors.transparent,
-        border: Border.all(color: on ? palette.accent : palette.faint, width: 2),
+        border: Border.all(
+          color: on ? palette.accent : palette.faint,
+          width: 2,
+        ),
       ),
       child: on
           ? const Icon(Icons.check_rounded, size: 15, color: Colors.white)

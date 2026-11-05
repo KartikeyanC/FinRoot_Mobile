@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/design.dart';
 import '../../accounts/presentation/wealth_kit.dart';
+import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
 import '../domain/holding_figures.dart';
 import '../domain/investment.dart';
@@ -42,6 +43,45 @@ class _HoldingsListState extends ConsumerState<HoldingsList> {
   /// The picked type; null is "All".
   String? _asset;
 
+  /// Rows ticked for a bulk delete (long-press one to start).
+  final _selection = BulkSelection();
+
+  @override
+  void initState() {
+    super.initState();
+    _selection.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    _selection
+      ..removeListener(_changed)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _changed() => setState(() {});
+
+  /// A grouped stock is one row but several purchases; deleting the row
+  /// deletes every purchase in it.
+  Future<void> _deleteSelected(Map<String, PortfolioItem> byKey) async {
+    final controller = ref.read(investmentEditorControllerProvider);
+    await deleteSelected(
+      context,
+      selection: _selection,
+      one: 'holding',
+      many: 'holdings',
+      message: "Every purchase in a grouped holding goes with it. This can't be undone.",
+      delete: (key) async {
+        final item = byKey[key];
+        if (item == null) return;
+        for (final r in recordsOf(item)) {
+          await controller.delete(r.id);
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final prices = ref.watch(holdingPricesProvider).value ?? const {};
@@ -54,14 +94,24 @@ class _HoldingsListState extends ConsumerState<HoldingsList> {
     final summary = summarisePortfolio(shown.expand(recordsOf), prices);
     final line = Divider(height: 1, thickness: 1, color: context.palette.line);
 
-    Widget row(PortfolioItem item) => HoldingRow(
-      key: ValueKey(switch (item) {
-        GroupedHolding(:final group) => 'g:${group.key}',
-        SingleHolding(:final record) => record.id,
-      }),
-      item: item,
-      canWrite: widget.canWrite,
-    );
+    String keyOf(PortfolioItem item) => switch (item) {
+      GroupedHolding(:final group) => 'g:${group.key}',
+      SingleHolding(:final record) => record.id,
+    };
+    final byKey = {for (final i in widget.items) keyOf(i): i};
+
+    Widget row(PortfolioItem item) {
+      final k = keyOf(item);
+      return HoldingRow(
+        key: ValueKey(k),
+        item: item,
+        canWrite: widget.canWrite,
+        selecting: _selection.active,
+        selected: _selection.contains(k),
+        onToggle: () => _selection.toggle(k),
+        onLongPress: widget.canWrite ? () => _selection.start(k) : null,
+      );
+    }
 
     // Tab 0 is All, then one per type, in the same order as the tab row.
     final index = asset == null
@@ -115,7 +165,15 @@ class _HoldingsListState extends ConsumerState<HoldingsList> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ?widget.header,
+              if (_selection.active) ...[
+                SelectionBar(
+                  selection: _selection,
+                  shown: [for (final i in shown) keyOf(i)],
+                  onDelete: () => _deleteSelected(byKey),
+                ),
+                const SizedBox(height: AppSpacing.md),
+              ] else
+                ?widget.header,
               if (types.length > 1) ...[
                 _TypeTabs(
                   total: widget.items.length,

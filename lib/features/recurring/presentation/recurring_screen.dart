@@ -189,15 +189,44 @@ class _RecurringList extends ConsumerWidget {
                 ),
               ],
             )
-          : ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: padding,
-              children: [
-                _Summary(items: items, income: income),
-                const SizedBox(height: AppSpacing.sm),
-                for (final item in items)
-                  _RecurringCard(item: item, canWrite: canWrite),
-              ],
+          // Long-press a card to tick several and remove them together.
+          : BulkSelectScope(
+              builder: (context, sel) => ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: padding,
+                children: [
+                  if (sel.active)
+                    SelectionBar(
+                      selection: sel,
+                      shown: [for (final i in items) i.id],
+                      onDelete: () => deleteSelected(
+                        context,
+                        selection: sel,
+                        one: income ? 'recurring income' : 'recurring expense',
+                        many: income
+                            ? 'recurring incomes'
+                            : 'recurring expenses',
+                        message: "Entries already logged from them stay. This can't be undone.",
+                        delete: ref
+                            .read(recurringEditorControllerProvider)
+                            .delete,
+                      ),
+                    )
+                  else
+                    _Summary(items: items, income: income),
+                  const SizedBox(height: AppSpacing.sm),
+                  for (final item in items)
+                    SelectableTile(
+                      key: ValueKey(item.id),
+                      selecting: sel.active,
+                      selected: sel.contains(item.id),
+                      onToggle: () => sel.toggle(item.id),
+                      onLongPress: canWrite ? () => sel.start(item.id) : null,
+                      label: item.name,
+                      child: _RecurringCard(item: item, canWrite: canWrite),
+                    ),
+                ],
+              ),
             ),
     );
   }
@@ -358,7 +387,9 @@ class _RecurringCard extends ConsumerWidget {
       await ref.read(recurringEditorControllerProvider).markGenerated(item.id);
       messenger.showSnackBar(
         SnackBar(
-          content: Text(item.isIncome ? 'Logged as received' : 'Logged as paid'),
+          content: Text(
+            item.isIncome ? 'Logged as received' : 'Logged as paid',
+          ),
         ),
       );
     } on Failure catch (f) {

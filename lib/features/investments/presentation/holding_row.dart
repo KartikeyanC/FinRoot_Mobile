@@ -28,11 +28,26 @@ import 'investment_form_sheet.dart';
 /// on the row (it pushed the right edge in): tap the row for the detail
 /// sheet — LTP, the price alert, each purchase, Edit and Delete. Nothing is
 /// ever cut off; a long name or a large text size wraps instead.
+///
+/// Long-press ticks it for a bulk delete ([onLongPress]); while its list is
+/// [selecting], a check circle leads the row and a tap toggles it.
 class HoldingRow extends ConsumerWidget {
-  const HoldingRow({super.key, required this.item, required this.canWrite});
+  const HoldingRow({
+    super.key,
+    required this.item,
+    required this.canWrite,
+    this.selecting = false,
+    this.selected = false,
+    this.onToggle,
+    this.onLongPress,
+  });
 
   final PortfolioItem item;
   final bool canWrite;
+  final bool selecting;
+  final bool selected;
+  final VoidCallback? onToggle;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -60,125 +75,150 @@ class HoldingRow extends ConsumerWidget {
 
     return Semantics(
       button: true,
-      child: InkWell(
-        onTap: () => showHoldingSheet(
-          context,
-          item: item,
-          canWrite: canWrite,
-          onEdit: (r) => openInvestmentForm(context, editing: r),
-          onDelete: (r, what) => deleteHolding(context, ref, r, what),
-          onNeedTicker: () => _needTicker(context, h.record),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.screenGutter,
-            vertical: AppSpacing.md,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Qty and average price | return on what was paid.
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      top.isEmpty ? assetLabel(h.asset) : top.join('  •  '),
-                      style: muted,
-                    ),
-                  ),
+      selected: selecting ? selected : null,
+      child: Material(
+        color: selected
+            ? palette.accent.withValues(alpha: 0.10)
+            : Colors.transparent,
+        child: InkWell(
+          onLongPress: onLongPress,
+          onTap: selecting
+              ? onToggle
+              : () => showHoldingSheet(
+                  context,
+                  item: item,
+                  canWrite: canWrite,
+                  onEdit: (r) => openInvestmentForm(context, editing: r),
+                  onDelete: (r, what) => deleteHolding(context, ref, r, what),
+                  onNeedTicker: () => _needTicker(context, h.record),
+                ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.screenGutter,
+              vertical: AppSpacing.md,
+            ),
+            child: Row(
+              children: [
+                if (selecting) ...[
+                  SelectCheck(on: selected),
                   const SizedBox(width: AppSpacing.md),
-                  Text(
-                    signedPct(h.returnPct),
-                    key: const Key('holding-pct'),
-                    style: muted.copyWith(
-                      color: gainColor,
-                      fontWeight: FontWeight.w600,
-                      fontFeatures: tabular,
-                    ),
-                  ),
                 ],
-              ),
-              const SizedBox(height: 6),
-              // Name | profit.
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      h.name,
-                      style: AppTypography.bodyStrong.copyWith(
-                        color: palette.ink,
-                        fontSize: 16,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Qty and average price | return on what was paid.
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              top.isEmpty
+                                  ? assetLabel(h.asset)
+                                  : top.join('  •  '),
+                              style: muted,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Text(
+                            signedPct(h.returnPct),
+                            key: const Key('holding-pct'),
+                            style: muted.copyWith(
+                              color: gainColor,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: tabular,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Text(
-                    signedAmount(h.gain, h.currency),
-                    key: const Key('holding-gain'),
-                    style: AppTypography.bodyStrong.copyWith(
-                      color: gainColor,
-                      fontSize: 16,
-                      fontFeatures: tabular,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              // Invested (+ alarm tag) | total = invested + profit. Total
-              // stays on the Invested line when the tag wraps below it.
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: AppSpacing.sm,
-                      runSpacing: 2,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: 'Invt. ',
-                                semanticsLabel: 'Invested ',
-                                style: muted,
+                      const SizedBox(height: 6),
+                      // Name | profit.
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              h.name,
+                              style: AppTypography.bodyStrong.copyWith(
+                                color: palette.ink,
+                                fontSize: 16,
                               ),
-                              TextSpan(
-                                text: plainAmount(h.invested, h.currency),
-                                style: strong,
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                        if (h.canAlert)
-                          HoldingAlarmTag(
-                            symbol: h.symbol,
-                            name: h.name,
-                            currency: h.currency,
-                            canWrite: canWrite,
-                            onNeedTicker: () => _needTicker(context, h.record),
+                          const SizedBox(width: AppSpacing.md),
+                          Text(
+                            signedAmount(h.gain, h.currency),
+                            key: const Key('holding-gain'),
+                            style: AppTypography.bodyStrong.copyWith(
+                              color: gainColor,
+                              fontSize: 16,
+                              fontFeatures: tabular,
+                            ),
                           ),
-                      ],
-                    ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // Invested (+ alarm tag) | total = invested + profit. Total
+                      // stays on the Invested line when the tag wraps below it.
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Wrap(
+                              spacing: AppSpacing.sm,
+                              runSpacing: 2,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text.rich(
+                                  TextSpan(
+                                    children: [
+                                      TextSpan(
+                                        text: 'Invt. ',
+                                        semanticsLabel: 'Invested ',
+                                        style: muted,
+                                      ),
+                                      TextSpan(
+                                        text: plainAmount(
+                                          h.invested,
+                                          h.currency,
+                                        ),
+                                        style: strong,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (h.canAlert)
+                                  HoldingAlarmTag(
+                                    symbol: h.symbol,
+                                    name: h.name,
+                                    currency: h.currency,
+                                    canWrite: canWrite,
+                                    onNeedTicker: () =>
+                                        _needTicker(context, h.record),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Text.rich(
+                            key: const Key('holding-total'),
+                            TextSpan(
+                              children: [
+                                TextSpan(text: 'Total ', style: muted),
+                                TextSpan(
+                                  text: plainAmount(h.current, h.currency),
+                                  style: strong,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: AppSpacing.md),
-                  Text.rich(
-                    key: const Key('holding-total'),
-                    TextSpan(
-                      children: [
-                        TextSpan(text: 'Total ', style: muted),
-                        TextSpan(
-                          text: plainAmount(h.current, h.currency),
-                          style: strong,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:finroot_mobile/core/money/money.dart';
 import 'package:finroot_mobile/design/design.dart';
 import 'package:finroot_mobile/domain/constants.dart';
+import 'package:finroot_mobile/features/quick_add/application/quick_add_controller.dart';
 import 'package:finroot_mobile/features/transactions/application/transactions_providers.dart';
 import 'package:finroot_mobile/features/transactions/domain/transaction.dart';
 import 'package:finroot_mobile/features/transactions/presentation/transactions_screen.dart';
@@ -25,9 +26,20 @@ TransactionEntity _txn(
 
 Widget _host(List<TransactionEntity> ledger) {
   return ProviderScope(
-    overrides: [ledgerProvider.overrideWith((ref) => Stream.value(ledger))],
+    overrides: [
+      currentRoleProvider.overrideWithValue(WorkspaceRole.owner),
+      ledgerProvider.overrideWith((ref) => Stream.value(ledger)),
+    ],
     child: MaterialApp(theme: AppTheme.light, home: const TransactionsScreen()),
   );
+}
+
+class _FakeQuickAdd extends QuickAddController {
+  _FakeQuickAdd(super.ref);
+  final deleted = <String>[];
+
+  @override
+  Future<void> deleteTransaction(String id) async => deleted.add(id);
 }
 
 void _tablet(WidgetTester tester) {
@@ -101,5 +113,81 @@ void main() {
       findsNothing,
     );
     expect(find.widgetWithText(OutlinedButton, 'Delete'), findsOneWidget);
+  });
+
+  testWidgets('long-press ticks rows; Delete removes them after one confirm', (
+    tester,
+  ) async {
+    late _FakeQuickAdd fake;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentRoleProvider.overrideWithValue(WorkspaceRole.owner),
+          ledgerProvider.overrideWith(
+            (ref) => Stream.value([
+              _txn('a', note: 'Groceries'),
+              _txn('b', note: 'Fuel'),
+              _txn('c', note: 'Lunch'),
+            ]),
+          ),
+          quickAddControllerProvider.overrideWith(
+            (ref) => fake = _FakeQuickAdd(ref),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const TransactionsScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.longPress(find.text('Groceries'));
+    await tester.pump();
+    expect(find.text('1 selected'), findsOneWidget);
+    expect(
+      find.text('All'),
+      findsNothing,
+      reason: 'the bar replaces the chips',
+    );
+
+    await tester.tap(find.text('Fuel'));
+    await tester.pump();
+    expect(find.text('2 selected'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete 2 transactions?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete').last);
+    await tester.pumpAndSettle();
+
+    expect(fake.deleted, unorderedEquals(['a', 'b']));
+    expect(find.text('Deleted 2 transactions'), findsOneWidget);
+    expect(find.text('All'), findsOneWidget, reason: 'selecting has ended');
+  });
+
+  testWidgets('a viewer cannot start selecting', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentRoleProvider.overrideWithValue(WorkspaceRole.viewer),
+          ledgerProvider.overrideWith(
+            (ref) => Stream.value([_txn('a', note: 'Groceries')]),
+          ),
+          // A long-press with nothing to select falls through to opening it.
+          transactionByIdProvider(
+            'a',
+          ).overrideWith((ref) => Stream.value(_txn('a', note: 'Groceries'))),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const TransactionsScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.longPress(find.text('Groceries'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 selected'), findsNothing);
   });
 }

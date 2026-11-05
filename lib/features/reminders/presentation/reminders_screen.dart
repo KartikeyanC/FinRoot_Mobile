@@ -68,13 +68,17 @@ class RemindersScreen extends ConsumerWidget {
   }
 }
 
-class _RemindersList extends StatelessWidget {
+/// Long-press a reminder to tick several and delete them together.
+class _RemindersList extends ConsumerWidget {
   const _RemindersList({required this.list, required this.canWrite});
   final List<Reminder> list;
   final bool canWrite;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) =>
+      BulkSelectScope(builder: (context, sel) => _build(context, ref, sel));
+
+  Widget _build(BuildContext context, WidgetRef ref, BulkSelection sel) {
     final sorted = [...list]..sort((a, b) => a.dueDate.compareTo(b.dueDate));
     final open = sorted.where((r) => !r.isCompleted).toList();
     final overdue = open.where((r) => r.daysUntilDue() < 0).toList();
@@ -93,7 +97,15 @@ class _RemindersList extends StatelessWidget {
             children: [
               SectionTitle(title),
               for (final r in items)
-                _ReminderCard(reminder: r, canWrite: canWrite),
+                SelectableTile(
+                  key: ValueKey(r.id),
+                  selecting: sel.active,
+                  selected: sel.contains(r.id),
+                  onToggle: () => sel.toggle(r.id),
+                  onLongPress: canWrite ? () => sel.start(r.id) : null,
+                  label: r.title,
+                  child: _ReminderCard(reminder: r, canWrite: canWrite),
+                ),
             ],
           );
 
@@ -106,15 +118,28 @@ class _RemindersList extends StatelessWidget {
         96,
       ),
       children: [
-        StatStrip([
-          Stat('${week.length}', 'Due this week'),
-          Stat(
-            '${overdue.length}',
-            'Overdue',
-            color: overdue.isEmpty ? null : finance.expense,
-          ),
-          Stat('${later.length}', 'Upcoming'),
-        ]),
+        if (sel.active)
+          SelectionBar(
+            selection: sel,
+            shown: [for (final r in sorted) r.id],
+            onDelete: () => deleteSelected(
+              context,
+              selection: sel,
+              one: 'reminder',
+              many: 'reminders',
+              delete: ref.read(remindersEditorControllerProvider).delete,
+            ),
+          )
+        else
+          StatStrip([
+            Stat('${week.length}', 'Due this week'),
+            Stat(
+              '${overdue.length}',
+              'Overdue',
+              color: overdue.isEmpty ? null : finance.expense,
+            ),
+            Stat('${later.length}', 'Upcoming'),
+          ]),
         group('Overdue', overdue),
         group('This week', week),
         group('Later', later),

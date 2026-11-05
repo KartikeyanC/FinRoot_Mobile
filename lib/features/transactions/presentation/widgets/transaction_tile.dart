@@ -43,7 +43,7 @@ class TransactionTile extends StatelessWidget {
         AmountText.money(txn.amount, type: txn.type),
         if (txn.isPending || txn.hasFailedSync) ...[
           const SizedBox(height: 4),
-          _SyncPill(failed: txn.hasFailedSync),
+          TxnSyncPill(failed: txn.hasFailedSync),
         ],
       ],
     );
@@ -74,7 +74,9 @@ class TransactionTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: AppSpacing.minTouchTarget),
+          constraints: const BoxConstraints(
+            minHeight: AppSpacing.minTouchTarget,
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
             child: Row(
@@ -128,8 +130,10 @@ class TransactionTile extends StatelessWidget {
   }
 }
 
-class _SyncPill extends StatelessWidget {
-  const _SyncPill({required this.failed});
+/// "Pending" / "Not synced" — shown on a row whose change has not reached
+/// the server yet.
+class TxnSyncPill extends StatelessWidget {
+  const TxnSyncPill({super.key, required this.failed});
   final bool failed;
 
   @override
