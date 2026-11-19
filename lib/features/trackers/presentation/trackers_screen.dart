@@ -232,21 +232,32 @@ class _TrackerCard extends StatelessWidget {
                           fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        t.txnCount == 1
-                            ? '1 transaction'
-                            : '${t.txnCount} transactions',
-                        style: AppTypography.label.copyWith(
-                          color: palette.muted,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      const SizedBox(height: 4),
+                      // The status pill sits under the title, beside the
+                      // count, so the title gets the card's full width.
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            t.txnCount == 1
+                                ? '1 transaction'
+                                : '${t.txnCount} transactions',
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.label.copyWith(
+                              color: palette.muted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          TrackerStatusPill(t),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                TrackerStatusPill(t),
               ],
             ),
             const SizedBox(height: AppSpacing.lg),

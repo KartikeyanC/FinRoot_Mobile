@@ -6,6 +6,7 @@ import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
 import 'app_card.dart';
 import 'gradient_fab.dart';
+import 'hit_slop.dart';
 
 /// The NineFlow screen vocabulary for the phone app. Every screen is built
 /// from these so the app reads as one system:
@@ -87,52 +88,57 @@ class AppPage extends StatelessWidget {
                 AppSpacing.screenGutter,
                 AppSpacing.sm,
               ),
-              child: Row(
-                children: [
-                  if (back) ...[
-                    RoundIconButton(
-                      icon: Icons.arrow_back_rounded,
-                      tooltip: 'Back',
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    ),
-                    const SizedBox(width: AppSpacing.md),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (eyebrow != null) Eyebrow(eyebrow!),
-                        Semantics(
-                          header: true,
-                          child: Text(
-                            title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.display.copyWith(
-                              color: palette.ink,
-                              fontSize: back ? 24 : 30,
-                              height: back ? 32 / 24 : 36 / 30,
-                            ),
-                          ),
-                        ),
-                        if (subtitle != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
+              // HitSlop lets the 48dp band of the round buttons reach past a
+              // 40dp-tall row.
+              child: HitSlop(
+                margin: const EdgeInsets.all(4),
+                child: Row(
+                  children: [
+                    if (back) ...[
+                      RoundIconButton(
+                        icon: Icons.arrow_back_rounded,
+                        tooltip: 'Back',
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (eyebrow != null) Eyebrow(eyebrow!),
+                          Semantics(
+                            header: true,
                             child: Text(
-                              subtitle!,
-                              style: AppTypography.body.copyWith(
-                                color: palette.muted,
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.display.copyWith(
+                                color: palette.ink,
+                                fontSize: back ? 24 : 30,
+                                height: back ? 32 / 24 : 36 / 30,
                               ),
                             ),
                           ),
-                      ],
+                          if (subtitle != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                subtitle!,
+                                style: AppTypography.body.copyWith(
+                                  color: palette.muted,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  for (final a in actions) ...[
-                    const SizedBox(width: AppSpacing.sm),
-                    a,
+                    for (final a in actions) ...[
+                      const SizedBox(width: AppSpacing.sm),
+                      a,
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             if (header != null)
@@ -163,7 +169,7 @@ class AppPage extends StatelessWidget {
 }
 
 /// A 40dp round icon button on the card colour with a hairline: back, close,
-/// search, the small controls in a title row.
+/// search, the small controls in a title row. Its tap target is 48dp.
 class RoundIconButton extends StatelessWidget {
   const RoundIconButton({
     super.key,
@@ -181,18 +187,23 @@ class RoundIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: palette.card,
-        shape: CircleBorder(side: BorderSide(color: palette.line)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          customBorder: const CircleBorder(),
-          child: SizedBox.square(
-            dimension: size,
-            child: Icon(icon, size: 20, color: palette.ink),
+    // Drawn at [size] but answers taps (and reports to accessibility) at
+    // 48dp, without taking more room in the layout.
+    return HitSlop(
+      expandSemantics: true,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: palette.card,
+          shape: CircleBorder(side: BorderSide(color: palette.line)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            customBorder: const CircleBorder(),
+            child: SizedBox.square(
+              dimension: size,
+              child: Icon(icon, size: 20, color: palette.ink),
+            ),
           ),
         ),
       ),

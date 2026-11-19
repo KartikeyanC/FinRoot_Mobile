@@ -87,7 +87,7 @@ const kMoreEntries = <MoreEntry>[
     menu: FeatureMenu.investments,
   ),
   MoreEntry(
-    'Net Worth',
+    'Net worth',
     Icons.balance_outlined,
     '/net-worth',
     menu: FeatureMenu.netWorth,

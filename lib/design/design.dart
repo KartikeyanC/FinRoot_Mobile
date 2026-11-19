@@ -12,6 +12,7 @@ export 'components/bulk_select.dart';
 export 'components/button_styles.dart';
 export 'components/content_bounds.dart';
 export 'components/gradient_fab.dart';
+export 'components/hit_slop.dart';
 export 'components/ledger_kit.dart';
 export 'components/nineflow_kit.dart';
 export 'components/placeholder_screen.dart';

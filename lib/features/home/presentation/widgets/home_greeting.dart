@@ -31,18 +31,32 @@ class HomeGreeting extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            if (workspace != null)
-              Flexible(
-                child: _WorkspacePill(
-                  name: workspace,
-                  onTap: count > 1 ? () => showWorkspaceSwitcher(context) : null,
+        // The pill takes the room it needs; the sync chip keeps its natural
+        // width (capped, so a long sync message ellipsizes instead) and the
+        // pill only ellipsizes when the two truly don't fit.
+        LayoutBuilder(
+          builder: (context, c) => HitSlop(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                if (workspace != null) ...[
+                  Flexible(
+                    child: _WorkspacePill(
+                      name: workspace,
+                      onTap: count > 1
+                          ? () => showWorkspaceSwitcher(context)
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                ],
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: c.maxWidth * 0.45),
+                  child: const SyncStatusChip(),
                 ),
-              ),
-            const SizedBox(width: AppSpacing.md),
-            const Flexible(child: SyncStatusChip()),
-          ],
+              ],
+            ),
+          ),
         ),
         const SizedBox(height: AppSpacing.xl),
         Semantics(
@@ -92,53 +106,57 @@ class _WorkspacePill extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
-    return Semantics(
-      button: onTap != null,
-      label: 'Workspace $name',
-      child: Material(
-        color: palette.card,
-        shape: StadiumBorder(side: BorderSide(color: palette.line)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: palette.gradient,
-                  ),
-                  child: Text(
-                    initial,
-                    style: AppTypography.label.copyWith(color: Colors.white),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Flexible(
-                  child: Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodyStrong.copyWith(
-                      color: palette.ink,
+    // Drawn 40dp tall; answers taps at 48dp.
+    return HitSlop(
+      expandSemantics: true,
+      child: Semantics(
+        button: onTap != null,
+        label: 'Workspace $name',
+        child: Material(
+          color: palette.card,
+          shape: StadiumBorder(side: BorderSide(color: palette.line)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: palette.gradient,
+                    ),
+                    child: Text(
+                      initial,
+                      style: AppTypography.label.copyWith(color: Colors.white),
                     ),
                   ),
-                ),
-                if (onTap != null) ...[
-                  const SizedBox(width: 2),
-                  Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    size: 18,
-                    color: palette.muted,
+                  const SizedBox(width: AppSpacing.sm),
+                  Flexible(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodyStrong.copyWith(
+                        color: palette.ink,
+                      ),
+                    ),
                   ),
+                  if (onTap != null) ...[
+                    const SizedBox(width: 2),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: palette.muted,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

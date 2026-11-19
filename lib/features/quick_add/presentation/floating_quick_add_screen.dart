@@ -284,7 +284,9 @@ class _FloatingQuickAddScreenState
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Row(
+                          HitSlop(
+                            margin: const EdgeInsets.all(4),
+                            child: Row(
                             children: [
                               Expanded(
                                 child: Text(
@@ -301,6 +303,7 @@ class _FloatingQuickAddScreenState
                                 onPressed: _saving ? null : _close,
                               ),
                             ],
+                          ),
                           ),
                           const SizedBox(height: AppSpacing.md),
                           const _SectionLabel('Category'),
@@ -343,15 +346,29 @@ class _FloatingQuickAddScreenState
                             const SizedBox(height: AppSpacing.lg),
                             const _SectionLabel('Subcategory · optional'),
                             const SizedBox(height: AppSpacing.sm),
-                            // One left-aligned row that scrolls: a part-hidden last
-                            // chip at the edge says "there is more", and the row
-                            // never pushes Save off a small screen.
+                            // One left-aligned row that scrolls and fades at the
+                            // right edge (as FilterPills does), so the last chip
+                            // reads as "there is more" rather than cut off, and
+                            // the row never pushes Save off a small screen.
                             SizedBox(
                               height: MediaQuery.textScalerOf(context)
                                   .scale(40)
                                   .clamp(40, 56),
-                              child: ListView(
+                              child: ShaderMask(
+                                blendMode: BlendMode.dstIn,
+                                shaderCallback: (r) => const LinearGradient(
+                                  colors: [
+                                    Colors.black,
+                                    Colors.black,
+                                    Colors.transparent,
+                                  ],
+                                  stops: [0, 0.88, 1],
+                                ).createShader(r),
+                                child: ListView(
                                 scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.only(
+                                  right: AppSpacing.xxl,
+                                ),
                                 children: [
                                   for (final sub in subs)
                                     Padding(
@@ -401,6 +418,7 @@ class _FloatingQuickAddScreenState
                                         : () => _addSub(group),
                                   ),
                                 ],
+                              ),
                               ),
                             ),
                           ],

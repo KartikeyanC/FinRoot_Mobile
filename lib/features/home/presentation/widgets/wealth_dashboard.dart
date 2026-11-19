@@ -101,7 +101,7 @@ class WealthDashboard extends ConsumerWidget {
             ),
           ),
         gap,
-        StatStrip([
+        _MonthStats([
           Stat(MoneyFormat.short(income), 'Income', color: context.finance.income),
           Stat(MoneyFormat.short(expense), 'Spent', color: context.finance.expense),
           Stat(
@@ -133,6 +133,122 @@ class WealthDashboard extends ConsumerWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+// ─────────────────────────── month stats ───────────────────────────
+
+/// The month's figures as one [StatStrip] when all four fit at full size,
+/// else a 2×2 card so a narrow phone or large text never shrinks the money
+/// figures or cuts a label short.
+class _MonthStats extends StatelessWidget {
+  const _MonthStats(this.stats);
+
+  final List<Stat> stats;
+
+  static final _valueStyle = AppTypography.display.copyWith(
+    fontSize: 24,
+    height: 30 / 24,
+    fontFeatures: const [FontFeature.tabularFigures()],
+  );
+  static final _labelStyle = AppTypography.label.copyWith(
+    fontWeight: FontWeight.w500,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    double width(String text, TextStyle style) {
+      final p = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final w = p.width;
+      p.dispose();
+      return w;
+    }
+
+    // Each column needs its widest line plus the strip's 6dp side padding.
+    final need = stats
+        .map(
+          (s) => math.max(width(s.value, _valueStyle), width(s.label, _labelStyle)) + 12,
+        )
+        .reduce(math.max);
+    return LayoutBuilder(
+      builder: (context, c) {
+        // StatStrip: 8dp card padding each side and a 1dp hairline per gap.
+        final column =
+            (c.maxWidth - AppSpacing.sm * 2 - (stats.length - 1)) / stats.length;
+        if (stats.length < 4 || need <= column) return StatStrip(stats);
+        return _StatGrid(stats);
+      },
+    );
+  }
+}
+
+class _StatGrid extends StatelessWidget {
+  const _StatGrid(this.stats);
+
+  final List<Stat> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    Widget cell(Stat s) => Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                s.value,
+                style: _MonthStats._valueStyle.copyWith(
+                  color: s.color ?? palette.ink,
+                ),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              s.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: _MonthStats._labelStyle.copyWith(color: palette.muted),
+            ),
+          ],
+        ),
+      ),
+    );
+    final rows = [
+      for (var i = 0; i < stats.length; i += 2)
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              cell(stats[i]),
+              VerticalDivider(width: 1, color: palette.line),
+              if (i + 1 < stats.length) cell(stats[i + 1]) else const Spacer(),
+            ],
+          ),
+        ),
+    ];
+    return AppCard(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppSpacing.lg,
+        horizontal: AppSpacing.sm,
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(height: AppSpacing.xxl, color: palette.line),
+            rows[i],
+          ],
+        ],
+      ),
     );
   }
 }

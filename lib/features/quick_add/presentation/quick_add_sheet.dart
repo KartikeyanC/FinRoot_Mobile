@@ -654,6 +654,37 @@ class _KindSwitch extends StatelessWidget {
       (QuickAddKind.income, 'Income', Icons.north_east_rounded),
       (QuickAddKind.transfer, 'Transfer', Icons.swap_horiz_rounded),
     ];
+    // The arrows go when the widest label plus its icon would not fit a third
+    // of the track with room to spare (a 360dp phone at 1.3x text), so the
+    // labels keep their size instead of filling the pill edge to edge.
+    final scaler = MediaQuery.textScalerOf(context);
+    var widest = 0.0;
+    for (final (_, label, _) in items) {
+      final p = TextPainter(
+        text: TextSpan(text: label, style: AppTypography.bodyStrong),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      if (p.width > widest) widest = p.width;
+      p.dispose();
+    }
+    return LayoutBuilder(
+      builder: (context, c) {
+        // Track padding 4 + segment padding 4 on each side.
+        final segment = (c.maxWidth - 8) / 3 - 8;
+        final showIcons = widest + 16 + 4 + 24 <= segment;
+        return _track(context, palette, items, showIcons);
+      },
+    );
+  }
+
+  Widget _track(
+    BuildContext context,
+    AppPalette palette,
+    List<(QuickAddKind, String, IconData)> items,
+    bool showIcons,
+  ) {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: ShapeDecoration(
@@ -688,14 +719,16 @@ class _KindSwitch extends StatelessWidget {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(
-                              icon,
-                              size: 16,
-                              color: kind == value
-                                  ? Colors.white
-                                  : palette.muted,
-                            ),
-                            const SizedBox(width: 4),
+                            if (showIcons) ...[
+                              Icon(
+                                icon,
+                                size: 16,
+                                color: kind == value
+                                    ? Colors.white
+                                    : palette.muted,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
                             Flexible(
                               child: _SegmentLabel(
                                 label,

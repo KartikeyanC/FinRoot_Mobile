@@ -334,25 +334,28 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenGutter,
-        AppSpacing.sm,
-        AppSpacing.screenGutter,
-        AppSpacing.huge,
-      ),
-      children: [
-        CardEmpty(
-          icon: Icons.notifications_none_rounded,
-          title: 'No reminders yet',
-          message:
-              'Start with a bill, like your credit card due on the 5th. '
-              'FinRoot nudges you before it is due.',
-          actionLabel: canWrite ? 'Add reminder' : null,
-          onAction: canWrite ? () => openReminderForm(context) : null,
+    // Centred like Goals and Investments; the outer scroll view keeps
+    // pull-to-refresh working on an empty list.
+    return LayoutBuilder(
+      builder: (context, c) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: c.maxHeight),
+          child: EmptyView(
+            icon: Icons.notifications_none_rounded,
+            title: 'No reminders yet',
+            message:
+                'Start with a bill, like your credit card due on the 5th. '
+                'FinRoot nudges you before it is due.',
+            action: canWrite
+                ? FilledButton(
+                    onPressed: () => openReminderForm(context),
+                    child: const Text('Add reminder'),
+                  )
+                : null,
+          ),
         ),
-      ],
+      ),
     );
   }
 }
