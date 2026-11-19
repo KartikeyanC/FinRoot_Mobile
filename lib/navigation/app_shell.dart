@@ -102,7 +102,7 @@ class AppShell extends StatelessWidget {
 /// Finds the phone dock in tests.
 const kBottomDockKey = ValueKey('bottom-dock');
 
-/// Phones: a floating dark capsule. Inactive tabs are graphite circles with
+/// Phones: a floating dark capsule, no shadow. Inactive tabs are graphite circles with
 /// an outline icon; the active tab grows into a white pill with its icon and
 /// name. The gradient "+" sits in the middle slot.
 class _BottomBar extends StatelessWidget {
@@ -151,13 +151,6 @@ class _BottomBar extends StatelessWidget {
               decoration: const ShapeDecoration(
                 color: _dock,
                 shape: StadiumBorder(),
-                shadows: [
-                  BoxShadow(
-                    color: Color(0x40000000),
-                    blurRadius: 18,
-                    offset: Offset(0, 6),
-                  ),
-                ],
               ),
               child: Padding(
                 padding: const EdgeInsets.all(_ring),
