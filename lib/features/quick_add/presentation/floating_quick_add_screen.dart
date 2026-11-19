@@ -6,8 +6,10 @@ import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../data/local/database_providers.dart';
 import '../../../design/design.dart';
+import '../../../domain/constants.dart';
 import '../../sync/application/background_sync.dart';
 import '../../sync/application/sync_engine.dart';
+import '../../transactions/presentation/widgets/category_style.dart';
 import '../application/quick_add_controller.dart';
 import '../data/custom_categories.dart';
 import '../data/custom_subcategories.dart';
@@ -22,21 +24,30 @@ const floatingQuickAddPath = '/quick-add-float';
 /// One of the six quick categories, and what it saves as. FinRoot has no
 /// "Grocery" or "Bills" category, so those map onto the nearest existing
 /// one, with a note where the mapping loses information.
+///
+/// [icon] matches the icon the ledger shows for [category] (see
+/// [CategoryStyle]), except Grocery, which gets a basket so it does not read
+/// as a second Food tile.
 class QuickCategory {
-  const QuickCategory(this.emoji, this.label, this.category, [this.note]);
-  final String emoji;
+  const QuickCategory(this.icon, this.label, this.category, [this.note]);
+  final IconData icon;
   final String label;
   final String category;
   final String? note;
 }
 
 const quickCategories = [
-  QuickCategory('🍔', 'Food', 'Food & Dining'),
-  QuickCategory('🚕', 'Travel', 'Travel'),
-  QuickCategory('🛒', 'Grocery', 'Food & Dining', 'Groceries'),
-  QuickCategory('🛍️', 'Shopping', 'Shopping'),
-  QuickCategory('⚡', 'Bills', 'Utilities'),
-  QuickCategory('🍿', 'Entertainment', 'Entertainment'),
+  QuickCategory(Icons.restaurant_rounded, 'Food', 'Food & Dining'),
+  QuickCategory(Icons.flight_takeoff_rounded, 'Travel', 'Travel'),
+  QuickCategory(
+    Icons.local_grocery_store_rounded,
+    'Grocery',
+    'Food & Dining',
+    'Groceries',
+  ),
+  QuickCategory(Icons.shopping_bag_rounded, 'Shopping', 'Shopping'),
+  QuickCategory(Icons.bolt_rounded, 'Bills', 'Utilities'),
+  QuickCategory(Icons.movie_rounded, 'Entertainment', 'Entertainment'),
 ];
 
 /// What a save with no pill picked is filed under.
@@ -210,8 +221,8 @@ class _FloatingQuickAddScreenState
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
+    final finance = context.finance;
     final pickedCategory = _custom ?? _category?.category;
     final pickedLabel = _custom ?? _category?.label;
     final group = pickedCategory == null
@@ -243,7 +254,11 @@ class _FloatingQuickAddScreenState
           Positioned.fill(
             child: GestureDetector(
               onTap: _saving ? null : _close,
-              child: const ColoredBox(color: Color(0x99000000)),
+              child: ColoredBox(
+                color: palette.shadow.withValues(
+                  alpha: palette.isDark ? 0.7 : 0.55,
+                ),
+              ),
             ),
           ),
           SafeArea(
@@ -254,14 +269,13 @@ class _FloatingQuickAddScreenState
                 ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
-                  child: Card(
-                    elevation: 8,
+                  child: _Panel(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.xl,
                         AppSpacing.lg,
-                        AppSpacing.sm,
                         AppSpacing.lg,
-                        AppSpacing.lg,
+                        AppSpacing.xl,
                       ),
                       // Every block shares the card's one left edge; nothing is
                       // centred except the amount, so rows of different length
@@ -274,52 +288,68 @@ class _FloatingQuickAddScreenState
                             children: [
                               Expanded(
                                 child: Text(
-                                  '⚡ Quick Log',
-                                  style: tt.titleMedium,
+                                  'Quick log',
+                                  style: AppTypography.title.copyWith(
+                                    color: palette.ink,
+                                  ),
                                 ),
                               ),
-                              IconButton(
+                              const SizedBox(width: AppSpacing.sm),
+                              RoundIconButton(
+                                icon: Icons.close_rounded,
                                 tooltip: 'Close',
-                                icon: const Icon(Icons.close),
                                 onPressed: _saving ? null : _close,
                               ),
                             ],
                           ),
+                          const SizedBox(height: AppSpacing.md),
                           const _SectionLabel('Category'),
-                          const SizedBox(height: AppSpacing.xs),
+                          const SizedBox(height: AppSpacing.sm),
                           _CategoryGrid(
                             children: [
                               for (final c in quickCategories)
                                 _CategoryTile(
-                                  emoji: c.emoji,
+                                  icon: c.icon,
+                                  style: CategoryStyle.of(
+                                    context,
+                                    c.category,
+                                    TxnType.expense,
+                                  ),
                                   label: c.label,
                                   selected: identical(c, _category),
                                   onTap: () => _pickQuick(c),
                                 ),
                               for (final name in customs)
                                 _CategoryTile(
-                                  emoji: '🏷️',
+                                  style: CategoryStyle.of(
+                                    context,
+                                    name,
+                                    TxnType.expense,
+                                  ),
                                   label: name,
                                   selected: name == _custom,
                                   onTap: () => _pickCustom(name),
                                 ),
                               _CategoryTile(
-                                icon: Icons.add,
+                                icon: Icons.add_rounded,
                                 label: 'Add category',
+                                isAdd: true,
                                 selected: false,
                                 onTap: _saving ? null : _addCategory,
                               ),
                             ],
                           ),
                           if (group != null) ...[
-                            const SizedBox(height: AppSpacing.md),
+                            const SizedBox(height: AppSpacing.lg),
                             const _SectionLabel('Subcategory · optional'),
-                            const SizedBox(height: AppSpacing.xs),
+                            const SizedBox(height: AppSpacing.sm),
                             // One left-aligned row that scrolls: a part-hidden last
                             // chip at the edge says "there is more", and the row
                             // never pushes Save off a small screen.
                             SizedBox(
-                              height: 40,
+                              height: MediaQuery.textScalerOf(context)
+                                  .scale(40)
+                                  .clamp(40, 56),
                               child: ListView(
                                 scrollDirection: Axis.horizontal,
                                 children: [
@@ -331,14 +361,39 @@ class _FloatingQuickAddScreenState
                                       child: ChoiceChip(
                                         label: Text(sub),
                                         selected: sub == _sub,
+                                        showCheckmark: false,
+                                        selectedColor: palette.tint,
+                                        backgroundColor: palette.card,
+                                        side: BorderSide(
+                                          color: sub == _sub
+                                              ? palette.accent
+                                              : palette.line,
+                                        ),
+                                        labelStyle: AppTypography.label
+                                            .copyWith(
+                                              fontSize: 13,
+                                              color: sub == _sub
+                                                  ? palette.accentText
+                                                  : palette.ink,
+                                            ),
                                         onSelected: (on) => setState(
                                           () => _sub = on ? sub : null,
                                         ),
                                       ),
                                     ),
                                   ActionChip(
-                                    avatar: const Icon(Icons.add, size: 18),
+                                    avatar: Icon(
+                                      Icons.add_rounded,
+                                      size: 18,
+                                      color: palette.accentText,
+                                    ),
                                     label: const Text('New'),
+                                    labelStyle: AppTypography.label.copyWith(
+                                      fontSize: 13,
+                                      color: palette.accentText,
+                                    ),
+                                    backgroundColor: palette.card,
+                                    side: BorderSide(color: palette.line),
                                     tooltip:
                                         'Add a subcategory to $pickedLabel',
                                     onPressed: _saving
@@ -349,16 +404,16 @@ class _FloatingQuickAddScreenState
                               ),
                             ),
                           ],
-                          const SizedBox(height: AppSpacing.md),
+                          const SizedBox(height: AppSpacing.lg),
                           // The amount sits on top of the keys that type it, so eye
                           // and thumb work in one place at the bottom of the card.
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: AppSpacing.lg,
-                              vertical: AppSpacing.sm,
+                              vertical: AppSpacing.md,
                             ),
                             decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHighest,
+                              color: palette.subtle,
                               borderRadius: AppRadius.tile,
                             ),
                             child: Column(
@@ -366,27 +421,32 @@ class _FloatingQuickAddScreenState
                                 Semantics(
                                   liveRegion: true,
                                   label: 'Amount',
-                                  child: Text(
-                                    amountPreview(_amount),
-                                    key: const Key('quick-add-amount'),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    style: tt.displaySmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color: _amount.isEmpty
-                                          ? scheme.onSurfaceVariant
-                                          : scheme.onSurface,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      amountPreview(_amount),
+                                      key: const Key('quick-add-amount'),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      style: AppTypography.moneyHero.copyWith(
+                                        color: _amount.isEmpty
+                                            ? palette.faint
+                                            : palette.ink,
+                                      ),
                                     ),
                                   ),
                                 ),
+                                const SizedBox(height: AppSpacing.xs),
                                 Text(
                                   summary,
                                   key: const Key('quick-log-summary'),
                                   textAlign: TextAlign.center,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: tt.bodySmall?.copyWith(
-                                    color: scheme.onSurfaceVariant,
+                                  style: AppTypography.label.copyWith(
+                                    color: pickedLabel == null
+                                        ? palette.muted
+                                        : palette.accentText,
                                   ),
                                 ),
                               ],
@@ -397,17 +457,18 @@ class _FloatingQuickAddScreenState
                             Text(
                               _error!,
                               textAlign: TextAlign.center,
-                              style: tt.bodyMedium?.copyWith(
-                                color: scheme.error,
+                              style: AppTypography.bodyStrong.copyWith(
+                                color: finance.danger,
                               ),
                             ),
                           ],
-                          const SizedBox(height: AppSpacing.sm),
+                          const SizedBox(height: AppSpacing.md),
                           _Numpad(
                             onKey: _press,
                             onClear: () => setState(() => _amount = ''),
                           ),
-                          const SizedBox(height: AppSpacing.md),
+                          const SizedBox(height: AppSpacing.lg),
+                          // The theme paints FilledButton as the gradient pill.
                           FilledButton(
                             key: const Key('quick-log-save'),
                             onPressed: _saving ? null : _save,
@@ -420,6 +481,8 @@ class _FloatingQuickAddScreenState
                                   : _amount.isEmpty
                                   ? 'Save'
                                   : 'Save ${amountPreview(_amount)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
@@ -436,18 +499,42 @@ class _FloatingQuickAddScreenState
   }
 }
 
+/// The floating card itself: the kit's card colour, hairline and 20px radius,
+/// with the modal shadow since it sits over another app.
+class _Panel extends StatelessWidget {
+  const _Panel({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.card,
+        boxShadow: AppShadows.modal(palette.shadow),
+      ),
+      child: Material(
+        color: palette.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.card,
+          side: BorderSide(color: palette.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: child,
+      ),
+    );
+  }
+}
+
 class _SectionLabel extends StatelessWidget {
   const _SectionLabel(this.text);
   final String text;
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
     return Text(
       text,
-      style: tt.labelMedium?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
+      style: AppTypography.label.copyWith(color: context.palette.muted),
     );
   }
 }
@@ -460,21 +547,26 @@ class _CategoryGrid extends StatelessWidget {
   final List<Widget> children;
 
   static const _columns = 4;
-  static const _tileHeight = 64.0;
   static const _maxRows = 3;
 
   @override
   Widget build(BuildContext context) {
+    // Icon tile + label + padding; the label line grows with the text size.
+    final tileHeight =
+        AppSpacing.sm * 2 +
+        _CategoryTile.iconSize +
+        AppSpacing.xs +
+        MediaQuery.textScalerOf(context).scale(16);
     final rows = (children.length / _columns).ceil().clamp(1, _maxRows);
     return SizedBox(
-      height: rows * _tileHeight + (rows - 1) * AppSpacing.sm,
+      height: rows * tileHeight + (rows - 1) * AppSpacing.sm,
       child: GridView(
         padding: EdgeInsets.zero,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: _columns,
           mainAxisSpacing: AppSpacing.sm,
           crossAxisSpacing: AppSpacing.sm,
-          mainAxisExtent: _tileHeight,
+          mainAxisExtent: tileHeight,
         ),
         children: children,
       ),
@@ -482,26 +574,34 @@ class _CategoryGrid extends StatelessWidget {
   }
 }
 
+/// One category choice: the category's pastel [IconTile] over its name. The
+/// picked tile takes the accent tint and a 2px accent ring; the add tile is an
+/// outlined accent "New".
 class _CategoryTile extends StatelessWidget {
   const _CategoryTile({
     required this.label,
     required this.selected,
     required this.onTap,
-    this.emoji,
     this.icon,
+    this.style,
+    this.isAdd = false,
   });
 
+  static const iconSize = 36.0;
+
   final String label;
-  final String? emoji;
+
+  /// Overrides [style]'s icon (the quick categories pick their own).
   final IconData? icon;
+  final CategoryStyle? style;
+  final bool isAdd;
   final bool selected;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    final isAdd = icon != null;
+    final palette = context.palette;
+    final s = style;
     return Semantics(
       button: true,
       selected: isAdd ? null : selected,
@@ -509,15 +609,17 @@ class _CategoryTile extends StatelessWidget {
       excludeSemantics: true,
       child: Material(
         color: selected
-            ? scheme.primaryContainer
-            : scheme.surfaceContainerHighest,
+            ? palette.tint
+            : isAdd
+            ? palette.card
+            : palette.subtle,
         shape: RoundedRectangleBorder(
           borderRadius: AppRadius.tile,
           side: BorderSide(
             color: selected
-                ? scheme.primary
+                ? palette.accent
                 : isAdd
-                ? scheme.outlineVariant
+                ? palette.line
                 : Colors.transparent,
             width: selected ? 2 : 1,
           ),
@@ -526,26 +628,37 @@ class _CategoryTile extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xxs,
+              vertical: AppSpacing.sm,
+            ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (isAdd)
-                  Icon(icon, size: 22, color: scheme.primary)
-                else
-                  Text(emoji!, style: const TextStyle(fontSize: 22)),
-                const SizedBox(height: AppSpacing.xxs),
-                Text(
-                  isAdd ? 'New' : label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: tt.labelSmall?.copyWith(
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: selected
-                        ? scheme.onPrimaryContainer
-                        : isAdd
-                        ? scheme.primary
-                        : scheme.onSurface,
+                IconTile(
+                  icon: icon ?? s?.icon ?? Icons.label_rounded,
+                  size: iconSize,
+                  round: true,
+                  tint: isAdd ? palette.tint : s?.tint,
+                  color: isAdd ? palette.accentText : s?.color,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                // A long name shrinks a little rather than losing its end.
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      isAdd ? 'New' : label,
+                      maxLines: 1,
+                      style: AppTypography.label.copyWith(
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                        color: selected || isAdd
+                            ? palette.accentText
+                            : palette.ink,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -558,7 +671,8 @@ class _CategoryTile extends StatelessWidget {
 }
 
 /// 3×4 keys: 1–9, then '.', 0 and backspace. Long-press backspace to clear.
-/// Each key is a visible tile, so it reads as a keypad rather than loose text.
+/// Each key is a round pill on the quiet fill, so it reads as a keypad rather
+/// than loose text.
 class _Numpad extends StatelessWidget {
   const _Numpad({required this.onKey, required this.onClear});
 
@@ -574,8 +688,7 @@ class _Numpad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final palette = context.palette;
     return Column(
       children: [
         for (final row in _rows)
@@ -584,26 +697,33 @@ class _Numpad extends StatelessWidget {
               for (final key in row)
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.all(3),
+                    padding: const EdgeInsets.all(AppSpacing.xs),
                     child: TextButton(
                       onPressed: () => onKey(key),
                       onLongPress: key == backspaceKey ? onClear : null,
                       style: TextButton.styleFrom(
-                        minimumSize: const Size.fromHeight(
-                          AppSpacing.minTouchTarget,
-                        ),
-                        backgroundColor: scheme.surfaceContainerHighest
-                            .withValues(alpha: 0.5),
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: AppRadius.field,
-                        ),
+                        minimumSize: const Size.fromHeight(52),
+                        backgroundColor: palette.subtle,
+                        foregroundColor: palette.ink,
+                        shape: const StadiumBorder(),
                       ),
                       child: key == backspaceKey
-                          ? const Icon(
-                              Icons.backspace_outlined,
+                          ? Icon(
+                              Icons.backspace_rounded,
+                              size: 22,
+                              color: palette.muted,
                               semanticLabel: 'Delete',
                             )
-                          : Text(key, style: tt.titleLarge),
+                          : Text(
+                              key,
+                              style: AppTypography.title.copyWith(
+                                color: palette.ink,
+                                fontWeight: FontWeight.w600,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
                     ),
                   ),
                 ),

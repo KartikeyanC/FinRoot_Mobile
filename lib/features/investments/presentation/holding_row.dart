@@ -93,9 +93,13 @@ class HoldingRow extends ConsumerWidget {
                   onNeedTicker: () => _needTicker(context, h.record),
                 ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.screenGutter,
-              vertical: AppSpacing.md,
+            // No bottom padding here: the last line supplies it, so the
+            // alarm tag's 48dp target can hang into it.
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenGutter,
+              AppSpacing.md,
+              AppSpacing.screenGutter,
+              0,
             ),
             child: Row(
               children: [
@@ -157,34 +161,41 @@ class HoldingRow extends ConsumerWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
                       // Invested (+ alarm tag) | total = invested + profit. Total
                       // stays on the Invested line when the tag wraps below it.
+                      // The 6dp gap above this line and the row's bottom
+                      // padding live inside it, so the alarm tag's 48dp target
+                      // can span them.
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: Wrap(
-                              spacing: AppSpacing.sm,
-                              runSpacing: 2,
-                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: AppSpacing.xs,
                               children: [
-                                Text.rich(
-                                  TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: 'Invt. ',
-                                        semanticsLabel: 'Invested ',
-                                        style: muted,
-                                      ),
-                                      TextSpan(
-                                        text: plainAmount(
-                                          h.invested,
-                                          h.currency,
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: alarmTagInset,
+                                    right: AppSpacing.xs,
+                                    bottom: AppSpacing.md,
+                                  ),
+                                  child: Text.rich(
+                                    TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: 'Invt. ',
+                                          semanticsLabel: 'Invested ',
+                                          style: muted,
                                         ),
-                                        style: strong,
-                                      ),
-                                    ],
+                                        TextSpan(
+                                          text: plainAmount(
+                                            h.invested,
+                                            h.currency,
+                                          ),
+                                          style: strong,
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 if (h.canAlert)
@@ -200,16 +211,22 @@ class HoldingRow extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(width: AppSpacing.md),
-                          Text.rich(
-                            key: const Key('holding-total'),
-                            TextSpan(
-                              children: [
-                                TextSpan(text: 'Total ', style: muted),
-                                TextSpan(
-                                  text: plainAmount(h.current, h.currency),
-                                  style: strong,
-                                ),
-                              ],
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              top: alarmTagInset,
+                              bottom: AppSpacing.md,
+                            ),
+                            child: Text.rich(
+                              key: const Key('holding-total'),
+                              TextSpan(
+                                children: [
+                                  TextSpan(text: 'Total ', style: muted),
+                                  TextSpan(
+                                    text: plainAmount(h.current, h.currency),
+                                    style: strong,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -253,6 +270,10 @@ Future<void> deleteHolding(
   }
 }
 
+/// How far the alarm tag's visual sits below the top of its 48dp target:
+/// the gap between the name line and the "Invt." line.
+const alarmTagInset = 6.0;
+
 /// The price alert on a holding: an alarm and the amount ("⏰ 400.00") once
 /// one is set — accent while watching, green once it fired — and a quiet
 /// alarm-plus icon to set one. Without a ticker it asks for one first.
@@ -283,56 +304,91 @@ class HoldingAlarmTag extends ConsumerWidget {
     final tone = t == null
         ? null
         : (t.triggered ? Tones.mint(context) : Tones.accent(context));
+    // The "Invt." line it sits on: 13sp at the label style's 16/12 height.
+    final lineHeight = MediaQuery.textScalerOf(context).scale(13) * 16 / 12;
     final onTap = sym == null
         ? onNeedTicker
         : () => openHoldingAlerts(context, ref, symbol: sym, name: name);
 
-    return Semantics(
-      button: true,
-      label: t == null ? 'Set a price alert' : null,
-      child: GestureDetector(
-        key: const Key('holding-alarm'),
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Padding(
-          // Wider to tap; no taller than a line of text, so the row's
-          // figures stay on one baseline.
-          padding: const EdgeInsets.only(right: 6),
-          child: t == null
-              ? Icon(Icons.alarm_add_rounded, size: 16, color: palette.faint)
-              : Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: tone!.bg,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        t.triggered
-                            ? Icons.alarm_on_rounded
-                            : Icons.alarm_rounded,
-                        size: 13,
-                        color: tone.fg,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        '${plainAmount(t.price, currency)}'
-                        '${t.more > 0 ? ' +${t.more}' : ''}',
-                        style: AppTypography.label.copyWith(
-                          color: tone.fg,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
+    // A 48dp target around a small visual. The visual sits [alarmTagInset]
+    // from the top, level with the "Invt." line; the rest of the target hangs
+    // into the row's bottom padding, so the figures keep their rhythm.
+    return Tooltip(
+      message: t == null ? 'Set a price alert' : 'Price alerts',
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        label: t == null ? 'Set a price alert' : null,
+        child: InkResponse(
+          key: const Key('holding-alarm'),
+          onTap: onTap,
+          radius: 24,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minWidth: AppSpacing.minTouchTarget,
+              minHeight: AppSpacing.minTouchTarget,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.only(top: alarmTagInset),
+              // Left-aligned, one text line tall: the visual sits right after
+              // "Invt." and centred on its line at any text size; the spare
+              // target extends right and down into empty space.
+              child: Align(
+                alignment: Alignment.topLeft,
+                widthFactor: 1,
+                heightFactor: 1,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: lineHeight),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: 1,
+                    heightFactor: 1,
+                    child: t == null
+                        ? Icon(
+                            Icons.alarm_add_rounded,
+                            size: 16,
+                            color: palette.faint,
+                          )
+                        : Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: tone!.bg,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  t.triggered
+                                      ? Icons.alarm_on_rounded
+                                      : Icons.alarm_rounded,
+                                  size: 13,
+                                  color: tone.fg,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '${plainAmount(t.price, currency)}'
+                                  '${t.more > 0 ? ' +${t.more}' : ''}',
+                                  style: AppTypography.label.copyWith(
+                                    color: tone.fg,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                   ),
                 ),
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -299,7 +299,7 @@ void main() {
   testWidgets('long-press backspace clears the amount', (tester) async {
     await _pump(tester);
     await _type(tester, '123');
-    await tester.longPress(find.byIcon(Icons.backspace_outlined));
+    await tester.longPress(find.byIcon(Icons.backspace_rounded));
     await tester.pump();
     expect(find.text('₹ 0.00'), findsOneWidget);
   });
