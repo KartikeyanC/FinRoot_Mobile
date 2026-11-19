@@ -105,8 +105,23 @@ void main() {
 
     final add = find.byTooltip('Add a transaction');
     expect(add, findsOneWidget);
-    // Centred horizontally, and inside the bar rather than floating above it.
-    expect(tester.getCenter(add).dx, closeTo(210, 1));
+    // Between the two left tabs and the two right ones (the active tab's
+    // pill is wider, so the + is not always dead centre), and inside the bar
+    // rather than floating above it.
+    final dock = find.byKey(kBottomDockKey);
+    final transactions = find.descendant(
+      of: dock,
+      matching: find.byTooltip('Transactions'),
+    );
+    final trackers = find.descendant(
+      of: dock,
+      matching: find.byTooltip('Trackers'),
+    );
+    expect(
+      tester.getCenter(add).dx,
+      greaterThan(tester.getCenter(transactions).dx),
+    );
+    expect(tester.getCenter(add).dx, lessThan(tester.getCenter(trackers).dx));
     expect(
       tester.getBottomLeft(add).dy,
       lessThanOrEqualTo(tester.getBottomLeft(find.byKey(kBottomDockKey)).dy),
