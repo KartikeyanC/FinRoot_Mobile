@@ -103,17 +103,17 @@ void main() {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
-    final add = find.byType(GradientFab);
+    final add = find.byTooltip('Add a transaction');
     expect(add, findsOneWidget);
     // Centred horizontally, and inside the bar rather than floating above it.
     expect(tester.getCenter(add).dx, closeTo(210, 1));
     expect(
       tester.getBottomLeft(add).dy,
-      lessThanOrEqualTo(tester.getBottomLeft(find.byType(BottomAppBar)).dy),
+      lessThanOrEqualTo(tester.getBottomLeft(find.byKey(kBottomDockKey)).dy),
     );
     expect(
       tester.getTopLeft(add).dy,
-      greaterThanOrEqualTo(tester.getTopLeft(find.byType(BottomAppBar)).dy),
+      greaterThanOrEqualTo(tester.getTopLeft(find.byKey(kBottomDockKey)).dy),
     );
     // No separate floating action button left to collide with a screen's own.
     expect(find.byType(FloatingActionButton), findsNothing);
@@ -128,7 +128,7 @@ void main() {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
-    expect(find.byType(BottomAppBar), findsOneWidget);
+    expect(find.byKey(kBottomDockKey), findsOneWidget);
     expect(find.byType(NavigationRail), findsNothing);
   });
 
@@ -144,7 +144,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(NavigationRail), findsOneWidget);
-    expect(find.byType(BottomAppBar), findsNothing);
+    expect(find.byKey(kBottomDockKey), findsNothing);
 
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();

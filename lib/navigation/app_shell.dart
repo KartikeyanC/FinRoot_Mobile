@@ -20,10 +20,10 @@ import 'quick_add_entry.dart';
 
 /// The adaptive app shell (M1 audit §11, §14, §15).
 ///
-/// - compact / medium → NineFlow's phone layout: a bottom tab bar (the main
-///   tabs + "More", which opens a sheet) with the gradient "+" for Quick Add
-///   docked in the middle of the bar. It is part of the bar, not a floating
-///   button, so a screen's own "+ Tracker"-style button never lands on it.
+/// - compact / medium → a floating dark dock of round buttons (the main tabs
+///   + "More", which opens a sheet) with the gradient "+" for Quick Add in the
+///   middle slot. It is part of the dock, not a separate floating button, so
+///   a screen's own "+ Tracker"-style button never lands on it.
 /// - expanded (tablet) → `NavigationRail` + Quick Add as the rail's leading
 ///   action; content gets the rest of the width for future split views.
 ///
@@ -98,6 +98,12 @@ class AppShell extends StatelessWidget {
   }
 }
 
+/// Finds the phone dock in tests.
+const kBottomDockKey = ValueKey('bottom-dock');
+
+/// Phones: a floating dark dock. Every slot is a 48dp circle wrapped in a
+/// 5dp dark ring; neighbouring rings overlap, which draws the scalloped
+/// outline. The gradient "+" sits in the middle slot.
 class _BottomBar extends StatelessWidget {
   const _BottomBar({
     required this.onAdd,
@@ -111,53 +117,134 @@ class _BottomBar extends StatelessWidget {
   final ValueChanged<int> onSelected;
   final List<AppDestination> destinations;
 
+  static const double _item = 48;
+  static const double _ring = 5;
+  static const double _gap = 6;
+  static const Color _dock = Color(0xFF0C0C0E);
+
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
-    // Card-coloured bar with a 1px top line; one equal slot per destination,
-    // with the round "+" in a slot of its own in the middle (half the tabs
-    // either side of it).
     final half = (destinations.length / 2).ceil();
-    Widget tab(int i) => Expanded(
-      child: _BottomItem(
-        destination: destinations[i],
-        selected: i == currentIndex,
-        onTap: () => onSelected(i),
-      ),
-    );
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.card,
-        border: Border(top: BorderSide(color: palette.line)),
-      ),
-      child: BottomAppBar(
-        height: 68,
-        padding: EdgeInsets.zero,
-        elevation: 0,
-        color: palette.card,
-        surfaceTintColor: Colors.transparent,
-        child: Row(
-          children: [
-            for (var i = 0; i < half; i++) tab(i),
-            Expanded(
-              child: Center(
-                child: GradientFab(
-                  tooltip: 'Add a transaction',
-                  size: 52,
-                  onPressed: onAdd,
-                ),
+    final slots = <Widget>[
+      for (var i = 0; i < half; i++) _tab(i),
+      _AddSlot(onAdd: onAdd),
+      for (var i = half; i < destinations.length; i++) _tab(i),
+    ];
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.only(top: AppSpacing.xs, bottom: 14),
+        child: Center(
+          heightFactor: 1,
+          child: CustomPaint(
+            key: kBottomDockKey,
+            painter: _DockPainter(
+              count: slots.length,
+              radius: _item / 2 + _ring,
+              pitch: _item + _gap,
+              color: _dock,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(_ring),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < slots.length; i++) ...[
+                    if (i > 0) const SizedBox(width: _gap),
+                    slots[i],
+                  ],
+                ],
               ),
             ),
-            for (var i = half; i < destinations.length; i++) tab(i),
-          ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _tab(int i) => _DockItem(
+    destination: destinations[i],
+    selected: i == currentIndex,
+    onTap: () => onSelected(i),
+  );
 }
 
-class _BottomItem extends StatelessWidget {
-  const _BottomItem({
+class _DockPainter extends CustomPainter {
+  const _DockPainter({
+    required this.count,
+    required this.radius,
+    required this.pitch,
+    required this.color,
+  });
+
+  final int count;
+  final double radius;
+  final double pitch;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var path = Path();
+    for (var i = 0; i < count; i++) {
+      path = Path.combine(
+        PathOperation.union,
+        path,
+        Path()..addOval(
+          Rect.fromCircle(
+            center: Offset(radius + i * pitch, size.height / 2),
+            radius: radius,
+          ),
+        ),
+      );
+    }
+    canvas.drawShadow(path, Colors.black, 10, false);
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_DockPainter old) =>
+      old.count != count ||
+      old.radius != radius ||
+      old.pitch != pitch ||
+      old.color != color;
+}
+
+class _AddSlot extends StatelessWidget {
+  const _AddSlot({required this.onAdd});
+
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: 'Add a transaction',
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [context.palette.brandA, context.palette.brandB],
+        ),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onAdd,
+          customBorder: const CircleBorder(),
+          child: const SizedBox.square(
+            dimension: _BottomBar._item,
+            child: Icon(Icons.add_rounded, size: 26, color: Colors.white),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _DockItem extends StatelessWidget {
+  const _DockItem({
     required this.destination,
     required this.selected,
     required this.onTap,
@@ -169,52 +256,36 @@ class _BottomItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
-    // Active: icon in a 28x40 accent-tint pill, label in accent text.
-    // Inactive: faint. Labels are 10sp semibold (micro).
-    final color = selected ? palette.accentText : palette.faint;
+    // Active: white circle, dark icon. Inactive: graphite circle, dim icon.
     return Semantics(
       button: true,
       selected: selected,
       label: destination.label,
       excludeSemantics: true,
-      child: InkResponse(
-        onTap: onTap,
-        radius: 32,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            minHeight: AppSpacing.minTouchTarget,
+      child: Tooltip(
+        message: destination.label,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: const Cubic(0.2, 0.7, 0.2, 1),
+          width: _BottomBar._item,
+          height: _BottomBar._item,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: selected ? Colors.white : const Color(0xFF232327),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: const Cubic(0.2, 0.7, 0.2, 1),
-                width: 40,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: selected ? palette.tint : Colors.transparent,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  selected ? destination.selectedIcon : destination.icon,
-                  color: color,
-                  size: 20,
-                ),
+          child: Material(
+            type: MaterialType.transparency,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              customBorder: const CircleBorder(),
+              child: Icon(
+                selected ? destination.selectedIcon : destination.icon,
+                color: selected ? _BottomBar._dock : Colors.white60,
+                size: 21,
               ),
-              const SizedBox(height: AppSpacing.xxs),
-              Text(
-                destination.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: color,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
