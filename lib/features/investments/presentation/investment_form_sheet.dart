@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
@@ -13,6 +14,7 @@ import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
 import '../data/live_price_gateway.dart';
 import '../data/symbol_search_gateway.dart';
+import '../domain/bond.dart';
 import '../domain/holding_fields.dart';
 import '../domain/investment.dart';
 import '../domain/live_price.dart';
@@ -46,6 +48,19 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
   final _current = TextEditingController();
   final _ticker = TextEditingController();
   final _quantity = TextEditingController();
+  // Bonds
+  final _face = TextEditingController();
+  final _units = TextEditingController();
+  final _coupon = TextEditingController();
+  final _issuer = TextEditingController();
+  BondFrequency _freq = BondFrequency.yearly;
+  DateTime? _purchase;
+  DateTime? _maturity;
+  String? _rating;
+
+  /// Whether the user typed a current value themselves. Until then it
+  /// mirrors the amount invested (bonds: invested + accrued interest).
+  bool _currentTouched = false;
   late String _asset;
   Timer? _searchTimer;
   int _searchId = 0;
@@ -62,9 +77,7 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
   /// Priceable asset with a ticker and a quantity: the current value comes
   /// from the live price, not from the user.
   bool get _autoValue =>
-      isPriceableAsset(_asset) &&
-      _ticker.text.trim().isNotEmpty &&
-      _qty > 0;
+      isPriceableAsset(_asset) && _ticker.text.trim().isNotEmpty && _qty > 0;
 
   /// A throwaway record for the typed ticker/quantity, so the same symbol
   /// resolution as the holding rows is used.
@@ -74,8 +87,10 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
     currency: 'INR',
     fields: {
       'ticker': _ticker.text.trim(),
-      if (_asset == 'mutual_funds') 'units': _quantity.text.trim()
-      else 'quantity': _quantity.text.trim(),
+      if (_asset == 'mutual_funds')
+        'units': _quantity.text.trim()
+      else
+        'quantity': _quantity.text.trim(),
     },
     derived: const {},
   );
@@ -126,7 +141,66 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
       _goal = e.goal;
       _ticker.text = tickerTextOf(e);
       _quantity.text = quantityTextOf(e);
+      _currentTouched = true;
+      final b = e.bond;
+      if (b != null) {
+        _face.text = _plain(b.faceValue);
+        _units.text = _plain(b.units);
+        _coupon.text = _plain(b.couponRate);
+        _issuer.text = b.issuer;
+        _freq = b.frequency;
+        _purchase = b.purchaseDate;
+        _maturity = b.maturityDate;
+        _rating = b.rating;
+      }
     }
+    for (final c in [_invested, _face, _units, _coupon]) {
+      c.addListener(_syncCurrent);
+    }
+  }
+
+  static String _plain(double? v) {
+    if (v == null) return '';
+    return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  }
+
+  bool get _isBond => _asset == 'bonds';
+
+  DateTime get _today => DateTime.now();
+
+  BondTerms _bondTerms() => BondTerms(
+    faceValue: double.tryParse(_face.text.trim()),
+    units: double.tryParse(_units.text.trim()),
+    couponRate: double.tryParse(_coupon.text.trim()),
+    frequency: _freq,
+    purchaseDate: _purchase,
+    maturityDate: _maturity,
+    issuer: _issuer.text,
+    rating: _rating,
+  );
+
+  double get _investedValue => double.tryParse(_invested.text.trim()) ?? 0;
+
+  BondFigures _bondFigures() =>
+      BondFigures.of(_bondTerms(), invested: _investedValue, asOf: _today);
+
+  /// What the Current value box shows while the user hasn't typed one.
+  String _suggestedCurrent() {
+    if (_invested.text.trim().isEmpty) return '';
+    if (!_isBond) return _invested.text.trim();
+    return _bondFigures().estimatedValue.toStringAsFixed(2);
+  }
+
+  void _syncCurrent() {
+    if (_currentTouched) return;
+    final next = _suggestedCurrent();
+    if (_current.text != next) _current.text = next;
+    if (mounted) setState(() {});
+  }
+
+  void _useCalculated() {
+    _currentTouched = false;
+    _syncCurrent();
   }
 
   void _onTickerChanged(String v) {
@@ -176,6 +250,10 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
     _current.dispose();
     _ticker.dispose();
     _quantity.dispose();
+    _face.dispose();
+    _units.dispose();
+    _coupon.dispose();
+    _issuer.dispose();
     _searchTimer?.cancel();
     _priceTimer?.cancel();
     super.dispose();
@@ -216,6 +294,7 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
       ticker: isPriceableAsset(_asset) ? _ticker.text : '',
       quantity: isPriceableAsset(_asset) ? _quantity.text : '',
       baseFields: widget.editing?.fields ?? const {},
+      bond: _isBond ? _bondTerms() : null,
     );
 
     setState(() => _busy = true);
@@ -228,7 +307,9 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
       }
       navigator.pop();
       messenger.showSnackBar(
-        SnackBar(content: Text(_isEditing ? 'Holding updated' : 'Holding added')),
+        SnackBar(
+          content: Text(_isEditing ? 'Holding updated' : 'Holding added'),
+        ),
       );
     } on Failure catch (f) {
       if (!mounted) return;
@@ -385,18 +466,239 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
     );
   }
 
+  static final _dateFmt = DateFormat('d MMM yyyy');
+  static final _money = NumberFormat.currency(
+    locale: 'en_IN',
+    symbol: '₹',
+    decimalDigits: 2,
+  );
+
+  Future<void> _pickDate({required bool maturity}) async {
+    FocusScope.of(context).unfocus();
+    final today = _today;
+    final current = maturity ? _maturity : _purchase;
+    final first = maturity
+        ? (_purchase ?? DateTime(today.year - 40)).add(const Duration(days: 1))
+        : DateTime(today.year - 40);
+    final last = maturity ? DateTime(today.year + 50) : today;
+    var initial =
+        current ??
+        (maturity ? DateTime(today.year + 5, today.month, today.day) : today);
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
+      helpText: maturity ? 'Maturity date' : 'Purchase date',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (maturity) {
+        _maturity = picked;
+      } else {
+        _purchase = picked;
+      }
+    });
+    _syncCurrent();
+  }
+
+  Widget _numberField({
+    required String label,
+    required TextEditingController controller,
+    required IconData icon,
+    required String hint,
+    required FormFieldValidator<String> validator,
+    Key? key,
+  }) => LabeledField(
+    label: label,
+    child: TextFormField(
+      key: key,
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon)),
+      validator: validator,
+    ),
+  );
+
+  List<Widget> _bondFields(BuildContext context) => [
+    Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: _numberField(
+            key: const ValueKey('bond-face'),
+            label: 'Face value per bond',
+            controller: _face,
+            icon: Icons.sell_outlined,
+            hint: '1000',
+            validator: BondValidators.positiveOptional,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: _numberField(
+            key: const ValueKey('bond-units'),
+            label: 'Number of bonds',
+            controller: _units,
+            icon: Icons.numbers,
+            hint: '10',
+            validator: BondValidators.positiveOptional,
+          ),
+        ),
+      ],
+    ),
+    _numberField(
+      key: const ValueKey('bond-coupon'),
+      label: 'Coupon rate (% per year)',
+      controller: _coupon,
+      icon: Icons.percent_rounded,
+      hint: '7.5',
+      validator: BondValidators.couponRate,
+    ),
+    LabeledField(
+      label: 'Interest payout',
+      child: DropdownButtonFormField<BondFrequency>(
+        key: const ValueKey('bond-frequency'),
+        initialValue: _freq,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.event_repeat_outlined),
+        ),
+        items: [
+          for (final f in BondFrequency.values)
+            DropdownMenuItem(value: f, child: Text(f.label)),
+        ],
+        onChanged: (v) {
+          setState(() => _freq = v ?? _freq);
+          _syncCurrent();
+        },
+      ),
+    ),
+    _DateFormField(
+      key: const ValueKey('bond-purchase'),
+      label: 'Purchase date',
+      value: _purchase,
+      format: _dateFmt,
+      onTap: () => _pickDate(maturity: false),
+      validator: (_) => BondValidators.purchaseDate(_purchase, today: _today),
+    ),
+    _DateFormField(
+      key: const ValueKey('bond-maturity'),
+      label: 'Maturity date',
+      value: _maturity,
+      format: _dateFmt,
+      onTap: () => _pickDate(maturity: true),
+      validator: (_) => BondValidators.maturityDate(
+        _maturity,
+        purchase: _purchase,
+        today: _today,
+      ),
+    ),
+    LabeledField(
+      label: 'Issuer / ISIN (optional)',
+      child: TextFormField(
+        controller: _issuer,
+        textCapitalization: TextCapitalization.characters,
+        decoration: const InputDecoration(
+          hintText: 'NHAI or INE906B07HH3',
+          prefixIcon: Icon(Icons.account_balance_outlined),
+        ),
+        validator: (v) =>
+            (v?.trim().length ?? 0) > 60 ? 'That is too long' : null,
+      ),
+    ),
+    LabeledField(
+      label: 'Credit rating (optional)',
+      child: DropdownButtonFormField<String>(
+        initialValue: _rating,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.verified_outlined),
+        ),
+        items: [
+          const DropdownMenuItem<String>(child: Text('Not set')),
+          for (final r in kBondRatings)
+            DropdownMenuItem(value: r, child: Text(r)),
+        ],
+        onChanged: (v) => setState(() => _rating = v),
+      ),
+    ),
+  ];
+
+  /// Read-only figures worked out from the terms.
+  Widget _bondSummary(BuildContext context) {
+    final palette = context.palette;
+    final f = _bondFigures();
+    final ytm = f.yieldToMaturity;
+    final next = f.nextPayout;
+    final amount = f.maturityAmount;
+    final days = f.daysToMaturity;
+    final rows = <(String, String)>[
+      ('Yield to maturity', ytm == null ? '—' : '${ytm.toStringAsFixed(2)}%'),
+      ('Next payout', next == null ? '—' : _dateFmt.format(next)),
+      ('Maturity amount', amount == null ? '—' : _money.format(amount)),
+      (
+        'Days to maturity',
+        days == null ? '—' : NumberFormat.decimalPattern('en_IN').format(days),
+      ),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+      child: Container(
+        key: const ValueKey('bond-summary'),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: palette.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: palette.line),
+        ),
+        child: Column(
+          children: [
+            for (final (label, value) in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: AppTypography.label.copyWith(
+                          color: palette.muted,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      value,
+                      style: AppTypography.bodyStrong.copyWith(
+                        color: palette.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SheetFrame(
       formKey: _formKey,
       title: _isEditing ? 'Edit holding' : 'Add holding',
-      subtitle:
-          'Invested and current value. For stocks, crypto and funds add a '
-          'ticker and quantity to see the live price. The web app has the '
-          'detailed per-asset calculators.',
+      subtitle: _isBond
+          ? "Enter the bond's terms. Yield, payouts and maturity are "
+                'worked out for you.'
+          : 'Invested and current value. For stocks, crypto and funds add a '
+                'ticker and quantity to see the live price. The web app has '
+                'the detailed per-asset calculators.',
       primaryLabel: _isEditing ? 'Save changes' : 'Add holding',
       onPrimary: _submit,
       busy: _busy,
+      pinActions: true,
       error: _error?.message,
       children: [
         LabeledField(
@@ -425,10 +727,13 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
                   ),
                 ),
             ],
-            onChanged: (v) => setState(() {
-              _asset = v ?? _asset;
-              _clearSearch();
-            }),
+            onChanged: (v) {
+              setState(() {
+                _asset = v ?? _asset;
+                _clearSearch();
+              });
+              _syncCurrent();
+            },
           ),
         ),
         LabeledField(
@@ -437,9 +742,11 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
             controller: _name,
             autofocus: !_isEditing,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              hintText: 'ITC, Nifty 50 fund…',
-              prefixIcon: Icon(Icons.label_outline),
+            decoration: InputDecoration(
+              hintText: _isBond
+                  ? 'e.g. NHAI 7.35% 2031'
+                  : 'ITC, Nifty 50 fund…',
+              prefixIcon: const Icon(Icons.label_outline),
             ),
             validator: InvestmentValidators.name,
           ),
@@ -454,26 +761,55 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
               hintText: '0',
               prefixIcon: Icon(Icons.south_west_rounded),
             ),
-            validator: (v) =>
-                InvestmentValidators.amount(v, label: 'the amount invested'),
+            validator: (v) {
+              final e = InvestmentValidators.amount(
+                v,
+                label: 'the amount invested',
+              );
+              if (e != null) return e;
+              if (_isBond && _investedValue <= 0) {
+                return 'Enter an amount above 0';
+              }
+              return null;
+            },
           ),
         ),
+        if (_isBond) ..._bondFields(context),
         if (_autoValue)
           _autoValueRow(context)
         else
           LabeledField(
-          label: 'Current value',
-          child: TextFormField(
-            controller: _current,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              hintText: '0',
-              prefixIcon: Icon(Icons.trending_up),
+            label: 'Current value',
+            child: TextFormField(
+              key: const ValueKey('current-value'),
+              controller: _current,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: (_) => setState(() => _currentTouched = true),
+              decoration: InputDecoration(
+                hintText: 'Same as amount invested',
+                prefixIcon: const Icon(Icons.trending_up),
+                helperText: _isBond
+                    ? (_currentTouched
+                          ? 'Entered by you'
+                          : 'Amount invested + interest accrued so far. '
+                                'Type to override.')
+                    : null,
+                helperMaxLines: 2,
+                suffixIcon: _isBond && _currentTouched
+                    ? IconButton(
+                        tooltip: 'Use the calculated value',
+                        icon: const Icon(Icons.calculate_outlined),
+                        onPressed: _useCalculated,
+                      )
+                    : null,
+              ),
+              validator: (v) =>
+                  InvestmentValidators.amount(v, label: 'the current value'),
             ),
-            validator: (v) =>
-                InvestmentValidators.amount(v, label: 'the current value'),
           ),
-        ),
+        if (_isBond) _bondSummary(context),
         LabeledField(
           label: 'Goal link (optional)',
           child: DropdownButtonFormField<String>(
@@ -493,4 +829,34 @@ class _InvestmentFormSheetState extends ConsumerState<_InvestmentFormSheet> {
       ],
     );
   }
+}
+
+/// A tap-to-pick date box that takes part in form validation.
+class _DateFormField extends FormField<DateTime> {
+  _DateFormField({
+    super.key,
+    required String label,
+    required DateTime? value,
+    required DateFormat format,
+    required VoidCallback onTap,
+    super.validator,
+  }) : super(
+         initialValue: value,
+         builder: (state) => LabeledField(
+           label: label,
+           child: InkWell(
+             onTap: onTap,
+             borderRadius: AppRadius.field,
+             child: InputDecorator(
+               isEmpty: value == null,
+               decoration: InputDecoration(
+                 prefixIcon: const Icon(Icons.event_outlined),
+                 hintText: 'Pick a date',
+                 errorText: state.errorText,
+               ),
+               child: Text(value == null ? '' : format.format(value)),
+             ),
+           ),
+         ),
+       );
 }

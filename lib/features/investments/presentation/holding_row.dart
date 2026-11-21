@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../design/design.dart';
@@ -10,6 +11,7 @@ import '../../price_alerts/presentation/price_alerts_screen.dart'
     show openHoldingAlerts;
 import '../application/investment_editor_controller.dart';
 import '../application/investments_providers.dart';
+import '../domain/bond.dart';
 import '../domain/holding_figures.dart';
 import '../domain/investment.dart';
 import '../domain/stock_lots.dart';
@@ -67,7 +69,9 @@ class HoldingRow extends ConsumerWidget {
       fontFeatures: tabular,
     );
 
+    final bond = h.record.bond;
     final top = [
+      if (bond != null) ...bondCardLine(bond, invested: h.invested),
       if (h.qty > 0) 'Qty. ${qtyLabel(h.qty)}',
       if (h.avgPrice > 0) 'Avg. ${plainAmount(h.avgPrice, h.currency)}',
       if (h.isGroup) '${h.lots.length} buys',
@@ -393,4 +397,24 @@ class HoldingAlarmTag extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// The bond facts on a holding card's top line: maturity, then the next
+/// payout while one is still to come.
+List<String> bondCardLine(
+  BondTerms bond, {
+  required double invested,
+  DateTime? asOf,
+}) {
+  final today = asOf ?? DateTime.now();
+  final end = bond.maturityDate;
+  if (end == null) return const [];
+  final fmt = DateFormat('d MMM yyyy');
+  final f = BondFigures.of(bond, invested: invested, asOf: today);
+  final next = f.nextPayout;
+  final matured = !end.isAfter(DateTime(today.year, today.month, today.day));
+  return [
+    matured ? 'Matured ${fmt.format(end)}' : 'Matures ${fmt.format(end)}',
+    if (next != null && next != end) 'Next payout ${fmt.format(next)}',
+  ];
 }

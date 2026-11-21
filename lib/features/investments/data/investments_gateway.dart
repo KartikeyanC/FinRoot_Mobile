@@ -33,7 +33,8 @@ class SupabaseInvestmentsGateway implements InvestmentsGateway {
           .eq('tenant_id', tenantId)
           .order('saved_at', ascending: false);
       return [
-        for (final r in rows as List) _fromRow(Map<String, dynamic>.from(r as Map)),
+        for (final r in rows as List)
+          _fromRow(Map<String, dynamic>.from(r as Map)),
       ];
     } catch (error, stack) {
       throw mapError(error, stack);
@@ -60,11 +61,7 @@ class SupabaseInvestmentsGateway implements InvestmentsGateway {
   }
 
   @override
-  Future<void> update(
-    String tenantId,
-    String id,
-    InvestmentDraft draft,
-  ) async {
+  Future<void> update(String tenantId, String id, InvestmentDraft draft) async {
     try {
       await _client
           .from('investments')
@@ -89,21 +86,31 @@ class SupabaseInvestmentsGateway implements InvestmentsGateway {
     }
   }
 
-  Map<String, dynamic> _body(InvestmentDraft d) => {
-    'asset': d.asset,
-    'currency': d.currency,
-    'goal': d.goal,
-    'fields': buildHoldingFields(
-      base: d.baseFields,
-      asset: d.asset,
-      name: d.name,
-      invested: d.invested.amount.toString(),
-      current: d.current.amount.toString(),
-      ticker: d.ticker,
-      quantity: d.quantity,
-    ),
-    'derived': <String, dynamic>{},
-  };
+  Map<String, dynamic> _body(InvestmentDraft d) {
+    final bond = d.asset == 'bonds' ? d.bond : null;
+    return {
+      'asset': d.asset,
+      'currency': d.currency,
+      'goal': d.goal,
+      'fields': {
+        ...buildHoldingFields(
+          base: d.baseFields,
+          asset: d.asset,
+          name: d.name,
+          invested: d.invested.amount.toString(),
+          current: d.current.amount.toString(),
+          ticker: d.ticker,
+          quantity: d.quantity,
+        ),
+        ...?bond?.toFields(),
+      },
+      // The web reads a bond's current value from `derived.current`.
+      'derived': <String, dynamic>{
+        if (bond != null) 'current': d.current.amount.toDouble(),
+      },
+      'bond_freq': bond?.frequency.label,
+    };
+  }
 
   InvestmentRecord _fromRow(Map<String, dynamic> r) => InvestmentRecord(
     id: r['id'] as String,

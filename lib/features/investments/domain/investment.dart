@@ -2,6 +2,7 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/money/money.dart';
+import 'bond.dart';
 
 /// One investment holding. The web keeps class-specific inputs in a free-form
 /// `fields` map and computed values in `derived` (`src/lib/investmentsStore.ts`).
@@ -30,15 +31,19 @@ class InvestmentRecord {
 
   bool get isMobileRecord => fields['_mobile'] == '1';
 
+  /// Bond terms read from [fields]; null for any other asset.
+  BondTerms? get bond => asset == 'bonds' ? BondTerms.fromFields(fields) : null;
+
   String get name {
     final f = fields;
-    final candidate = (f['name'] ??
-            f['ticker'] ??
-            f['scheme'] ??
-            f['bond_name'] ??
-            f['property'] ??
-            f['coin'])
-        as String?;
+    final candidate =
+        (f['name'] ??
+                f['ticker'] ??
+                f['scheme'] ??
+                f['bond_name'] ??
+                f['property'] ??
+                f['coin'])
+            as String?;
     if (candidate != null && candidate.trim().isNotEmpty) return candidate;
     return kAssetLabels[asset] ?? asset;
   }
@@ -58,9 +63,10 @@ class InvestmentRecord {
       'mutual_funds' => _num(f['invested']),
       'fd' => _num(f['deposit']),
       'rd' => _num(d['principal']),
-      'pf' => _num(d['contribTotal']) != 0
-          ? _num(d['contribTotal'])
-          : _num(f['balance']),
+      'pf' =>
+        _num(d['contribTotal']) != 0
+            ? _num(d['contribTotal'])
+            : _num(f['balance']),
       'gold' => _num(d['invested']),
       'real_estate' => _num(d['totalCost']),
       'crypto' => _num(d['invested']),
@@ -155,7 +161,11 @@ class InvestmentDraft {
     this.ticker = '',
     this.quantity = '',
     this.baseFields = const {},
+    this.bond,
   });
+
+  /// Bond terms (asset `bonds` only), saved under the web's bond keys.
+  final BondTerms? bond;
 
   /// Optional market ticker / fund scheme code (priceable assets only) and
   /// the units held. Saved under the web's keys (`holding_fields.dart`).

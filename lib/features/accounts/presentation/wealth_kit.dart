@@ -99,13 +99,24 @@ class ToneTile extends StatelessWidget {
   final bool round;
 
   @override
-  Widget build(BuildContext context) =>
-      IconTile(icon: icon, size: size, tint: tone.bg, color: tone.fg, round: round);
+  Widget build(BuildContext context) => IconTile(
+    icon: icon,
+    size: size,
+    tint: tone.bg,
+    color: tone.fg,
+    round: round,
+  );
 }
 
 /// A [StatusPill] in a [Tone].
 class TonePill extends StatelessWidget {
-  const TonePill(this.label, this.tone, {super.key, this.dot = true, this.icon});
+  const TonePill(
+    this.label,
+    this.tone, {
+    super.key,
+    this.dot = true,
+    this.icon,
+  });
   final String label;
   final Tone tone;
   final bool dot;
@@ -123,7 +134,12 @@ class TonePill extends StatelessWidget {
 
 /// A thin, fully round progress bar (value 0..1).
 class SlimBar extends StatelessWidget {
-  const SlimBar({super.key, required this.value, required this.color, this.height = 8});
+  const SlimBar({
+    super.key,
+    required this.value,
+    required this.color,
+    this.height = 8,
+  });
   final double value;
   final Color color;
   final double height;
@@ -212,7 +228,12 @@ class SheetFrame extends StatelessWidget {
     this.error,
     this.extraActions = const [],
     this.formKey,
+    this.pinActions = false,
   });
+
+  /// Keep the primary / Cancel buttons fixed under the scrolling fields, so
+  /// they stay on screen on a small phone with a long form.
+  final bool pinActions;
 
   final String title;
   final String? subtitle;
@@ -228,67 +249,115 @@ class SheetFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final scheme = Theme.of(context).colorScheme;
-    Widget body = SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.xl,
-        AppSpacing.xs,
-        AppSpacing.xl,
-        MediaQuery.viewInsetsOf(context).bottom + AppSpacing.xl,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            title,
-            style: AppTypography.title.copyWith(color: palette.ink),
+    final header = <Widget>[
+      Text(title, style: AppTypography.title.copyWith(color: palette.ink)),
+      if (subtitle != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            subtitle!,
+            style: AppTypography.body.copyWith(color: palette.muted),
           ),
-          if (subtitle != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                subtitle!,
-                style: AppTypography.body.copyWith(color: palette.muted),
+        ),
+      const SizedBox(height: AppSpacing.xl),
+    ];
+    final errorBox = error == null
+        ? null
+        : Container(
+            margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: scheme.errorContainer,
+              borderRadius: AppRadius.field,
+            ),
+            child: Text(
+              error!,
+              style: AppTypography.body.copyWith(
+                color: scheme.onErrorContainer,
               ),
             ),
-          const SizedBox(height: AppSpacing.xl),
-          ...children,
-          if (error != null)
-            Container(
-              margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: scheme.errorContainer,
-                borderRadius: AppRadius.field,
-              ),
-              child: Text(
-                error!,
-                style: AppTypography.body.copyWith(
-                  color: scheme.onErrorContainer,
+          );
+    final actions = <Widget>[
+      FilledButton(
+        onPressed: busy ? null : onPrimary,
+        child: busy
+            ? const SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(primaryLabel),
+      ),
+      for (final a in extraActions) ...[
+        const SizedBox(height: AppSpacing.sm),
+        a,
+      ],
+      const SizedBox(height: AppSpacing.sm),
+      OutlinedButton(
+        onPressed: busy ? null : () => Navigator.of(context).maybePop(),
+        child: const Text('Cancel'),
+      ),
+    ];
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
+
+    Widget body;
+    if (pinActions) {
+      body = Padding(
+        padding: EdgeInsets.only(bottom: inset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl,
+                  AppSpacing.xs,
+                  AppSpacing.xl,
+                  AppSpacing.sm,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [...header, ...children, ?errorBox],
                 ),
               ),
             ),
-          FilledButton(
-            onPressed: busy ? null : onPrimary,
-            child: busy
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(primaryLabel),
-          ),
-          for (final a in extraActions) ...[
-            const SizedBox(height: AppSpacing.sm),
-            a,
+            DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: palette.line)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl,
+                  AppSpacing.md,
+                  AppSpacing.xl,
+                  AppSpacing.lg,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: actions,
+                ),
+              ),
+            ),
           ],
-          const SizedBox(height: AppSpacing.sm),
-          OutlinedButton(
-            onPressed: busy ? null : () => Navigator.of(context).maybePop(),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
+        ),
+      );
+    } else {
+      body = SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xs,
+          AppSpacing.xl,
+          inset + AppSpacing.xl,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [...header, ...children, ?errorBox, ...actions],
+        ),
+      );
+    }
     if (formKey != null) body = Form(key: formKey, child: body);
     return body;
   }
@@ -362,7 +431,10 @@ class SplitBar extends StatelessWidget {
                       ),
                   if (sum < whole)
                     Expanded(
-                      flex: ((whole - sum) / whole * 1000).round().clamp(0, 1000),
+                      flex: ((whole - sum) / whole * 1000).round().clamp(
+                        0,
+                        1000,
+                      ),
                       child: const SizedBox.shrink(),
                     ),
                 ],
