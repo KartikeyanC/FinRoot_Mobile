@@ -6,10 +6,11 @@ import 'dart:math' as math;
 /// unit-tested on its own (`test/features/investments/bond_test.dart`) and
 /// matches the web's port line for line.
 ///
-/// Keys in `fields`:
-///   face_value, bond_units, coupon_rate, purchase_date, maturity_date
-///   (ISO `yyyy-MM-dd`), issuer, rating. The payout frequency is the
-///   table's own `bond_freq` column and is mirrored in `fields.bond_freq`.
+/// The inputs follow an Indian bond deal sheet: price per ₹100 of face value,
+/// the last interest payment ("IP") date, accrued interest that can be
+/// negative when the trade settles before an IP date whose record date has
+/// passed, stamp duty, cost to client, TDS, yield to maturity and to call.
+/// Day count is actual/365, as on those sheets.
 abstract final class BondKeys {
   static const faceValue = 'face_value';
   static const units = 'bond_units';
@@ -19,21 +20,18 @@ abstract final class BondKeys {
   static const maturityDate = 'maturity_date';
   static const issuer = 'issuer';
   static const rating = 'rating';
+  static const ratingAgency = 'rating_agency';
+  static const price = 'price';
+  static const lastInterestDate = 'last_ip_date';
+  static const stampDuty = 'stamp_duty';
+  static const maturityValue = 'maturity_value';
+  static const tdsRate = 'tds_rate';
+  static const bondType = 'bond_type';
+  static const callDate = 'call_date';
 
   /// The web's older bond form saved the rate as `xirr`; read it as a
   /// fallback so those holdings still get figures.
   static const legacyRate = 'xirr';
-
-  static const all = [
-    faceValue,
-    units,
-    couponRate,
-    frequency,
-    purchaseDate,
-    maturityDate,
-    issuer,
-    rating,
-  ];
 }
 
 /// How often the bond pays interest. [label] is what is stored and shown.
@@ -65,13 +63,41 @@ enum BondFrequency {
   }
 }
 
-/// Credit ratings offered in the picker.
-const List<String> kBondRatings = ['AAA', 'AA', 'A', 'BBB', 'Unrated'];
+/// Credit rating grades, highest first.
+const List<String> kBondRatings = [
+  'AAA',
+  'AA+',
+  'AA',
+  'AA-',
+  'A+',
+  'A',
+  'A-',
+  'BBB+',
+  'BBB',
+  'BBB-',
+  'BB and below',
+  'Unrated',
+];
+
+/// Indian credit rating agencies.
+const List<String> kBondRatingAgencies = [
+  'CRISIL',
+  'ICRA',
+  'CARE',
+  'India Ratings',
+  'Acuité',
+  'Brickwork',
+  'Infomerics',
+];
+
+const List<String> kBondTypes = ['Secured', 'Unsecured'];
 
 double? _num(Object? v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();
-  final n = double.tryParse('$v'.trim());
+  final t = '$v'.trim();
+  if (t.isEmpty) return null;
+  final n = double.tryParse(t);
   return (n == null || !n.isFinite) ? null : n;
 }
 
@@ -82,12 +108,23 @@ DateTime? _date(Object? v) {
   return d == null ? null : DateTime(d.year, d.month, d.day);
 }
 
+String? _pick(Object? v, List<String> options) {
+  final s = '${v ?? ''}'.trim();
+  return options.contains(s) ? s : null;
+}
+
 String isoDate(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-'
     '${d.month.toString().padLeft(2, '0')}-'
     '${d.day.toString().padLeft(2, '0')}';
 
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
+
+int _days(DateTime a, DateTime b) => DateTime.utc(
+  b.year,
+  b.month,
+  b.day,
+).difference(DateTime.utc(a.year, a.month, a.day)).inDays;
 
 /// [d] moved by [months], clamping the day to the target month's length
 /// (31 Jan − 1 month = 31 Dec; 31 Mar − 1 month = 28/29 Feb).
@@ -97,6 +134,25 @@ DateTime addMonths(DateTime d, int months) {
   final m = total % 12 + 1;
   final last = DateTime(y, m + 1, 0).day;
   return DateTime(y, m, math.min(d.day, last));
+}
+
+/// One interest payment the holder is entitled to.
+class BondPayout {
+  const BondPayout(this.date, this.amount);
+  final DateTime date;
+
+  /// Gross, before TDS.
+  final double amount;
+
+  @override
+  bool operator ==(Object other) =>
+      other is BondPayout && other.date == date && other.amount == amount;
+
+  @override
+  int get hashCode => Object.hash(date, amount);
+
+  @override
+  String toString() => 'BondPayout(${isoDate(date)}, $amount)';
 }
 
 /// What the user entered for one bond holding.
@@ -110,6 +166,14 @@ class BondTerms {
     this.maturityDate,
     this.issuer = '',
     this.rating,
+    this.ratingAgency,
+    this.price,
+    this.lastInterestDate,
+    this.stampDuty,
+    this.maturityValue,
+    this.tdsRate,
+    this.bondType,
+    this.callDate,
   });
 
   final double? faceValue;
@@ -118,10 +182,30 @@ class BondTerms {
   /// Annual coupon, in percent (7.5 = 7.5% a year).
   final double? couponRate;
   final BondFrequency frequency;
+
+  /// The transaction (settlement) date.
   final DateTime? purchaseDate;
   final DateTime? maturityDate;
   final String issuer;
   final String? rating;
+  final String? ratingAgency;
+
+  /// Clean price per ₹100 of face value (102 = 2% premium).
+  final double? price;
+
+  /// The interest payment date the accrued interest runs from. It may fall
+  /// a few days AFTER the purchase date: the seller still gets that coupon
+  /// (its record date has passed), so the accrued interest is negative.
+  final DateTime? lastInterestDate;
+  final double? stampDuty;
+
+  /// Paid back at maturity; the total face value when not given.
+  final double? maturityValue;
+
+  /// TDS on each interest payment, in percent.
+  final double? tdsRate;
+  final String? bondType;
+  final DateTime? callDate;
 
   factory BondTerms.fromFields(Map<String, dynamic> f) => BondTerms(
     faceValue: _num(f[BondKeys.faceValue]),
@@ -131,27 +215,50 @@ class BondTerms {
     purchaseDate: _date(f[BondKeys.purchaseDate]),
     maturityDate: _date(f[BondKeys.maturityDate]),
     issuer: '${f[BondKeys.issuer] ?? ''}'.trim(),
-    rating: kBondRatings.contains(f[BondKeys.rating])
-        ? f[BondKeys.rating] as String
-        : null,
+    rating: _pick(f[BondKeys.rating], kBondRatings),
+    ratingAgency: _pick(f[BondKeys.ratingAgency], kBondRatingAgencies),
+    price: _num(f[BondKeys.price]),
+    lastInterestDate: _date(f[BondKeys.lastInterestDate]),
+    stampDuty: _num(f[BondKeys.stampDuty]),
+    maturityValue: _num(f[BondKeys.maturityValue]),
+    tdsRate: _num(f[BondKeys.tdsRate]),
+    bondType: _pick(f[BondKeys.bondType], kBondTypes),
+    callDate: _date(f[BondKeys.callDate]),
   );
 
   /// The keys to merge into `fields`. Blank optional values are written as
   /// empty strings so a cleared box really clears on both apps.
-  Map<String, String> toFields() => {
-    BondKeys.faceValue: _fmt(faceValue),
-    BondKeys.units: _fmt(units),
-    BondKeys.couponRate: _fmt(couponRate),
-    BondKeys.frequency: frequency.label,
-    BondKeys.purchaseDate: purchaseDate == null ? '' : isoDate(purchaseDate!),
-    BondKeys.maturityDate: maturityDate == null ? '' : isoDate(maturityDate!),
-    BondKeys.issuer: issuer.trim(),
-    BondKeys.rating: rating ?? '',
-  };
+  Map<String, String> toFields() {
+    String d(DateTime? v) => v == null ? '' : isoDate(v);
+    return {
+      BondKeys.faceValue: _fmt(faceValue),
+      BondKeys.units: _fmt(units),
+      BondKeys.couponRate: _fmt(couponRate),
+      BondKeys.frequency: frequency.label,
+      BondKeys.purchaseDate: d(purchaseDate),
+      BondKeys.maturityDate: d(maturityDate),
+      BondKeys.issuer: issuer.trim(),
+      BondKeys.rating: rating ?? '',
+      BondKeys.ratingAgency: ratingAgency ?? '',
+      BondKeys.price: _fmt(price),
+      BondKeys.lastInterestDate: d(lastInterestDate),
+      BondKeys.stampDuty: _fmt(stampDuty),
+      BondKeys.maturityValue: _fmt(maturityValue),
+      BondKeys.tdsRate: _fmt(tdsRate),
+      BondKeys.bondType: bondType ?? '',
+      BondKeys.callDate: d(callDate),
+    };
+  }
 
   static String _fmt(double? v) {
     if (v == null) return '';
     return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  }
+
+  /// "CRISIL A", "AAA", or null.
+  String? get ratingLabel {
+    if (rating == null) return null;
+    return ratingAgency == null ? rating : '$ratingAgency $rating';
   }
 
   /// Total face value, or null when face value / units are not both given.
@@ -161,54 +268,112 @@ class BondTerms {
     return f * u;
   }
 
-  /// Every payout date strictly after the purchase date, up to and including
-  /// maturity. Coupon dates run back from maturity in whole periods, the way
-  /// bond schedules are set. Cumulative bonds pay once, at maturity.
-  List<DateTime> payoutDates() {
+  /// The date the holder's interest runs from: the last IP date when given,
+  /// otherwise the regular coupon date on or before the purchase date.
+  DateTime? get accrualStart {
     final start = purchaseDate, end = maturityDate;
-    if (start == null || end == null || !end.isAfter(start)) return const [];
-    if (frequency.perYear == 0) return [end];
-    final out = <DateTime>[];
-    for (var k = 0; ; k++) {
-      final d = addMonths(end, -k * frequency.monthsBetween);
-      if (!d.isAfter(start)) break;
-      out.add(d);
-      if (k > 1200) break; // 100 years of monthly coupons; never reached
+    if (start == null || end == null) return null;
+    if (frequency.perYear == 0) return start;
+    if (lastInterestDate != null) return lastInterestDate;
+    final m = frequency.monthsBetween;
+    for (var k = 1; k <= 1200; k++) {
+      final d = addMonths(end, -k * m);
+      if (!d.isAfter(start)) return d;
     }
-    return out.reversed.toList();
+    return start;
+  }
+
+  /// Every coupon date from [accrualStart] (exclusive) to maturity
+  /// (inclusive). With a last IP date the schedule runs forward from it, so a
+  /// bond paying on the 20th stays on the 20th, and the final payment at
+  /// maturity covers the broken period. Otherwise it runs back from maturity.
+  List<DateTime> couponDates() {
+    final from = accrualStart, end = maturityDate, start = purchaseDate;
+    if (from == null || end == null || start == null) return const [];
+    if (!end.isAfter(start)) return const [];
+    if (frequency.perYear == 0) return [end];
+    final m = frequency.monthsBetween;
+    final out = <DateTime>[];
+    for (var k = 1; k <= 1200; k++) {
+      final d = addMonths(from, k * m);
+      if (!d.isBefore(end)) break;
+      out.add(d);
+    }
+    out.add(end);
+    return out;
   }
 }
 
 /// Figures derived from [BondTerms] and the amount invested.
 class BondFigures {
   const BondFigures({
+    required this.principal,
+    required this.consideration,
+    required this.accruedAtPurchase,
+    required this.accruedDaysAtPurchase,
+    required this.costToClient,
     required this.accruedInterest,
     required this.estimatedValue,
     required this.yieldToMaturity,
+    required this.yieldToCall,
+    required this.payoutPerPeriod,
     required this.nextPayout,
+    required this.nextPayoutAmount,
+    required this.interestReceived,
     required this.maturityAmount,
     required this.daysToMaturity,
+    required this.tdsRate,
   });
+
+  /// Face value the coupon is paid on (face × units, else amount invested).
+  final double principal;
+
+  /// Face × price ÷ 100; null without a price.
+  final double? consideration;
+
+  /// Interest bought from (positive) or owed to (negative) the seller.
+  final double? accruedAtPurchase;
+  final int? accruedDaysAtPurchase;
+
+  /// Consideration + accrued interest + stamp duty.
+  final double? costToClient;
 
   /// Interest earned but not yet paid out, as of today.
   final double accruedInterest;
 
-  /// Amount invested + [accruedInterest]: the default current value.
+  /// Clean value (the consideration, else the amount invested) plus
+  /// [accruedInterest]: the default current value.
   final double estimatedValue;
 
-  /// Annual yield, in percent, if held from purchase to maturity at the price
-  /// paid (the amount invested). Null when the terms are incomplete.
+  /// Annual XIRR (%) from purchase to maturity at the price paid.
   final double? yieldToMaturity;
 
-  /// The next date interest is paid; null once the bond has matured.
+  /// Annual XIRR (%) if the issuer calls the bond on the call date.
+  final double? yieldToCall;
+
+  /// A typical payout (a year's coupon ÷ payouts a year), gross; actual
+  /// payouts vary a little with the days in each period. Null for a
+  /// cumulative bond.
+  final double? payoutPerPeriod;
+
   final DateTime? nextPayout;
 
-  /// What is paid out on the maturity date (principal plus the last coupon,
-  /// or principal plus all interest for a cumulative bond).
+  /// Gross amount of [nextPayout].
+  final double? nextPayoutAmount;
+
+  /// Coupons paid since purchase up to today, gross.
+  final double interestReceived;
+
+  /// What is paid on the maturity date: maturity value + the last coupon.
   final double? maturityAmount;
 
   /// Days from today to maturity; 0 once matured, null without a date.
   final int? daysToMaturity;
+
+  /// TDS percent applied to payouts (0 when not set).
+  final double tdsRate;
+
+  double net(double gross) => _round2(gross * (1 - tdsRate / 100));
 
   static BondFigures of(
     BondTerms t, {
@@ -218,93 +383,157 @@ class BondFigures {
     final today = _day(asOf);
     final principal = t.faceTotal ?? (invested > 0 ? invested : 0.0);
     final rate = (t.couponRate ?? 0) / 100;
+    final cumulative = t.frequency.perYear == 0;
     final start = t.purchaseDate;
     final end = t.maturityDate;
-    final payouts = t.payoutDates();
+    final redemption = t.maturityValue ?? principal;
+    final payouts = _payouts(t, principal, rate);
 
-    // ---- Accrued interest (simple, actual/365) ----
+    // ---- Purchase: consideration, accrued, cost to client ----
+    final face = t.faceTotal;
+    final consideration = (face != null && t.price != null && t.price! > 0)
+        ? face * t.price! / 100
+        : null;
+    final from = t.accrualStart;
+    int? accDays;
+    double? accrued0;
+    if (start != null && from != null && !cumulative) {
+      accDays = _days(from, start);
+      accrued0 = principal * rate * accDays / 365;
+    }
+    final cost = consideration == null
+        ? null
+        : consideration + (accrued0 ?? 0) + (t.stampDuty ?? 0);
+
+    // ---- Accrued now (actual/365; compounding for cumulative) ----
     var accrued = 0.0;
-    if (start != null && rate > 0 && principal > 0 && today.isAfter(start)) {
-      final until = (end != null && today.isAfter(end)) ? end : today;
-      DateTime from;
-      if (t.frequency.perYear == 0) {
-        from = start;
-      } else {
-        // Since the last payout on or before today (or the purchase date).
-        from = start;
-        for (final p in payouts) {
-          if (!p.isAfter(until)) from = p;
+    if (start != null && end != null && rate > 0 && principal > 0) {
+      if (!today.isBefore(end)) {
+        accrued = 0; // paid out at maturity
+      } else if (cumulative) {
+        if (today.isAfter(start)) {
+          accrued =
+              principal * (math.pow(1 + rate, _days(start, today) / 365) - 1);
         }
+      } else if (from != null) {
+        var last = from;
+        for (final p in payouts) {
+          if (!p.date.isAfter(today)) last = p.date;
+        }
+        accrued = principal * rate * _days(last, today) / 365;
       }
-      if (t.frequency.perYear == 0) {
-        final years = until.difference(from).inDays / 365;
-        accrued = principal * (math.pow(1 + rate, years) - 1);
-      } else {
-        accrued = principal * rate * until.difference(from).inDays / 365;
-      }
-      if (end != null && !today.isBefore(end)) accrued = 0; // paid out
     }
 
-    // ---- Next payout ----
-    DateTime? next;
+    // ---- Payouts ----
+    BondPayout? next;
+    var received = 0.0;
     for (final p in payouts) {
-      if (p.isAfter(today)) {
-        next = p;
-        break;
+      if (p.date.isAfter(today)) {
+        next ??= p;
+      } else if (start != null && p.date.isAfter(start)) {
+        received += p.amount;
       }
     }
 
-    // ---- Maturity amount ----
+    // ---- Maturity ----
     double? maturity;
-    if (end != null && start != null && end.isAfter(start) && principal > 0) {
-      if (t.frequency.perYear == 0) {
-        final years = end.difference(start).inDays / 365;
-        maturity = principal * math.pow(1 + rate, years);
-      } else {
-        maturity = principal + principal * rate / t.frequency.perYear;
-      }
+    if (payouts.isNotEmpty) {
+      maturity = cumulative
+          ? (t.maturityValue ?? payouts.last.amount)
+          : redemption + payouts.last.amount;
     }
 
-    final days = end == null ? null : math.max(0, end.difference(today).inDays);
+    final clean = consideration ?? (invested > 0 ? invested : 0.0);
+    final outlay = invested > 0 ? invested : (cost ?? 0);
 
     return BondFigures(
+      principal: principal,
+      consideration: consideration == null ? null : _round2(consideration),
+      accruedAtPurchase: accrued0 == null ? null : _round2(accrued0),
+      accruedDaysAtPurchase: accDays,
+      costToClient: cost == null ? null : _round2(cost),
       accruedInterest: _round2(accrued),
-      estimatedValue: _round2((invested > 0 ? invested : 0) + accrued),
-      yieldToMaturity: _ytm(t, invested: invested, principal: principal),
-      nextPayout: next,
+      estimatedValue: _round2(clean + accrued),
+      yieldToMaturity: _xirr(t, payouts, outlay, redemption, until: end),
+      yieldToCall: _yieldToCall(t, principal, rate, outlay),
+      payoutPerPeriod: cumulative || principal <= 0
+          ? null
+          : _round2(principal * rate / t.frequency.perYear),
+      nextPayout: next?.date,
+      nextPayoutAmount: next == null ? null : _round2(next.amount),
+      interestReceived: _round2(received),
       maturityAmount: maturity == null ? null : _round2(maturity),
-      daysToMaturity: days,
+      daysToMaturity: end == null ? null : math.max(0, _days(today, end)),
+      tdsRate: t.tdsRate ?? 0,
     );
   }
 
-  /// Rate y (annual, effective) at which the cash flows from purchase to
-  /// maturity are worth exactly the amount invested. Bisection, so it never
-  /// diverges; null when there is nothing to solve.
-  static double? _ytm(
-    BondTerms t, {
-    required double invested,
-    required double principal,
+  /// The coupons the holder receives, gross. Each pays principal × rate ×
+  /// the days in its period ÷ 365, as Indian NCDs do: a 31-day month pays a
+  /// little more than a 30-day one, and the stub to maturity (or to a call
+  /// date) pays only its days. This is what makes the yield match the deal
+  /// sheet's XIRR.
+  static List<BondPayout> _payouts(
+    BondTerms t,
+    double principal,
+    double rate, {
+    DateTime? stopAt,
   }) {
-    final start = t.purchaseDate, end = t.maturityDate;
-    if (start == null || end == null || !end.isAfter(start)) return null;
-    if (invested <= 0 || principal <= 0 || t.couponRate == null) return null;
-    final rate = t.couponRate! / 100;
-
-    final flows = <(double, double)>[]; // (years from purchase, amount)
-    double years(DateTime d) => d.difference(start).inDays / 365;
+    final dates = t.couponDates();
+    final start = t.purchaseDate;
+    if (dates.isEmpty || principal <= 0 || start == null) return const [];
     if (t.frequency.perYear == 0) {
-      flows.add((
-        years(end),
-        principal * math.pow(1 + rate, years(end)).toDouble(),
-      ));
-    } else {
-      final coupon = principal * rate / t.frequency.perYear;
-      final dates = t.payoutDates();
-      for (final d in dates) {
-        flows.add((years(d), coupon + (d == end ? principal : 0)));
-      }
+      final end = stopAt ?? dates.last;
+      final years = _days(start, end) / 365;
+      return [BondPayout(end, principal * math.pow(1 + rate, years))];
     }
-    if (flows.isEmpty) return null;
+    final out = <BondPayout>[];
+    var prev = t.accrualStart!;
+    for (final d in dates) {
+      final pay = (stopAt != null && d.isAfter(stopAt)) ? stopAt : d;
+      out.add(BondPayout(pay, principal * rate * _days(prev, pay) / 365));
+      if (pay != d) break;
+      prev = d;
+    }
+    return out;
+  }
+
+  static double? _yieldToCall(
+    BondTerms t,
+    double principal,
+    double rate,
+    double outlay,
+  ) {
+    final call = t.callDate, start = t.purchaseDate, end = t.maturityDate;
+    if (call == null || start == null || end == null) return null;
+    if (!call.isAfter(start) || !call.isBefore(end)) return null;
+    final flows = _payouts(t, principal, rate, stopAt: call);
+    return _xirr(t, flows, outlay, principal, until: call);
+  }
+
+  /// XIRR: the annual rate at which the payouts plus the redemption on
+  /// [until] are worth exactly [outlay] on the purchase date. Bisection, so
+  /// it never diverges; null when there is nothing to solve.
+  static double? _xirr(
+    BondTerms t,
+    List<BondPayout> payouts,
+    double outlay,
+    double redemption, {
+    required DateTime? until,
+  }) {
+    final start = t.purchaseDate;
+    if (start == null || until == null || !until.isAfter(start)) return null;
+    if (outlay <= 0 || payouts.isEmpty || t.couponRate == null) return null;
+    final cumulative = t.frequency.perYear == 0;
+    final flows = <(double, double)>[
+      for (final p in payouts)
+        if (p.date.isAfter(start))
+          (_days(start, p.date) / 365, cumulative ? 0.0 : p.amount),
+      (
+        _days(start, until) / 365,
+        cumulative ? (t.maturityValue ?? payouts.last.amount) : redemption,
+      ),
+    ];
 
     double pv(double y) {
       var s = 0.0;
@@ -315,10 +544,10 @@ class BondFigures {
     }
 
     var lo = -0.99, hi = 5.0;
-    if (pv(lo) < invested || pv(hi) > invested) return null;
+    if (pv(lo) < outlay || pv(hi) > outlay) return null;
     for (var i = 0; i < 200; i++) {
       final mid = (lo + hi) / 2;
-      if (pv(mid) > invested) {
+      if (pv(mid) > outlay) {
         lo = mid;
       } else {
         hi = mid;
@@ -341,12 +570,42 @@ abstract final class BondValidators {
     return null;
   }
 
-  /// Face value and units are optional, but above zero when given.
+  /// Optional, but above zero when given.
   static String? positiveOptional(String? v) {
     final t = v?.trim() ?? '';
     if (t.isEmpty) return null;
     final n = double.tryParse(t);
     if (n == null || !n.isFinite || n <= 0) return 'Enter a number above 0';
+    return null;
+  }
+
+  /// Optional, zero or more.
+  static String? nonNegativeOptional(String? v) {
+    final t = v?.trim() ?? '';
+    if (t.isEmpty) return null;
+    final n = double.tryParse(t);
+    if (n == null || !n.isFinite || n < 0) return 'Enter 0 or more';
+    return null;
+  }
+
+  /// Price per ₹100 of face value, optional.
+  static String? price(String? v) {
+    final t = v?.trim() ?? '';
+    if (t.isEmpty) return null;
+    final n = double.tryParse(t);
+    if (n == null || !n.isFinite || n <= 0 || n > 200) {
+      return 'Price per ₹100, e.g. 102';
+    }
+    return null;
+  }
+
+  static String? tdsRate(String? v) {
+    final t = v?.trim() ?? '';
+    if (t.isEmpty) return null;
+    final n = double.tryParse(t);
+    if (n == null || !n.isFinite || n < 0 || n > 50) {
+      return 'Use a rate between 0 and 50%';
+    }
     return null;
   }
 
@@ -366,6 +625,42 @@ abstract final class BondValidators {
       return 'Must be after the purchase date';
     }
     if (!_day(d).isAfter(_day(today))) return 'Must be in the future';
+    return null;
+  }
+
+  /// Optional. Must be the interest date nearest the purchase: no more than
+  /// one payout period either side of it, and before maturity.
+  static String? lastInterestDate(
+    DateTime? d, {
+    required DateTime? purchase,
+    required DateTime? maturity,
+    required BondFrequency frequency,
+  }) {
+    if (d == null || purchase == null) return null;
+    if (frequency.perYear == 0) return null;
+    if (maturity != null && !d.isBefore(maturity)) {
+      return 'Must be before maturity';
+    }
+    final m = frequency.monthsBetween;
+    if (d.isBefore(addMonths(purchase, -m)) ||
+        d.isAfter(addMonths(purchase, m))) {
+      return 'Use the interest date nearest the purchase';
+    }
+    return null;
+  }
+
+  static String? callDate(
+    DateTime? d, {
+    required DateTime? purchase,
+    required DateTime? maturity,
+  }) {
+    if (d == null) return null;
+    if (purchase != null && !d.isAfter(purchase)) {
+      return 'Must be after the purchase date';
+    }
+    if (maturity != null && !d.isBefore(maturity)) {
+      return 'Must be before maturity';
+    }
     return null;
   }
 }

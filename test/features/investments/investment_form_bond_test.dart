@@ -63,12 +63,20 @@ void main() {
     for (final label in [
       'Face value per bond',
       'Number of bonds',
-      'Coupon rate (% per year)',
-      'Interest payout',
+      'Price per ₹100',
+      'Stamp duty',
       'Purchase date',
+      'Last interest payment date (optional)',
+      'Coupon rate (% a year)',
+      'TDS (%)',
+      'Interest payout',
       'Maturity date',
+      'Maturity value (optional)',
+      'Call date (optional)',
       'Issuer / ISIN (optional)',
-      'Credit rating (optional)',
+      'Rating agency',
+      'Credit rating',
+      'Bond type (optional)',
       'Goal link (optional)',
     ]) {
       expect(find.text(label), findsOneWidget, reason: label);
@@ -128,5 +136,31 @@ void main() {
     await tester.tap(cancel);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('bond-summary')), findsNothing);
+  });
+
+  testWidgets('a price fills Amount invested with the cost to client', (
+    tester,
+  ) async {
+    await _openAsBond(tester);
+    final invested = find.byKey(const ValueKey('amount-invested'));
+    await tester.enterText(find.byKey(const ValueKey('bond-face')), '10000');
+    await tester.enterText(find.byKey(const ValueKey('bond-units')), '1');
+    await tester.enterText(find.byKey(const ValueKey('bond-price')), '102');
+    await tester.enterText(find.byKey(const ValueKey('bond-stamp')), '5');
+    await tester.pump();
+    expect(find.byKey(const ValueKey('bond-purchase-card')), findsOneWidget);
+    // No dates yet: no accrued interest, so 10,200 + 5 stamp duty.
+    expect(tester.widget<TextFormField>(invested).controller!.text, '10205.00');
+
+    // Typing your own amount stops the auto-fill; the card offers it back.
+    await tester.enterText(invested, '10300');
+    await tester.enterText(find.byKey(const ValueKey('bond-price')), '101');
+    await tester.pump();
+    expect(tester.widget<TextFormField>(invested).controller!.text, '10300');
+    await tester.ensureVisible(find.text('Use as amount invested'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Use as amount invested'));
+    await tester.pump();
+    expect(tester.widget<TextFormField>(invested).controller!.text, '10105.00');
   });
 }

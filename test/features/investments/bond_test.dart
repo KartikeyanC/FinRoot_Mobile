@@ -1,3 +1,6 @@
+// Dates are spelled out in full (2025, 1, 1) to read like the deal sheet.
+// ignore_for_file: avoid_redundant_argument_values
+
 import 'dart:math' as math;
 
 import 'package:finroot_mobile/features/investments/domain/bond.dart';
@@ -83,7 +86,7 @@ void main() {
       purchaseDate: DateTime(2029, 1, 10),
       maturityDate: DateTime(2030, 8, 31),
     );
-    expect(t.payoutDates(), [
+    expect(t.couponDates(), [
       DateTime(2029, 2, 28),
       DateTime(2029, 8, 31),
       DateTime(2030, 2, 28),
@@ -123,6 +126,14 @@ void main() {
       'maturity_date': '2031-03-04',
       'issuer': 'NHAI',
       'rating': 'AAA',
+      'rating_agency': '',
+      'price': '',
+      'last_ip_date': '',
+      'stamp_duty': '',
+      'maturity_value': '',
+      'tds_rate': '',
+      'bond_type': '',
+      'call_date': '',
     });
     final back = BondTerms.fromFields(fields);
     expect(back.couponRate, 7.35);
@@ -199,5 +210,109 @@ void main() {
     expect(bondCardLine(yearly, invested: 10000, asOf: DateTime(2031, 1, 1)), [
       'Matured 1 Jan 2030',
     ]);
+  });
+
+  group('RM deal sheet: 10.75% Navi Finserv, monthly', () {
+    final navi = BondTerms(
+      faceValue: 10000,
+      units: 1,
+      couponRate: 10.75,
+      frequency: BondFrequency.monthly,
+      purchaseDate: DateTime(2026, 6, 9),
+      maturityDate: DateTime(2028, 12, 31),
+      price: 102,
+      lastInterestDate: DateTime(2026, 6, 20),
+      stampDuty: 0,
+      maturityValue: 10000,
+      tdsRate: 10,
+      issuer: 'INE342T07668',
+      rating: 'A',
+      ratingAgency: 'CRISIL',
+      bondType: 'Secured',
+    );
+    final onTradeDay = BondFigures.of(
+      navi,
+      invested: 10167.6,
+      asOf: DateTime(2026, 6, 9),
+    );
+
+    test('purchase breakdown matches the sheet', () {
+      expect(onTradeDay.consideration, 10200);
+      expect(onTradeDay.accruedDaysAtPurchase, -11);
+      expect(onTradeDay.accruedAtPurchase, -32.4);
+      expect(onTradeDay.costToClient, 10167.6);
+      // On the trade day the holding is worth what was paid.
+      expect(onTradeDay.estimatedValue, 10167.6);
+    });
+
+    test('yield to maturity matches the sheet', () {
+      expect(onTradeDay.yieldToMaturity, 10.32);
+    });
+
+    test('the seller keeps the 20 Jun coupon; ours start 20 Jul', () {
+      expect(onTradeDay.nextPayout, DateTime(2026, 7, 20));
+      // 20 Jun to 20 Jul: 30 days.
+      expect(onTradeDay.nextPayoutAmount, 88.36);
+      expect(onTradeDay.payoutPerPeriod, 89.58);
+      expect(onTradeDay.net(89.58), 80.62);
+      final dates = navi.couponDates();
+      expect(dates.first, DateTime(2026, 7, 20));
+      expect(dates[dates.length - 2], DateTime(2028, 12, 20));
+      expect(dates.last, DateTime(2028, 12, 31));
+    });
+
+    test('maturity pays the redemption plus an 11-day stub coupon', () {
+      expect(onTradeDay.maturityAmount, closeTo(10000 + 32.40, 0.01));
+    });
+
+    test('later: interest received and accrued since the last payout', () {
+      final f = BondFigures.of(
+        navi,
+        invested: 10167.6,
+        asOf: DateTime(2026, 11, 21),
+      );
+      // Jul, Aug, Sep, Oct and Nov 20th paid.
+      // 153 days of interest, 20 Jun to 20 Nov.
+      expect(f.interestReceived, closeTo(10000 * 0.1075 * 153 / 365, 0.01));
+      expect(f.accruedInterest, closeTo(10000 * 0.1075 * 1 / 365, 0.01));
+      expect(f.nextPayout, DateTime(2026, 12, 20));
+    });
+
+    test('rating label and round trip of the new keys', () {
+      expect(navi.ratingLabel, 'CRISIL A');
+      final back = BondTerms.fromFields(navi.toFields());
+      expect(back.price, 102);
+      expect(back.lastInterestDate, DateTime(2026, 6, 20));
+      expect(back.tdsRate, 10);
+      expect(back.bondType, 'Secured');
+      expect(back.ratingAgency, 'CRISIL');
+    });
+
+    test('yield to call when a call date is set', () {
+      final called = BondTerms.fromFields({
+        ...navi.toFields(),
+        'call_date': '2027-12-20',
+      });
+      final f = BondFigures.of(
+        called,
+        invested: 10167.6,
+        asOf: DateTime(2026, 6, 9),
+      );
+      expect(f.yieldToCall, isNotNull);
+      // A premium bond called early yields less than held to maturity.
+      expect(f.yieldToCall!, lessThan(f.yieldToMaturity!));
+    });
+
+    test('last IP date must be the one nearest the purchase', () {
+      String? check(DateTime d) => BondValidators.lastInterestDate(
+        d,
+        purchase: DateTime(2026, 6, 9),
+        maturity: DateTime(2028, 12, 31),
+        frequency: BondFrequency.monthly,
+      );
+      expect(check(DateTime(2026, 6, 20)), isNull);
+      expect(check(DateTime(2026, 5, 20)), isNull);
+      expect(check(DateTime(2026, 3, 20)), isNotNull);
+    });
   });
 }
