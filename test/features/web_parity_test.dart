@@ -8,6 +8,7 @@ import 'package:finroot_mobile/features/calendar/calendar_screen.dart';
 import 'package:finroot_mobile/features/debts/debts.dart';
 import 'package:finroot_mobile/features/debts/debts_screen.dart';
 import 'package:finroot_mobile/features/goals/application/goals_providers.dart';
+import 'package:finroot_mobile/features/insurance/insurance.dart';
 import 'package:finroot_mobile/features/insurance/insurance_screen.dart';
 import 'package:finroot_mobile/features/menus/application/menu_providers.dart';
 import 'package:finroot_mobile/features/search/presentation/search_screen.dart';

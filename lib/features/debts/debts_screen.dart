@@ -8,22 +8,28 @@ import '../../design/design.dart';
 import '../accounts/presentation/wealth_kit.dart';
 import '../sync/application/sync_engine.dart';
 import '../workspace/application/workspace_providers.dart';
+import 'debt_form_sheet.dart';
 import 'debts.dart';
 
 final _due = DateFormat('d MMM yyyy');
 
 /// Debts / EMIs — the web dashboard's Debts page on the phone: what's paid,
-/// what's left, the next instalment, and "Mark paid". New debts are still
-/// added on the web.
+/// what's left, the next instalment and "Mark paid"; add a debt with the +
+/// button, tap one to edit or delete it.
 class DebtsScreen extends ConsumerWidget {
   const DebtsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final debts = ref.watch(debtsProvider);
+    final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? false;
+    final hasAny = debts.value?.isNotEmpty ?? false;
     return AppPage(
       title: 'Debts',
       padBody: false,
+      floatingActionButton: canWrite && hasAny
+          ? AddFab(label: 'Debt', onPressed: () => openDebtForm(context))
+          : null,
       body: RefreshIndicator(
         onRefresh: () =>
             ref.read(syncEngineProvider.notifier).syncNow(force: true),
@@ -32,12 +38,19 @@ class DebtsScreen extends ConsumerWidget {
           error: (e, _) => ErrorView(e),
           data: (list) {
             if (list.isEmpty) {
-              return const EmptyView(
+              return EmptyView(
                 title: 'No debts',
                 message:
-                    'Loans and EMIs you add on the web dashboard show up '
-                    'here, with what is paid and what is left.',
+                    'Add a loan or EMI plan to see what is paid, what is '
+                    'left and when the next EMI is due.',
                 icon: Icons.account_balance_outlined,
+                action: canWrite
+                    ? FilledButton(
+                        key: const ValueKey('debt-add-empty'),
+                        onPressed: () => openDebtForm(context),
+                        child: const Text('Add a debt'),
+                      )
+                    : null,
               );
             }
             final open = list.where((d) => !d.isClosed).toList();
@@ -48,7 +61,7 @@ class DebtsScreen extends ConsumerWidget {
                 AppSpacing.screenGutter,
                 AppSpacing.xs,
                 AppSpacing.screenGutter,
-                AppSpacing.huge,
+                96,
               ),
               children: [
                 MetricCard(
@@ -115,9 +128,8 @@ class _DebtCard extends ConsumerWidget {
       await markInstallmentPaid(ref, debt, i.month);
     } on Failure catch (f) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(f.message)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(f.message)));
       }
     }
   }
@@ -143,6 +155,7 @@ class _DebtCard extends ConsumerWidget {
         : Tones.sky(context);
 
     return AppCard(
+      onTap: canWrite ? () => openDebtForm(context, editing: debt) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -183,10 +196,7 @@ class _DebtCard extends ConsumerWidget {
           const SizedBox(height: AppSpacing.lg),
           Text.rich(
             TextSpan(
-              text: MoneyFormat.short(
-                debt.paidAmount,
-                currency: debt.currency,
-              ),
+              text: MoneyFormat.short(debt.paidAmount, currency: debt.currency),
               style: AppTypography.title.copyWith(
                 color: palette.ink,
                 fontFeatures: const [FontFeature.tabularFigures()],

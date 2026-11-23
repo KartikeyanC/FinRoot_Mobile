@@ -8,12 +8,14 @@ import '../../design/design.dart';
 import '../accounts/presentation/wealth_kit.dart';
 import '../sync/application/sync_engine.dart';
 import '../workspace/application/workspace_providers.dart';
+import 'subscription_form_sheet.dart';
 import 'subscriptions.dart';
 
 final _date = DateFormat('d MMM yyyy');
 
 /// Subscriptions — the web dashboard's page on the phone: what you pay a
-/// month for active ones, the next renewal, and cancel / resume tracking.
+/// month for active ones, the next renewal, cancel / resume tracking; add one
+/// with the + button, tap one to edit or delete it.
 class SubscriptionsScreen extends ConsumerWidget {
   const SubscriptionsScreen({super.key});
 
@@ -21,10 +23,17 @@ class SubscriptionsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final subs = ref.watch(trackedSubscriptionsProvider);
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? false;
+    final hasAny = subs.value?.isNotEmpty ?? false;
 
     return AppPage(
       title: 'Subscriptions',
       padBody: false,
+      floatingActionButton: canWrite && hasAny
+          ? AddFab(
+              label: 'Subscription',
+              onPressed: () => openSubscriptionForm(context),
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: () =>
             ref.read(syncEngineProvider.notifier).syncNow(force: true),
@@ -33,12 +42,19 @@ class SubscriptionsScreen extends ConsumerWidget {
           error: (e, _) => ErrorView(e),
           data: (list) {
             if (list.isEmpty) {
-              return const EmptyView(
+              return EmptyView(
                 title: 'No subscriptions',
                 message:
-                    'Subscriptions you track on the web dashboard show up '
-                    'here, with what they cost and when they renew.',
+                    'Track what you pay for streaming, cloud storage, the '
+                    'gym… and see each renewal coming.',
                 icon: Icons.subscriptions_outlined,
+                action: canWrite
+                    ? FilledButton(
+                        key: const ValueKey('sub-add-empty'),
+                        onPressed: () => openSubscriptionForm(context),
+                        child: const Text('Add a subscription'),
+                      )
+                    : null,
               );
             }
             final active = list.where((s) => s.active).toList()
@@ -55,7 +71,7 @@ class SubscriptionsScreen extends ConsumerWidget {
                 AppSpacing.screenGutter,
                 AppSpacing.xs,
                 AppSpacing.screenGutter,
-                AppSpacing.huge,
+                96,
               ),
               children: [
                 MetricCard(
@@ -93,9 +109,8 @@ class _SubTile extends ConsumerWidget {
       await setSubscriptionActive(ref, sub, active: !sub.active);
     } on Failure catch (f) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(f.message)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(f.message)));
       }
     }
   }
@@ -105,7 +120,9 @@ class _SubTile extends ConsumerWidget {
     final palette = context.palette;
     final days = sub.renewal?.difference(DateTime.now()).inDays;
     final soon = sub.active && days != null && days <= 3;
-    final tone = sub.active ? Tones.byIndex(context, index) : Tones.accent(context);
+    final tone = sub.active
+        ? Tones.byIndex(context, index)
+        : Tones.accent(context);
     final glyph = sub.icon?.isNotEmpty == true
         ? sub.icon!
         : sub.name.characters.first.toUpperCase();
@@ -117,6 +134,9 @@ class _SubTile extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
+        onTap: canWrite
+            ? () => openSubscriptionForm(context, editing: sub)
+            : null,
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg,
           vertical: AppSpacing.md,

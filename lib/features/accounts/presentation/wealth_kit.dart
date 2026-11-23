@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../design/design.dart';
 
@@ -476,4 +477,64 @@ class SplitBar extends StatelessWidget {
       ],
     );
   }
+}
+
+/// A tap-to-pick date box that takes part in form validation — used by the
+/// debt, subscription and insurance forms.
+class DatePickField extends FormField<DateTime> {
+  DatePickField({
+    super.key,
+    required String label,
+    required DateTime? value,
+    required ValueChanged<DateTime> onChanged,
+    required DateTime firstDate,
+    required DateTime lastDate,
+    String? helper,
+    bool enabled = true,
+    super.validator,
+  }) : super(
+         initialValue: value,
+         builder: (state) {
+           final context = state.context;
+           Future<void> pick() async {
+             FocusScope.of(context).unfocus();
+             var initial = value ?? DateTime.now();
+             if (initial.isBefore(firstDate)) initial = firstDate;
+             if (initial.isAfter(lastDate)) initial = lastDate;
+             final d = await showDatePicker(
+               context: context,
+               initialDate: initial,
+               firstDate: firstDate,
+               lastDate: lastDate,
+               helpText: label,
+             );
+             if (d != null) {
+               state.didChange(d);
+               onChanged(d);
+             }
+           }
+
+           return LabeledField(
+             label: label,
+             child: InkWell(
+               onTap: enabled ? pick : null,
+               borderRadius: AppRadius.field,
+               child: InputDecorator(
+                 isEmpty: value == null,
+                 decoration: InputDecoration(
+                   enabled: enabled,
+                   prefixIcon: const Icon(Icons.event_outlined),
+                   hintText: 'Pick a date',
+                   helperText: helper,
+                   helperMaxLines: 3,
+                   errorText: state.errorText,
+                 ),
+                 child: Text(
+                   value == null ? '' : DateFormat('d MMM yyyy').format(value),
+                 ),
+               ),
+             ),
+           );
+         },
+       );
 }

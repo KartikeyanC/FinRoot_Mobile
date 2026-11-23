@@ -2,76 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/error/error_mapper.dart';
 import '../../core/money/money_format.dart';
-import '../../core/providers/providers.dart';
-import '../../data/local/cached_rows.dart';
 import '../../design/design.dart';
 import '../../domain/constants.dart';
 import '../accounts/presentation/wealth_kit.dart';
 import '../menus/application/menu_providers.dart';
 import '../menus/presentation/menu_locked_view.dart';
 import '../sync/application/sync_engine.dart';
-
-/// A policy from the web's Insurance page (`insurance` table). View-only on the
-/// phone; documents and edits stay on the web.
-class InsurancePolicy {
-  const InsurancePolicy({
-    required this.id,
-    required this.name,
-    required this.category,
-    required this.premium,
-    required this.sumInsured,
-    this.provider,
-    this.policyNumber,
-    this.frequency,
-    this.due,
-    this.notes,
-  });
-
-  factory InsurancePolicy.fromRow(Map<String, dynamic> r) => InsurancePolicy(
-        id: r['id'] as String,
-        name: (r['policy_name'] as String?) ?? 'Policy',
-        category: (r['category'] as String?) ?? '',
-        premium: asDouble(r['premium']),
-        sumInsured: asDouble(r['sum_insured']),
-        provider: r['provider'] as String?,
-        policyNumber: r['policy_number'] as String?,
-        frequency: r['payment_frequency'] as String?,
-        due: asDate(r['due_date']),
-        notes: r['notes'] as String?,
-      );
-
-  final String id;
-  final String name;
-  final String category;
-  final double premium;
-  final double sumInsured;
-  final String? provider;
-  final String? policyNumber;
-  final String? frequency;
-  final DateTime? due;
-  final String? notes;
-}
-
-final insuranceProvider = FutureProvider<List<InsurancePolicy>>((ref) async {
-  final client = ref.watch(supabaseClientProvider);
-  final rows = await watchCachedRows(ref, 'insurance', (tenantId) async {
-    try {
-      // Not the inline document (document_data_url can be megabytes).
-      final rows = await client
-          .from('insurance')
-          .select('id, policy_name, category, premium, sum_insured, provider, '
-              'policy_number, payment_frequency, due_date, notes')
-          .eq('tenant_id', tenantId)
-          .order('due_date', ascending: true, nullsFirst: false);
-      return [for (final r in rows) Map<String, dynamic>.from(r)];
-    } catch (error, stack) {
-      throw mapError(error, stack);
-    }
-  });
-  return [for (final r in rows) InsurancePolicy.fromRow(r)];
-}, name: 'insurance');
+import '../workspace/application/workspace_providers.dart';
+import 'insurance.dart';
+import 'insurance_form_sheet.dart';
 
 final _date = DateFormat('d MMM yyyy');
 
@@ -105,10 +45,15 @@ class InsuranceScreen extends ConsumerWidget {
       );
     }
     final policies = ref.watch(insuranceProvider);
+    final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? false;
+    final hasAny = policies.value?.isNotEmpty ?? false;
 
     return AppPage(
       title: 'Insurance',
       padBody: false,
+      floatingActionButton: canWrite && hasAny
+          ? AddFab(label: 'Policy', onPressed: () => openPolicyForm(context))
+          : null,
       body: RefreshIndicator(
         onRefresh: () =>
             ref.read(syncEngineProvider.notifier).syncNow(force: true),
@@ -117,16 +62,27 @@ class InsuranceScreen extends ConsumerWidget {
           error: (e, _) => ErrorView(e),
           data: (list) {
             if (list.isEmpty) {
-              return const EmptyView(
+              return EmptyView(
                 title: 'No policies',
                 message:
-                    'Policies you add on the web dashboard show up here, with '
-                    'their cover and the next premium due.',
+                    'Add your health, life, vehicle or gadget cover to see '
+                    'the total cover and when each premium is due.',
                 icon: Icons.health_and_safety_outlined,
+                action: canWrite
+                    ? FilledButton(
+                        key: const ValueKey('policy-add-empty'),
+                        onPressed: () => openPolicyForm(context),
+                        child: const Text('Add a policy'),
+                      )
+                    : null,
               );
             }
             final cover = list.fold<double>(0, (s, p) => s + p.sumInsured);
-            final premiums = list.fold<double>(0, (s, p) => s + p.premium);
+            // A year's worth, as the web counts it (one-time premiums aside).
+            final premiums = list.fold<double>(
+              0,
+              (s, p) => s + p.yearlyPremium,
+            );
             final dueSoon = list
                 .where(
                   (p) =>
@@ -139,7 +95,7 @@ class InsuranceScreen extends ConsumerWidget {
                 AppSpacing.screenGutter,
                 AppSpacing.xs,
                 AppSpacing.screenGutter,
-                AppSpacing.huge,
+                96,
               ),
               children: [
                 MetricCard(
@@ -149,14 +105,14 @@ class InsuranceScreen extends ConsumerWidget {
                       '${list.length} ${list.length == 1 ? 'policy' : 'policies'}',
                   status: dueSoon > 0
                       ? '$dueSoon premium${dueSoon == 1 ? '' : 's'} due soon'
-                      : '${MoneyFormat.money(premiums)} in premiums',
+                      : '${MoneyFormat.money(premiums)} a year in premiums',
                   statusColor: dueSoon > 0
                       ? context.finance.expense
                       : context.palette.muted,
                 ),
                 const SectionTitle('Policies'),
                 for (var i = 0; i < list.length; i++) ...[
-                  _PolicyCard(list[i], index: i),
+                  _PolicyCard(list[i], index: i, canWrite: canWrite),
                   const SizedBox(height: AppSpacing.sm),
                 ],
               ],
@@ -169,9 +125,10 @@ class InsuranceScreen extends ConsumerWidget {
 }
 
 class _PolicyCard extends StatelessWidget {
-  const _PolicyCard(this.p, {required this.index});
+  const _PolicyCard(this.p, {required this.index, required this.canWrite});
   final InsurancePolicy p;
   final int index;
+  final bool canWrite;
 
   @override
   Widget build(BuildContext context) {
@@ -207,6 +164,7 @@ class _PolicyCard extends StatelessWidget {
     );
 
     return AppCard(
+      onTap: canWrite ? () => openPolicyForm(context, editing: p) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -223,6 +181,7 @@ class _PolicyCard extends StatelessWidget {
                   children: [
                     Text(
                       p.name,
+                      key: ValueKey('policy-${p.id}'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.bodyStrong.copyWith(
@@ -232,7 +191,7 @@ class _PolicyCard extends StatelessWidget {
                     ),
                     Text(
                       [
-                        p.category,
+                        p.categoryLabel,
                         if (p.provider?.isNotEmpty == true) p.provider!,
                       ].join(' · '),
                       maxLines: 1,
@@ -259,7 +218,10 @@ class _PolicyCard extends StatelessWidget {
               ),
             ],
           ),
-          if (duePill != null || p.policyNumber?.isNotEmpty == true) ...[
+          if (duePill != null ||
+              p.policyNumber?.isNotEmpty == true ||
+              p.documentPath != null ||
+              p.hasLegacyDocument) ...[
             const SizedBox(height: AppSpacing.md),
             Wrap(
               spacing: AppSpacing.md,
@@ -267,6 +229,24 @@ class _PolicyCard extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 ?duePill,
+                if (p.documentPath != null || p.hasLegacyDocument)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.attach_file_rounded,
+                        size: 16,
+                        color: palette.muted,
+                      ),
+                      Text(
+                        'Document',
+                        style: AppTypography.label.copyWith(
+                          color: palette.muted,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 if (p.policyNumber?.isNotEmpty == true)
                   Text(
                     'Policy no. ${p.policyNumber}',
