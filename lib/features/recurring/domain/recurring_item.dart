@@ -121,6 +121,7 @@ class RecurringDraft {
     this.subtype,
     this.notes,
     this.icon,
+    this.fxRate = 1,
   });
 
   final RecurringType type;
@@ -132,6 +133,10 @@ class RecurringDraft {
   final String? subtype;
   final String? notes;
   final String? icon;
+
+  /// Rupees per unit of the amount's currency (`fx_rate`); 1 for rupees.
+  /// Income streams in dollars or euros pass their rate, as the web does.
+  final double fxRate;
 }
 
 /// Advance a calendar date by one period.

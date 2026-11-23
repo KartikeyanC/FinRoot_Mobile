@@ -20,6 +20,7 @@ import '../features/goals/presentation/goals_screen.dart';
 import '../features/home/presentation/home_layout_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/import/presentation/import_screen.dart';
+import '../features/income/income_screen.dart';
 import '../features/insights/presentation/insights_screen.dart';
 import '../features/insurance/insurance_screen.dart';
 import '../features/investments/presentation/investments_screen.dart';
@@ -53,6 +54,7 @@ class _Routes {
   static const noWorkspace = '/no-workspace';
   static const settings = '/settings';
   static const accounts = '/accounts';
+  static const income = '/income';
   static const budget = '/budget';
   static const goals = '/goals';
   static const investments = '/investments';
@@ -80,6 +82,7 @@ class _Routes {
   static const realScreens = {
     settings,
     accounts,
+    income,
     budget,
     goals,
     investments,
@@ -305,6 +308,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.search,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const SearchScreen(),
+      ),
+      GoRoute(
+        path: _Routes.income,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const IncomeScreen(),
       ),
       GoRoute(
         path: _Routes.debts,

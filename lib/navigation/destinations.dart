@@ -68,6 +68,12 @@ class MoreEntry {
 const kMoreEntries = <MoreEntry>[
   MoreEntry('Accounts', Icons.account_balance_wallet_outlined, '/accounts'),
   MoreEntry(
+    'Income',
+    Icons.payments_outlined,
+    '/income',
+    menu: FeatureMenu.income,
+  ),
+  MoreEntry(
     'Budget',
     Icons.pie_chart_outline,
     '/budget',

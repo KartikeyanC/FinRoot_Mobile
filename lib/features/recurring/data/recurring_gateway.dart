@@ -110,7 +110,7 @@ class SupabaseRecurringGateway implements RecurringGateway {
     'subtype': d.subtype,
     'amount': d.amount.amount.toDouble(),
     'currency': d.amount.currency,
-    'fx_rate': 1,
+    'fx_rate': d.fxRate,
     'frequency': d.frequency.wire,
     'next_due_date': _isoDate(d.nextDueDate),
     'icon': d.icon,
