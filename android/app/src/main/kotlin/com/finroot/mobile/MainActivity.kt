@@ -5,11 +5,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+// A FragmentActivity so local_auth can show the fingerprint / screen-lock
+// prompt (hidden income).
+class MainActivity : FlutterFragmentActivity() {
     private var channel: MethodChannel? = null
 
     // Set when FinRoot was opened from a payment pop-up; Flutter takes it once.

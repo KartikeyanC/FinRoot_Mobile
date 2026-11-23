@@ -216,7 +216,11 @@ class LedgerRow extends StatelessWidget {
     this.onLongPress,
     this.selecting = false,
     this.selected = false,
+    this.leading,
   });
+
+  /// An icon tile before the text (a transaction's category).
+  final Widget? leading;
 
   final String title;
   final String? meta;
@@ -338,11 +342,17 @@ class LedgerRow extends StatelessWidget {
               horizontal: AppSpacing.screenGutter,
               vertical: AppSpacing.md,
             ),
-            child: selecting
+            child: selecting || leading != null
                 ? Row(
                     children: [
-                      SelectCheck(on: selected),
-                      const SizedBox(width: AppSpacing.md),
+                      if (selecting) ...[
+                        SelectCheck(on: selected),
+                        const SizedBox(width: AppSpacing.md),
+                      ],
+                      if (leading != null) ...[
+                        leading!,
+                        const SizedBox(width: AppSpacing.md),
+                      ],
                       Expanded(child: content),
                     ],
                   )

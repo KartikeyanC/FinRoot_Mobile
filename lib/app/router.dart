@@ -18,6 +18,7 @@ import '../features/debts/debts_screen.dart';
 import '../features/export/presentation/export_screen.dart';
 import '../features/goals/presentation/goals_screen.dart';
 import '../features/home/presentation/home_screen.dart';
+import '../features/import/presentation/import_screen.dart';
 import '../features/insights/presentation/insights_screen.dart';
 import '../features/insurance/insurance_screen.dart';
 import '../features/investments/presentation/investments_screen.dart';

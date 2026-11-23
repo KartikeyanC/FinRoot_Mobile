@@ -12,6 +12,7 @@ import '../../budget/presentation/budget_screen.dart';
 import '../../calculator/presentation/calculator_screen.dart';
 import '../../export/presentation/export_screen.dart';
 import '../../goals/presentation/goals_screen.dart';
+import '../../import/presentation/import_screen.dart';
 import '../../insights/presentation/insights_screen.dart';
 import '../../investments/presentation/investments_screen.dart';
 import '../../investments/presentation/live_prices_screen.dart';

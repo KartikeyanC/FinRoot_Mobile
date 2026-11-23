@@ -46,10 +46,62 @@ class TransactionEntity {
 
   bool get hasFailedSync => syncState == LocalSyncStatus.failed;
 
-  /// A one-line label for the row: the note if there is one, otherwise the
-  /// category (never a bare id).
+  /// The note as the person typed it, without the markers the web stores in
+  /// it (`⟦SPLIT|mode|friend⟧`, `[Account|id]`).
+  TxnNote get note => TxnNote.parse(description);
+
+  /// A one-line label for the row: the clean note if there is one, otherwise
+  /// the category (never a bare id or an internal marker).
   String get title {
-    final note = description?.trim();
-    return (note == null || note.isEmpty) ? category : note;
+    final n = note.text;
+    return n.isEmpty ? category : n;
+  }
+}
+
+/// A transaction note split into what the person wrote and the markers the
+/// web app embeds (see `src/lib/transactionDisplay.ts` / `splitMeta.ts`).
+class TxnNote {
+  const TxnNote({
+    required this.text,
+    this.account,
+    this.splitMode,
+    this.splitFriend,
+  });
+
+  final String text;
+
+  /// Account name from an account-linked `[Name|id]` prefix.
+  final String? account;
+
+  /// `paid_full`, `settled` or `owe` for a split bill.
+  final String? splitMode;
+  final String? splitFriend;
+
+  static final _split = RegExp(
+    r'^⟦SPLIT\|(paid_full|settled|owe)\|([^⟧]*)⟧\s?',
+  );
+  static final _account = RegExp(r'^\[([^\]|]+)\|[^\]]+\]\s*');
+
+  static TxnNote parse(String? raw) {
+    var s = raw ?? '';
+    String? mode, friend, account;
+    final m = _split.firstMatch(s);
+    if (m != null) {
+      mode = m.group(1);
+      final f = m.group(2) ?? '';
+      friend = f.isEmpty ? 'Friend' : f;
+      s = s.substring(m.end);
+    }
+    final a = _account.firstMatch(s);
+    if (a != null) {
+      account = a.group(1)!.trim();
+      s = s.substring(a.end);
+    }
+    return TxnNote(
+      text: s.trim(),
+      account: account,
+      splitMode: mode,
+      splitFriend: friend,
+    );
   }
 }

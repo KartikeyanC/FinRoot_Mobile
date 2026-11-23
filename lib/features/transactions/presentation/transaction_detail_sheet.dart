@@ -9,6 +9,7 @@ import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../../navigation/quick_add_entry.dart';
 import '../../accounts/application/accounts_providers.dart';
+import '../../privacy/income_privacy.dart';
 import '../../quick_add/application/quick_add_controller.dart';
 import '../../quick_add/data/custom_subcategories.dart';
 import '../../quick_add/domain/expense_subcategories.dart';
@@ -85,8 +86,8 @@ class TransactionDetailView extends ConsumerWidget {
               const <String, List<String>>{}
         : const <String, List<String>>{};
     final split = txn.type == TxnType.expense
-        ? splitDescription(txn.description, subOptionsFor(txn.category, subStore))
-        : (sub: null, note: (txn.description ?? '').trim());
+        ? splitDescription(txn.note.text, subOptionsFor(txn.category, subStore))
+        : (sub: null, note: txn.note.text);
     final style = CategoryStyle.of(context, txn.category, txn.type);
     final amountColor = switch (txn.type) {
       TxnType.income => finance.income,
@@ -148,13 +149,16 @@ class TransactionDetailView extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
           Semantics(
-            label: '$typeLabel ${MoneyFormat.money(magnitude, currency: txn.amount.currency)}',
+            label:
+                '$typeLabel ${MoneyFormat.money(magnitude, currency: txn.amount.currency)}',
             excludeSemantics: true,
             child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
-                '$sign$shown',
+                txn.type == TxnType.income
+                    ? incomeText(ref, '$sign$shown')
+                    : '$sign$shown',
                 maxLines: 1,
                 style: AppTypography.moneyHero.copyWith(color: amountColor),
               ),
@@ -351,10 +355,7 @@ class _AccountRow extends ConsumerWidget {
       return _Row(label: label, value: 'Not set');
     }
     final account = ref.watch(accountByIdProvider(accountId!));
-    return _Row(
-      label: label,
-      value: account?.name ?? 'Deleted account',
-    );
+    return _Row(label: label, value: account?.name ?? 'Deleted account');
   }
 }
 
@@ -386,9 +387,9 @@ class _TrackerRow extends ConsumerWidget {
             onPressed: () => run(() async {
               final id = await pickTracker(context);
               if (id == null) return;
-              await ref
-                  .read(trackerEditorControllerProvider)
-                  .assign(id, [txn.id]);
+              await ref.read(trackerEditorControllerProvider).assign(id, [
+                txn.id,
+              ]);
             }),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.only(right: AppSpacing.md),
@@ -431,9 +432,8 @@ class _TrackerRow extends ConsumerWidget {
           if (canWrite)
             TextButton(
               onPressed: () => run(
-                () => ref
-                    .read(trackerEditorControllerProvider)
-                    .unassign(txn.id),
+                () =>
+                    ref.read(trackerEditorControllerProvider).unassign(txn.id),
               ),
               child: const Text('Remove'),
             ),

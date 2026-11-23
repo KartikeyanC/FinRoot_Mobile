@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/time/relative_time.dart';
 import '../../../../core/widgets/date_time_field.dart';
 import '../../../../design/design.dart';
+import '../../../../domain/constants.dart';
+import '../../../privacy/income_privacy.dart';
 import '../../domain/transaction.dart';
-import 'category_style.dart';
+import 'txn_words.dart';
 
 /// One transaction row: category tile, title, muted meta line, amount and (when
 /// not yet synced) a sync pill at the right. The Home feed, search and the
@@ -40,7 +43,20 @@ class TransactionTile extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        AmountText.money(txn.amount, type: txn.type),
+        if (txn.type == TxnType.income)
+          Consumer(
+            builder: (context, ref, _) =>
+                ref.watch(incomePrivacyProvider).masked
+                ? Text(
+                    kIncomeMask,
+                    style: AppTypography.bodyStrong.copyWith(
+                      color: context.finance.income,
+                    ),
+                  )
+                : AmountText.money(txn.amount, type: txn.type),
+          )
+        else
+          AmountText.money(txn.amount, type: txn.type),
         if (txn.isPending || txn.hasFailedSync) ...[
           const SizedBox(height: 4),
           TxnSyncPill(failed: txn.hasFailedSync),
@@ -59,7 +75,7 @@ class TransactionTile extends StatelessWidget {
                 : null,
           ),
           child: ListRow(
-            leading: CategoryTile(category: txn.category, type: txn.type),
+            leading: TxnLeading(txn, size: 44),
             title: txn.title,
             subtitle: _subtitle(),
             trailing: trailing,
@@ -81,7 +97,7 @@ class TransactionTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
             child: Row(
               children: [
-                CategoryTile(category: txn.category, type: txn.type, size: 40),
+                TxnLeading(txn),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
@@ -121,10 +137,9 @@ class TransactionTile extends StatelessWidget {
 
   String _subtitle() {
     final parts = <String>[
-      if (txn.title != txn.category) txn.category,
+      ...txnFacts(txn),
       if (showDay) RelativeTime.dayLabel(txn.occurredAt),
       DateTimeField.formatTime(txn.occurredAt).toLowerCase(),
-      if (txn.paymentMode != null) txn.paymentMode!,
     ];
     return parts.isEmpty ? txn.type.name : parts.join(' · ');
   }

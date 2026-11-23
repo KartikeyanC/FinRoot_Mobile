@@ -102,6 +102,9 @@ dependencies:
   url_launcher: ^6.3.2
   share_plus: ^13.0.0
   http: ^1.6.0
+  file_picker: ^13.4.1
+  csv: ^8.0.0
+  excel: ^4.0.6
 
   # --- Added in later phases (kept here as the intended dependency map) ---
   # M15 AI insights:   (shared Edge Function, likely)

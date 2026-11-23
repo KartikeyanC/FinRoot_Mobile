@@ -10,6 +10,7 @@ import '../../../domain/constants.dart';
 import '../../../navigation/pane_selection.dart';
 import '../../../navigation/two_pane.dart';
 import '../../accounts/application/accounts_providers.dart';
+import '../../privacy/income_privacy.dart';
 import '../../quick_add/application/quick_add_controller.dart';
 import '../../sync/application/sync_engine.dart';
 import '../../workspace/application/workspace_providers.dart';
@@ -18,6 +19,7 @@ import '../domain/day_group.dart';
 import '../domain/transaction.dart';
 import 'transaction_detail_sheet.dart';
 import 'widgets/transaction_tile.dart';
+import 'widgets/txn_words.dart';
 
 /// The transactions ledger (M8) — grouped by day, filterable by type, text
 /// search, and (from an account) by account. Reads the local cache; pull to
@@ -74,6 +76,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
     final list = AppPage(
       title: 'Transactions',
+      actions: const [IncomePrivacyButton()],
       subtitle: ledger.value == null || ledger.value!.isEmpty
           ? null
           : '${ledger.value!.length} ${ledger.value!.length == 1 ? 'entry' : 'entries'}${filter.isActive ? ' match' : ''}',
@@ -271,7 +274,7 @@ class _AccountFilterBanner extends ConsumerWidget {
   }
 }
 
-class _LedgerList extends StatelessWidget {
+class _LedgerList extends ConsumerWidget {
   const _LedgerList({
     required this.txns,
     required this.filter,
@@ -289,7 +292,8 @@ class _LedgerList extends StatelessWidget {
   final ValueChanged<String>? onLongPressRow;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final masked = ref.watch(incomePrivacyProvider).masked;
     final groups = groupByDay(txns);
     var income = Decimal.zero;
     var expense = Decimal.zero;
@@ -318,18 +322,24 @@ class _LedgerList extends StatelessWidget {
           Padding(
             padding: gutter.copyWith(bottom: AppSpacing.lg),
             child: SummaryPanel(
-              left: ('Money in', MoneyFormat.money(income.toDouble())),
+              left: (
+                'Money in',
+                masked ? kIncomeMask : MoneyFormat.money(income.toDouble()),
+              ),
               right: ('Money out', MoneyFormat.money(expense.toDouble())),
               footLabel: 'Net',
-              footValue: _signed(net),
-              footColor: signColor(context, net),
+              // Net = income − spending, so it would give income away.
+              footValue: masked ? kIncomeMask : _signed(net),
+              footColor: masked ? null : signColor(context, net),
             ),
           ),
           for (final group in groups) ...[
             LedgerBand(
               title: RelativeTime.dayLabel(group.day),
               count: group.items.length,
-              value: _dayNet(group.items),
+              value: masked && group.items.any((t) => t.type == TxnType.income)
+                  ? kIncomeMask
+                  : _dayNet(group.items),
             ),
             const LedgerDivider(),
             for (final txn in group.items) ...[
@@ -371,7 +381,7 @@ String _signed(double v) =>
 ///   Food & Dining · 7:30 pm · UPI
 ///   Groceries                               -₹200.00
 ///   [Pending]
-class _TxnRow extends StatelessWidget {
+class _TxnRow extends ConsumerWidget {
   const _TxnRow({
     required this.txn,
     required this.open,
@@ -391,27 +401,27 @@ class _TxnRow extends StatelessWidget {
   final VoidCallback? onLongPress;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final finance = context.finance;
     final money = MoneyFormat.money(
       txn.amount.amount.toDouble().abs(),
       currency: txn.amount.currency,
     );
     final (value, color, said) = switch (txn.type) {
-      TxnType.income => ('+$money', finance.income, 'Income'),
+      TxnType.income => (incomeText(ref, '+$money'), finance.income, 'Income'),
       TxnType.expense => ('-$money', finance.expense, 'Expense'),
       TxnType.transfer => (money, finance.transfer, 'Transfer'),
     };
     final meta = [
-      if (txn.title != txn.category) txn.category,
+      ...txnFacts(txn),
       DateTimeField.formatTime(txn.occurredAt).toLowerCase(),
-      ?txn.paymentMode,
     ].join(' · ');
 
     return LedgerRow(
       key: ValueKey(txn.id),
-      meta: meta,
+      leading: TxnLeading(txn),
       title: txn.title,
+      detail: meta,
       value: value,
       valueColor: color,
       valueLabel: '$said $money',

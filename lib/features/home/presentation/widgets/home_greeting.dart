@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/providers/providers.dart';
 import '../../../../design/design.dart';
+import '../../../privacy/income_privacy.dart';
 import '../../../profile/profile_providers.dart';
 import '../../../sync/presentation/sync_status_widgets.dart';
 import '../../../workspace/application/workspace_providers.dart';
@@ -54,6 +55,8 @@ class HomeGreeting extends ConsumerWidget {
                   constraints: BoxConstraints(maxWidth: c.maxWidth * 0.45),
                   child: const SyncStatusChip(),
                 ),
+                const Spacer(),
+                const IncomePrivacyButton(),
               ],
             ),
           ),

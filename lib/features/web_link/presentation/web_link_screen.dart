@@ -124,21 +124,6 @@ class TripsScreen extends StatelessWidget {
   );
 }
 
-class ImportScreen extends StatelessWidget {
-  const ImportScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) => const WebLinkScreen(
-    title: 'Import',
-    icon: Icons.file_upload_outlined,
-    description:
-        'Bring in transactions from a bank statement or spreadsheet. '
-        'Importing works best on a larger screen, in the web app.',
-    webPath: 'import',
-    menu: FeatureMenu.import,
-  );
-}
-
 class BillingScreen extends StatelessWidget {
   const BillingScreen({super.key});
 
