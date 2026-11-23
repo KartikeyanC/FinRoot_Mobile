@@ -19,6 +19,7 @@ class DevicePrefs {
   static const _kThemeMode = 'finroot.theme_mode';
   static const _kColorTheme = 'finroot.color_theme';
   static const _kTenantId = 'finroot.tenant.current';
+  static const _kDisplaySize = 'finroot.display_size';
 
   /// Appearance follows NineFlow's model: a [ThemeMode] plus an
   /// [AppColorTheme], stored separately.
@@ -44,6 +45,24 @@ class DevicePrefs {
   Future<void> setColorTheme(AppColorTheme theme) =>
       _prefs.setString(_kColorTheme, theme.name);
 
+  /// How large the whole app is drawn, in percent ([DisplaySize]). Per device
+  /// on purpose: a small phone and a tablet want different answers.
+  int get displaySize {
+    final stored = _prefs.getInt(_kDisplaySize);
+    return stored == null ? DisplaySize.standard : DisplaySize.clamp(stored);
+  }
+
+  /// The default is stored as nothing, so a later change to the default
+  /// reaches everyone who never moved the setting.
+  Future<void> setDisplaySize(int percent) async {
+    final size = DisplaySize.clamp(percent);
+    if (size == DisplaySize.standard) {
+      await _prefs.remove(_kDisplaySize);
+    } else {
+      await _prefs.setInt(_kDisplaySize, size);
+    }
+  }
+
   /// The workspace the user last chose. Reconciled against real memberships by
   /// [currentTenantIdProvider] — a stored id for a workspace that was left or
   /// deleted is ignored, never trusted blindly (mirrors the web
@@ -56,6 +75,22 @@ class DevicePrefs {
     } else {
       await _prefs.setString(_kTenantId, id);
     }
+  }
+}
+
+/// Settings → Appearance → Display size: the scale the whole app is drawn at,
+/// in percent. The same range and steps as the web app's Display size.
+abstract final class DisplaySize {
+  static const int min = 75;
+  static const int max = 125;
+  static const int step = 5;
+  static const int standard = 100;
+
+  /// Any value onto the scale: a whole step, between [min] and [max].
+  static int clamp(num value) {
+    if (!value.isFinite) return standard;
+    final stepped = (value / step).round() * step;
+    return stepped.clamp(min, max).toInt();
   }
 }
 
@@ -103,5 +138,25 @@ class ColorThemeController extends Notifier<AppColorTheme> {
   Future<void> set(AppColorTheme theme) async {
     await ref.read(devicePrefsProvider).setColorTheme(theme);
     state = theme;
+  }
+}
+
+/// The active display size in percent ([DisplaySize]). Seeded from
+/// [DevicePrefs]; [DisplaySizeController.set] applies it at once, then saves.
+final displaySizeProvider = NotifierProvider<DisplaySizeController, int>(
+  DisplaySizeController.new,
+  name: 'displaySize',
+);
+
+class DisplaySizeController extends Notifier<int> {
+  @override
+  int build() => ref.watch(devicePrefsProvider).displaySize;
+
+  Future<void> set(int percent) async {
+    final size = DisplaySize.clamp(percent);
+    // State first: the slider lets go and the app resizes in the same frame,
+    // instead of springing back while the write finishes.
+    state = size;
+    await ref.read(devicePrefsProvider).setDisplaySize(size);
   }
 }

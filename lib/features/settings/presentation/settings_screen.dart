@@ -83,6 +83,8 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSpacing.xl),
                 const _ColorThemePicker(),
+                const SizedBox(height: AppSpacing.xl),
+                const _DisplaySizePicker(),
               ],
             ),
           ),
@@ -223,6 +225,100 @@ class _ColorThemePicker extends ConsumerWidget {
                 onTap: () => ref.read(colorThemeProvider.notifier).set(theme),
               ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Display size: the whole app smaller or larger on this phone, the same
+/// setting and scale as the web app's. A slider, minus / plus, and presets.
+class _DisplaySizePicker extends ConsumerStatefulWidget {
+  const _DisplaySizePicker();
+
+  @override
+  ConsumerState<_DisplaySizePicker> createState() => _DisplaySizePickerState();
+}
+
+class _DisplaySizePickerState extends ConsumerState<_DisplaySizePicker> {
+  static const _presets = [80, 90, 100, 110, 125];
+
+  /// While the slider is dragged only the number moves; the size is applied
+  /// when it is let go. Resizing the app under a moving finger would also
+  /// move the slider itself, and the thumb would jump.
+  double? _draft;
+
+  void _set(int percent) =>
+      ref.read(displaySizeProvider.notifier).set(percent);
+
+  @override
+  Widget build(BuildContext context) {
+    final size = ref.watch(displaySizeProvider);
+    final palette = context.palette;
+    final shown = _draft?.round() ?? size;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Display size',
+                style: AppTypography.label.copyWith(color: palette.muted),
+              ),
+            ),
+            Text(
+              '$shown%',
+              style: AppTypography.label.copyWith(color: palette.ink),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Makes the whole app smaller or larger on this phone.',
+          style: AppTypography.caption.copyWith(color: palette.muted),
+        ),
+        Row(
+          children: [
+            IconButton(
+              tooltip: 'Smaller',
+              onPressed: size <= DisplaySize.min
+                  ? null
+                  : () => _set(size - DisplaySize.step),
+              icon: const Icon(Icons.remove_rounded),
+            ),
+            Expanded(
+              child: Slider(
+                value: _draft ?? size.toDouble(),
+                min: DisplaySize.min.toDouble(),
+                max: DisplaySize.max.toDouble(),
+                divisions: (DisplaySize.max - DisplaySize.min) ~/ DisplaySize.step,
+                label: '$shown%',
+                semanticFormatterCallback: (v) => 'Display size ${v.round()}%',
+                onChanged: (v) => setState(() => _draft = v),
+                onChangeEnd: (v) {
+                  setState(() => _draft = null);
+                  _set(v.round());
+                },
+              ),
+            ),
+            IconButton(
+              tooltip: 'Larger',
+              onPressed: size >= DisplaySize.max
+                  ? null
+                  : () => _set(size + DisplaySize.step),
+              icon: const Icon(Icons.add_rounded),
+            ),
+          ],
+        ),
+        FilterPills<int>(
+          options: [
+            for (final p in _presets)
+              FilterPill(p, p == DisplaySize.standard ? '$p% (default)' : '$p%'),
+          ],
+          selected: size,
+          onSelected: _set,
         ),
       ],
     );
