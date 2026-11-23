@@ -9,132 +9,140 @@ import '../../../../core/money/money_format.dart';
 import '../../../../design/design.dart';
 import '../../../../domain/constants.dart';
 import '../../../../navigation/quick_add_entry.dart';
-import '../../../accounts/application/accounts_providers.dart';
-import '../../../debts/debts.dart';
-import '../../../goals/application/goals_providers.dart';
-import '../../../insights/application/insights_providers.dart';
 import '../../../insights/domain/insight.dart';
-import '../../../investments/application/investments_providers.dart';
-import '../../../investments/domain/live_price.dart';
 import '../../../menus/application/menu_providers.dart';
-import '../../../recurring/application/recurring_providers.dart';
+import '../../../privacy/income_privacy.dart';
 import '../../../recurring/domain/recurring_item.dart';
-import '../../../summary/application/summary_providers.dart';
 import '../../../summary/domain/workspace_summary.dart';
+import '../../application/home_wealth.dart';
+import '../../domain/home_layout.dart';
 import '../../domain/wealth_figures.dart';
 import 'home_parts.dart';
 
-/// The web dashboard's default "Wealth" layout (`DashboardWealth.tsx`), card
-/// for card, rebuilt for the phone in NineFlow's structure: a nudge pill, the
-/// net-worth headline card, a strip of the month's numbers, then cash flow,
-/// financial health, net spending, upcoming bills and investment performance.
-class WealthDashboard extends ConsumerWidget {
-  const WealthDashboard({super.key});
+/// One of the web dashboard's "Wealth" cards (`DashboardWealth.tsx`), rebuilt
+/// for the phone in NineFlow's structure: the heads-up pill, the net-worth
+/// headline card, a strip of the month's numbers, cash flow, financial health,
+/// net spending, upcoming bills and investment performance. Home draws them in
+/// the person's order ([HomeLayout]); the figures come from [homeWealthProvider].
+///
+/// Draws nothing for a block that is not a wealth card, or one with nothing to
+/// show — check [wealthBlockShows] first so Home spaces only what it draws.
+class WealthBlock extends ConsumerWidget {
+  const WealthBlock(this.block, {super.key});
+
+  final HomeBlock block;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final summary = ref.watch(workspaceSummaryProvider).value ?? WorkspaceSummary.empty();
-    final cash = ref.watch(totalBalanceProvider).amount.toDouble();
-    final accounts = ref.watch(workspaceAccountsProvider).value ?? const [];
-    final portfolio = ref.watch(portfolioSummaryProvider);
-    final investments = ref.watch(investmentsProvider).value ?? const [];
-    final livePrices = ref.watch(holdingPricesProvider).value ?? const <String, double>{};
-    final debts = ref.watch(debtsProvider).value ?? const <Debt>[];
-    final goals = ref.watch(goalsProvider).value ?? const [];
-    final bills = ref.watch(recurringItemsProvider).value ?? const <RecurringItem>[];
-    final insights = ref.watch(homeInsightsProvider);
-    bool can(FeatureMenu m) => ref.watch(menuStatusProvider(m)) != MenuStatus.locked;
+    final w = ref.watch(homeWealthProvider);
+    bool can(FeatureMenu m) =>
+        ref.watch(menuStatusProvider(m)) != MenuStatus.locked;
 
-    final income = summary.monthIncome.amount.toDouble();
-    final expense = summary.monthExpense.amount.toDouble();
-    final savings = income - expense;
-    final rate = savingsRate(income, expense);
-    final invCurrent = portfolio.current.amount.toDouble();
-    final invInvested = portfolio.invested.amount.toDouble();
-    final assets = cash + invCurrent;
-    final liabilities = debts.fold<double>(0, (s, d) => s + math.max(0, d.remaining));
-    final series = summary.monthlySeries.length > 6
-        ? summary.monthlySeries.sublist(summary.monthlySeries.length - 6)
-        : summary.monthlySeries;
-    final incomeSeries = [for (final p in series) p.income.amount.toDouble()];
-    final health = healthScore(
-      savings: savings,
-      savingsRate: rate,
-      goalProgress: [
-        for (final g in goals)
-          if (g.target.amount.toDouble() > 0)
-            (g.current.amount.toDouble() / g.target.amount.toDouble()).clamp(0, 1).toDouble(),
-      ],
-      assets: assets,
-      liabilities: liabilities,
-    );
-    final upcoming = [
-      for (final b in bills)
-        if (b.isActive && b.type == RecurringType.expense) b,
-    ]..sort((a, b) => a.nextDueDate.compareTo(b.nextDueDate));
-
-    const gap = SizedBox(height: AppSpacing.lg);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Nudge(
-          nextBill: upcoming.isEmpty ? null : upcoming.first,
-          insight: insights.isEmpty ? null : insights.first,
-        ),
-        if (can(FeatureMenu.netWorth))
-          _NetWorthCard(
-            netWorth: assets - liabilities,
-            assets: assets,
-            liabilities: liabilities,
-            savings: savings,
-            hasActivity: income > 0 || expense > 0,
-            hasAccounts: accounts.isNotEmpty,
-            canBudget: can(FeatureMenu.budget),
-          )
-        else
-          const HomeSection(
+    switch (block) {
+      case HomeBlock.nudge:
+        return _Nudge(
+          nextBill: w.nudgeBill(DateTime.now()),
+          insight: w.topInsight,
+        );
+      case HomeBlock.netWorth:
+        if (!can(FeatureMenu.netWorth)) {
+          return const HomeSection(
             title: 'Net worth',
             child: HomeEmpty(
               icon: Icons.lock_outline_rounded,
               title: 'Not available',
               message: 'Net worth is not available on your plan.',
             ),
-          ),
-        gap,
-        _MonthStats([
-          Stat(MoneyFormat.short(income), 'Income', color: context.finance.income),
-          Stat(MoneyFormat.short(expense), 'Spent', color: context.finance.expense),
+          );
+        }
+        return _NetWorthCard(
+          netWorth: w.netWorth,
+          assets: w.assets,
+          liabilities: w.liabilities,
+          savings: w.savings,
+          maskSavings: ref.watch(incomePrivacyProvider).masked,
+          hasActivity: w.hasActivity,
+          hasAccounts: w.hasAccounts,
+          canBudget: can(FeatureMenu.budget),
+        );
+      case HomeBlock.monthStats:
+        return _MonthStats([
           Stat(
-            MoneyFormat.short(savings),
+            incomeText(ref, MoneyFormat.short(w.income)),
+            'Income',
+            color: context.finance.income,
+          ),
+          Stat(
+            MoneyFormat.short(w.expense),
+            'Spent',
+            color: context.finance.expense,
+          ),
+          // Saved = income − spent, so it is hidden with income.
+          Stat(
+            incomeText(ref, MoneyFormat.short(w.savings)),
             'Saved',
-            color: savings >= 0 ? context.finance.income : context.finance.expense,
+            color: w.savings >= 0
+                ? context.finance.income
+                : context.finance.expense,
           ),
           if (can(FeatureMenu.budget))
-            Stat('$rate%', 'Savings rate')
+            Stat(
+              incomeText(ref, '${w.rate}%').replaceAll('₹ ', ''),
+              'Savings rate',
+            )
           else
-            Stat('${summary.transactionCount}', 'Entries'),
-        ]),
-        gap,
-        _CashFlowPanel(
-          inflows: summary.categoryIncome.take(4).toList(),
-          outflows: summary.categorySpend.take(4).toList(),
-          incomeMom: monthOnMonth(incomeSeries),
-        ),
-        gap,
-        _HealthPanel(health),
-        if (can(FeatureMenu.expenses)) ...[gap, _SpendingDonut(summary.categorySpend)],
-        if (can(FeatureMenu.reminders)) ...[gap, _UpcomingBills(upcoming.take(4).toList())],
-        if (can(FeatureMenu.investments)) ...[
-          gap,
-          _InvestmentPanel(
-            current: invCurrent,
-            invested: invInvested,
-            series: cumulativeHoldings([for (final r in investments) effectiveCurrent(r, livePrices)]),
-          ),
-        ],
-      ],
-    );
+            Stat('${w.summary.transactionCount}', 'Entries'),
+        ]);
+      case HomeBlock.cashFlow:
+        return _CashFlowPanel(
+          inflows: w.summary.categoryIncome.take(4).toList(),
+          outflows: w.summary.categorySpend.take(4).toList(),
+          incomeMom: w.incomeMom,
+          maskIncome: ref.watch(incomePrivacyProvider).masked,
+        );
+      case HomeBlock.health:
+        return _HealthPanel(w.health);
+      case HomeBlock.spending:
+        if (!can(FeatureMenu.expenses)) return const SizedBox.shrink();
+        return _SpendingDonut(w.summary.categorySpend);
+      case HomeBlock.bills:
+        if (!can(FeatureMenu.reminders)) return const SizedBox.shrink();
+        return _UpcomingBills(w.upcoming.take(4).toList());
+      case HomeBlock.investments:
+        if (!can(FeatureMenu.investments)) return const SizedBox.shrink();
+        return _InvestmentPanel(
+          current: w.investedCurrent,
+          invested: w.invested,
+          series: w.investmentSeries,
+        );
+      case HomeBlock.recent:
+      case HomeBlock.trackers:
+      case HomeBlock.insights:
+        return const SizedBox.shrink();
+    }
   }
+}
+
+/// Whether [WealthBlock] draws anything for [block] right now: false for the
+/// phone-only blocks, for a card whose menu is locked on the plan (net worth
+/// shows a "not available" card instead), and for an empty heads-up.
+bool wealthBlockShows(WidgetRef ref, HomeBlock block) {
+  bool can(FeatureMenu m) =>
+      ref.watch(menuStatusProvider(m)) != MenuStatus.locked;
+  return switch (block) {
+    HomeBlock.nudge => () {
+      final w = ref.watch(homeWealthProvider);
+      return w.nudgeBill(DateTime.now()) != null || w.topInsight != null;
+    }(),
+    HomeBlock.netWorth ||
+    HomeBlock.monthStats ||
+    HomeBlock.cashFlow ||
+    HomeBlock.health => true,
+    HomeBlock.spending => can(FeatureMenu.expenses),
+    HomeBlock.bills => can(FeatureMenu.reminders),
+    HomeBlock.investments => can(FeatureMenu.investments),
+    HomeBlock.recent || HomeBlock.trackers || HomeBlock.insights => false,
+  };
 }
 
 // ─────────────────────────── month stats ───────────────────────────
@@ -175,14 +183,20 @@ class _MonthStats extends StatelessWidget {
     // Each column needs its widest line plus the strip's 6dp side padding.
     final need = stats
         .map(
-          (s) => math.max(width(s.value, _valueStyle), width(s.label, _labelStyle)) + 12,
+          (s) =>
+              math.max(
+                width(s.value, _valueStyle),
+                width(s.label, _labelStyle),
+              ) +
+              12,
         )
         .reduce(math.max);
     return LayoutBuilder(
       builder: (context, c) {
         // StatStrip: 8dp card padding each side and a 1dp hairline per gap.
         final column =
-            (c.maxWidth - AppSpacing.sm * 2 - (stats.length - 1)) / stats.length;
+            (c.maxWidth - AppSpacing.sm * 2 - (stats.length - 1)) /
+            stats.length;
         if (stats.length < 4 || need <= column) return StatStrip(stats);
         return _StatGrid(stats);
       },
@@ -253,7 +267,8 @@ class _StatGrid extends StatelessWidget {
   }
 }
 
-TextStyle _num(BuildContext context, double size, {Color? color}) => AppTypography.bodyStrong.copyWith(
+TextStyle _num(BuildContext context, double size, {Color? color}) =>
+    AppTypography.bodyStrong.copyWith(
       fontSize: size,
       height: 1.2,
       color: color ?? context.palette.ink,
@@ -267,6 +282,7 @@ TextStyle _num(BuildContext context, double size, {Color? color}) => AppTypograp
 class _Nudge extends StatelessWidget {
   const _Nudge({required this.nextBill, required this.insight});
 
+  /// The next bill, already known to be due within a week.
   final RecurringItem? nextBill;
   final Insight? insight;
 
@@ -275,37 +291,29 @@ class _Nudge extends StatelessWidget {
     final bill = nextBill;
     if (bill != null) {
       final days = bill.daysUntilDue(now: DateTime.now());
-      if (days <= 7) {
-        final when = switch (days) {
-          < 0 => '${-days}d overdue',
-          0 => 'due today',
-          1 => 'due tomorrow',
-          _ => 'due in ${days}d',
-        };
-        return Padding(
-          padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-          child: InfoPill(
-            icon: Icons.event_rounded,
-            text: '${bill.name} $when',
-            detail: MoneyFormat.compact(
-              bill.amount.amount.toDouble(),
-              currency: bill.amount.currency,
-            ),
-            onTap: () => context.push('/recurring'),
-          ),
-        );
-      }
+      final when = switch (days) {
+        < 0 => '${-days}d overdue',
+        0 => 'due today',
+        1 => 'due tomorrow',
+        _ => 'due in ${days}d',
+      };
+      return InfoPill(
+        icon: Icons.event_rounded,
+        text: '${bill.name} $when',
+        detail: MoneyFormat.compact(
+          bill.amount.amount.toDouble(),
+          currency: bill.amount.currency,
+        ),
+        onTap: () => context.push('/recurring'),
+      );
     }
     final i = insight;
     if (i != null) {
       final route = i.route;
-      return Padding(
-        padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-        child: InfoPill(
-          icon: i.icon,
-          text: i.title,
-          onTap: route == null ? null : () => context.push(route),
-        ),
+      return InfoPill(
+        icon: i.icon,
+        text: i.title,
+        onTap: route == null ? null : () => context.push(route),
       );
     }
     return const SizedBox.shrink();
@@ -320,6 +328,7 @@ class _NetWorthCard extends StatelessWidget {
     required this.assets,
     required this.liabilities,
     required this.savings,
+    this.maskSavings = false,
     required this.hasActivity,
     required this.hasAccounts,
     required this.canBudget,
@@ -329,6 +338,9 @@ class _NetWorthCard extends StatelessWidget {
   final double assets;
   final double liabilities;
   final double savings;
+
+  /// Income is hidden: savings would give it away.
+  final bool maskSavings;
   final bool hasActivity;
   final bool hasAccounts;
   final bool canBudget;
@@ -342,6 +354,9 @@ class _NetWorthCard extends StatelessWidget {
     final Color statusColor;
     if (!hasActivity) {
       status = 'Nothing recorded this month yet';
+      statusColor = palette.muted;
+    } else if (maskSavings) {
+      status = 'This month: $kIncomeMask (income hidden)';
       statusColor = palette.muted;
     } else if (savings >= 0) {
       status = '${MoneyFormat.compact(savings)} saved this month';
@@ -407,8 +422,8 @@ class _HealthPanel extends StatelessWidget {
     final tone = health.score >= 75
         ? HomeTone.mint
         : health.score >= 50
-            ? HomeTone.butter
-            : HomeTone.coral;
+        ? HomeTone.butter
+        : HomeTone.coral;
     return HomeSection(
       title: 'Financial health',
       trailing: TonePill(health.verdict, tone),
@@ -456,7 +471,9 @@ class _HealthPanel extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(
-                          c.ok ? Icons.check_circle_rounded : Icons.circle_outlined,
+                          c.ok
+                              ? Icons.check_circle_rounded
+                              : Icons.circle_outlined,
                           size: 16,
                           color: c.ok ? finance.income : palette.faint,
                         ),
@@ -489,14 +506,19 @@ class _CashFlowPanel extends StatelessWidget {
     required this.inflows,
     required this.outflows,
     required this.incomeMom,
+    this.maskIncome = false,
   });
   final List<CategorySpendPoint> inflows;
   final List<CategorySpendPoint> outflows;
+  final bool maskIncome;
   final double? incomeMom;
 
   @override
   Widget build(BuildContext context) {
-    final values = [...inflows, ...outflows].map((c) => c.amount.amount.toDouble());
+    final values = [
+      ...inflows,
+      ...outflows,
+    ].map((c) => c.amount.amount.toDouble());
     final max = values.isEmpty ? 1.0 : math.max(1.0, values.reduce(math.max));
     final mom = incomeMom;
     return HomeSection(
@@ -517,9 +539,18 @@ class _CashFlowPanel extends StatelessWidget {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (inflows.isNotEmpty) _FlowGroup('In', inflows, max, income: true),
-                if (inflows.isNotEmpty && outflows.isNotEmpty) const SizedBox(height: AppSpacing.lg),
-                if (outflows.isNotEmpty) _FlowGroup('Out', outflows, max, income: false),
+                if (inflows.isNotEmpty)
+                  _FlowGroup(
+                    'In',
+                    inflows,
+                    max,
+                    income: true,
+                    masked: maskIncome,
+                  ),
+                if (inflows.isNotEmpty && outflows.isNotEmpty)
+                  const SizedBox(height: AppSpacing.lg),
+                if (outflows.isNotEmpty)
+                  _FlowGroup('Out', outflows, max, income: false),
               ],
             ),
     );
@@ -527,7 +558,16 @@ class _CashFlowPanel extends StatelessWidget {
 }
 
 class _FlowGroup extends StatelessWidget {
-  const _FlowGroup(this.label, this.rows, this.max, {required this.income});
+  const _FlowGroup(
+    this.label,
+    this.rows,
+    this.max, {
+    required this.income,
+    this.masked = false,
+  });
+
+  /// Show amounts as ₹ •••• (hidden income).
+  final bool masked;
   final String label;
   final List<CategorySpendPoint> rows;
   final double max;
@@ -555,12 +595,16 @@ class _FlowGroup extends StatelessWidget {
                         r.category,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.bodyStrong.copyWith(color: palette.ink),
+                        style: AppTypography.bodyStrong.copyWith(
+                          color: palette.ink,
+                        ),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     Text(
-                      MoneyFormat.compact(r.amount.amount.toDouble()),
+                      masked
+                          ? kIncomeMask
+                          : MoneyFormat.compact(r.amount.amount.toDouble()),
                       maxLines: 1,
                       style: _num(context, 14),
                     ),
@@ -575,9 +619,14 @@ class _FlowGroup extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: FractionallySizedBox(
                       heightFactor: 1,
-                      widthFactor: math.max(0.04, r.amount.amount.toDouble() / max).clamp(0.0, 1.0),
+                      widthFactor: math
+                          .max(0.04, r.amount.amount.toDouble() / max)
+                          .clamp(0.0, 1.0),
                       child: DecoratedBox(
-                        decoration: BoxDecoration(color: color, borderRadius: AppRadius.chip),
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: AppRadius.chip,
+                        ),
                       ),
                     ),
                   ),
@@ -607,21 +656,28 @@ class _SpendingDonutState extends State<_SpendingDonut> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final deck = palette.isDark ? AppColors.chartDark : AppColors.chartLight;
-    final total = widget.data.fold<double>(0, (s, d) => s + d.amount.amount.toDouble());
+    final total = widget.data.fold<double>(
+      0,
+      (s, d) => s + d.amount.amount.toDouble(),
+    );
     final items = [
       for (var i = 0; i < widget.data.length; i++)
         (
           name: widget.data[i].category,
           value: widget.data[i].amount.amount.toDouble(),
           color: deck[i % deck.length],
-          pct: total > 0 ? (widget.data[i].amount.amount.toDouble() / total * 100).round() : 0,
+          pct: total > 0
+              ? (widget.data[i].amount.amount.toDouble() / total * 100).round()
+              : 0,
         ),
     ];
     final sel = _active == null ? null : items[_active!];
 
     return HomeSection(
       title: 'Net spending',
-      trailing: items.isEmpty ? null : TonePill(MoneyFormat.short(total), HomeTone.coral, dot: false),
+      trailing: items.isEmpty
+          ? null
+          : TonePill(MoneyFormat.short(total), HomeTone.coral, dot: false),
       child: items.isEmpty
           ? const HomeEmpty(
               icon: Icons.pie_chart_outline_rounded,
@@ -637,10 +693,9 @@ class _SpendingDonutState extends State<_SpendingDonut> {
                     children: [
                       CustomPaint(
                         size: const Size.square(128),
-                        painter: _DonutPainter(
-                          [for (final it in items) (it.value, it.color)],
-                          active: _active,
-                        ),
+                        painter: _DonutPainter([
+                          for (final it in items) (it.value, it.color),
+                        ], active: _active),
                       ),
                       SizedBox(
                         width: 62,
@@ -648,18 +703,40 @@ class _SpendingDonutState extends State<_SpendingDonut> {
                           mainAxisSize: MainAxisSize.min,
                           children: sel == null
                               ? [
-                                  Text('Spent', style: AppTypography.caption.copyWith(color: palette.muted)),
-                                  FittedBox(child: Text(MoneyFormat.compact(total), style: _num(context, 14))),
+                                  Text(
+                                    'Spent',
+                                    style: AppTypography.caption.copyWith(
+                                      color: palette.muted,
+                                    ),
+                                  ),
+                                  FittedBox(
+                                    child: Text(
+                                      MoneyFormat.compact(total),
+                                      style: _num(context, 14),
+                                    ),
+                                  ),
                                 ]
                               : [
                                   Text(
                                     sel.name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: AppTypography.caption.copyWith(color: palette.muted),
+                                    style: AppTypography.caption.copyWith(
+                                      color: palette.muted,
+                                    ),
                                   ),
-                                  FittedBox(child: Text(MoneyFormat.compact(sel.value), style: _num(context, 14))),
-                                  Text('${sel.pct}%', style: AppTypography.caption.copyWith(color: palette.accentText)),
+                                  FittedBox(
+                                    child: Text(
+                                      MoneyFormat.compact(sel.value),
+                                      style: _num(context, 14),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${sel.pct}%',
+                                    style: AppTypography.caption.copyWith(
+                                      color: palette.accentText,
+                                    ),
+                                  ),
                                 ],
                         ),
                       ),
@@ -673,9 +750,13 @@ class _SpendingDonutState extends State<_SpendingDonut> {
                       for (var i = 0; i < math.min(5, items.length); i++)
                         InkWell(
                           borderRadius: AppRadius.chip,
-                          onTap: () => setState(() => _active = _active == i ? null : i),
+                          onTap: () =>
+                              setState(() => _active = _active == i ? null : i),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               borderRadius: AppRadius.chip,
                               color: _active == i ? palette.tint : null,
@@ -685,7 +766,10 @@ class _SpendingDonutState extends State<_SpendingDonut> {
                                 Container(
                                   width: 8,
                                   height: 8,
-                                  decoration: BoxDecoration(color: items[i].color, shape: BoxShape.circle),
+                                  decoration: BoxDecoration(
+                                    color: items[i].color,
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
                                 const SizedBox(width: AppSpacing.sm),
                                 Expanded(
@@ -695,13 +779,17 @@ class _SpendingDonutState extends State<_SpendingDonut> {
                                     overflow: TextOverflow.ellipsis,
                                     style: AppTypography.label.copyWith(
                                       fontWeight: FontWeight.w500,
-                                      color: _active == i ? palette.ink : palette.muted,
+                                      color: _active == i
+                                          ? palette.ink
+                                          : palette.muted,
                                     ),
                                   ),
                                 ),
                                 Text(
                                   '${items[i].pct}%',
-                                  style: AppTypography.label.copyWith(color: palette.ink),
+                                  style: AppTypography.label.copyWith(
+                                    color: palette.ink,
+                                  ),
                                 ),
                               ],
                             ),
@@ -738,15 +826,24 @@ class _DonutPainter extends CustomPainter {
       final paint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke + grow
-        ..color = slices[i].$2.withValues(alpha: active == null || active == i ? 1 : 0.5);
+        ..color = slices[i].$2.withValues(
+          alpha: active == null || active == i ? 1 : 0.5,
+        );
       final s = slices.length > 1 ? math.max(0.0, sweep - pad) : sweep;
-      canvas.drawArc(Rect.fromCircle(center: center, radius: r), start + pad / 2, s, false, paint);
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: r),
+        start + pad / 2,
+        s,
+        false,
+        paint,
+      );
       start += sweep;
     }
   }
 
   @override
-  bool shouldRepaint(_DonutPainter old) => old.active != active || old.slices != slices;
+  bool shouldRepaint(_DonutPainter old) =>
+      old.active != active || old.slices != slices;
 }
 
 // ─────────────────────────── upcoming bills ───────────────────────────
@@ -761,7 +858,10 @@ class _UpcomingBills extends StatelessWidget {
     final now = DateTime.now();
     return HomeSection(
       title: 'Upcoming bills',
-      trailing: HomeSeeAll(label: 'All bills', onPressed: () => context.push('/recurring')),
+      trailing: HomeSeeAll(
+        label: 'All bills',
+        onPressed: () => context.push('/recurring'),
+      ),
       child: items.isEmpty
           ? const HomeEmpty(
               icon: Icons.event_outlined,
@@ -788,7 +888,10 @@ class _UpcomingBills extends StatelessWidget {
                               items[i].name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: AppTypography.bodyStrong.copyWith(color: palette.ink, fontSize: 15),
+                              style: AppTypography.bodyStrong.copyWith(
+                                color: palette.ink,
+                                fontSize: 15,
+                              ),
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -806,7 +909,11 @@ class _UpcomingBills extends StatelessWidget {
                       const SizedBox(width: AppSpacing.sm),
                       Text(
                         '-${MoneyFormat.money(items[i].amount.amount.toDouble(), currency: items[i].amount.currency)}',
-                        style: _num(context, 15, color: context.finance.expense),
+                        style: _num(
+                          context,
+                          15,
+                          color: context.finance.expense,
+                        ),
                       ),
                     ],
                   ),
@@ -820,7 +927,11 @@ class _UpcomingBills extends StatelessWidget {
 // ─────────────────────────── investment performance ───────────────────────────
 
 class _InvestmentPanel extends StatelessWidget {
-  const _InvestmentPanel({required this.current, required this.invested, required this.series});
+  const _InvestmentPanel({
+    required this.current,
+    required this.invested,
+    required this.series,
+  });
   final double current;
   final double invested;
   final List<double> series;
@@ -858,7 +969,8 @@ class _InvestmentPanel extends StatelessWidget {
             const HomeEmpty(
               icon: Icons.stacked_line_chart_rounded,
               title: 'No holdings yet',
-              message: 'Add holdings on the Investments page to track performance.',
+              message:
+                  'Add holdings on the Investments page to track performance.',
             ),
           ] else ...[
             const SizedBox(height: AppSpacing.md),
@@ -870,7 +982,10 @@ class _InvestmentPanel extends StatelessWidget {
             const SizedBox(height: AppSpacing.xs),
             Text(
               'Cumulative value across ${series.length} holding${series.length == 1 ? '' : 's'}.',
-              style: AppTypography.label.copyWith(color: palette.muted, fontWeight: FontWeight.w500),
+              style: AppTypography.label.copyWith(
+                color: palette.muted,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ],
@@ -930,5 +1045,6 @@ class _AreaPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_AreaPainter old) => old.values != values || old.color != color;
+  bool shouldRepaint(_AreaPainter old) =>
+      old.values != values || old.color != color;
 }

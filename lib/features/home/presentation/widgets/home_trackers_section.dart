@@ -32,9 +32,7 @@ class HomeTrackersSection extends ConsumerWidget {
         .toList();
     if (active.isEmpty) return const SizedBox.shrink();
 
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.lg),
-      child: HomeSection(
+    return HomeSection(
       title: 'Trackers',
       trailing: HomeSeeAll(
         onPressed: () => context.go(AppDestination.trackers.path),
@@ -51,10 +49,17 @@ class HomeTrackersSection extends ConsumerWidget {
           ],
         ],
       ),
-    ),
     );
   }
 }
+
+/// Whether [HomeTrackersSection] draws anything: the menu is open and at least
+/// one tracker is active.
+bool homeTrackersShow(WidgetRef ref) =>
+    ref.watch(menuStatusProvider(FeatureMenu.trackers)) != MenuStatus.locked &&
+    (ref.watch(trackersWithSpendProvider).value ?? const []).any(
+      (t) => t.tracker.status == 'active',
+    );
 
 class _TrackerRow extends StatelessWidget {
   const _TrackerRow(this.t);

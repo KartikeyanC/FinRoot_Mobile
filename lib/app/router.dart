@@ -17,6 +17,7 @@ import '../features/calendar/calendar_screen.dart';
 import '../features/debts/debts_screen.dart';
 import '../features/export/presentation/export_screen.dart';
 import '../features/goals/presentation/goals_screen.dart';
+import '../features/home/presentation/home_layout_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/import/presentation/import_screen.dart';
 import '../features/insights/presentation/insights_screen.dart';
@@ -371,6 +372,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.insights,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const InsightsScreen(),
+      ),
+      GoRoute(
+        path: HomeLayoutScreen.route,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const HomeLayoutScreen(),
       ),
       // Every remaining "More" entry resolves to a milestone placeholder until
       // its feature phase lands.

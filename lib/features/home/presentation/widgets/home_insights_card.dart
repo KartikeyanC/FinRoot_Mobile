@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../design/design.dart';
 import '../../../insights/application/insights_providers.dart';
 import '../../../insights/presentation/insight_tile.dart';
 import 'home_parts.dart';
@@ -19,9 +18,7 @@ class HomeInsightsCard extends ConsumerWidget {
 
     final all = ref.watch(insightsProvider);
 
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.lg),
-      child: HomeSection(
+    return HomeSection(
       title: 'Insights',
       trailing: all.length > insights.length
           ? HomeSeeAll(
@@ -37,7 +34,10 @@ class HomeInsightsCard extends ConsumerWidget {
           ],
         ],
       ),
-    ),
     );
   }
 }
+
+/// Whether [HomeInsightsCard] draws anything: there is at least one insight.
+bool homeInsightsShow(WidgetRef ref) =>
+    ref.watch(homeInsightsProvider).isNotEmpty;

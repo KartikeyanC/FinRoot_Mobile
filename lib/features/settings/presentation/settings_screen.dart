@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/device/device_prefs.dart';
 import '../../../core/providers/providers.dart';
 import '../../../design/design.dart';
 import '../../auth/application/sign_out.dart';
+import '../../home/presentation/home_layout_screen.dart';
 import '../../more/presentation/workspace_row.dart';
 import '../../profile/profile_providers.dart';
 
@@ -83,6 +85,14 @@ class SettingsScreen extends ConsumerWidget {
                 const _ColorThemePicker(),
               ],
             ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          ListRow(
+            icon: Icons.dashboard_customize_outlined,
+            title: 'Home screen',
+            subtitle: 'Choose and order the cards on Home',
+            chevron: true,
+            onTap: () => context.push(HomeLayoutScreen.route),
           ),
 
           const SectionTitle('Account'),

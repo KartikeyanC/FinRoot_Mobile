@@ -5,8 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../design/design.dart';
 import '../application/payment_capture_controller.dart';
 
-/// "3 payments to review" on Home — shown only while detection is on and
-/// something is waiting.
+/// "3 payments to review" on Home, above the cards — shown only while
+/// detection is on and something is waiting. Not one of the movable cards: it
+/// asks for action, so it stays at the top.
 class DetectedPaymentsBanner extends ConsumerStatefulWidget {
   const DetectedPaymentsBanner({super.key});
 
@@ -45,7 +46,7 @@ class _DetectedPaymentsBannerState
     }
 
     return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.lg),
+      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
       child: InfoPill(
         icon: Icons.bolt_rounded,
         text: count == 1 ? '1 payment to review' : '$count payments to review',
