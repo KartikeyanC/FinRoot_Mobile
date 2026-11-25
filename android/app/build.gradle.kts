@@ -101,4 +101,7 @@ flutter {
 dependencies {
     // See isCoreLibraryDesugaringEnabled above (flutter_local_notifications, M12).
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Scan & pay (UpiBridge.kt): Google's code scanner, run by Play services
+    // in its own camera screen, so FinRoot needs no camera permission.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }

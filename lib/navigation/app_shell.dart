@@ -7,6 +7,7 @@ import '../design/tokens/app_breakpoints.dart';
 import '../design/tokens/app_palette.dart';
 import '../design/tokens/app_radius.dart';
 import '../design/tokens/app_spacing.dart';
+import '../features/home_screen_widget/presentation/home_widget_bridge.dart';
 import '../features/payment_capture/presentation/payment_popup_opener.dart';
 import '../features/price_alerts/presentation/price_alert_watcher.dart';
 import '../features/sync/presentation/live_data_refresher.dart';
@@ -45,7 +46,9 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LiveDataRefresher(
     child: PriceAlertWatcher(
-      child: PaymentPopupOpener(child: _layout(context)),
+      child: PaymentPopupOpener(
+        child: HomeWidgetBridge(child: _layout(context)),
+      ),
     ),
   );
 

@@ -121,6 +121,7 @@ const kMoreEntries = <MoreEntry>[
     '/bill-scan',
     menu: FeatureMenu.billScan,
   ),
+  MoreEntry('Scan & pay', Icons.qr_code_scanner, '/scan-pay'),
   MoreEntry(
     'Calculator',
     Icons.calculate_outlined,

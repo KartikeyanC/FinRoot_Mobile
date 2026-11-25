@@ -38,6 +38,7 @@ import '../features/subscriptions/subscriptions_screen.dart';
 import '../features/trackers/presentation/tracker_detail_screen.dart';
 import '../features/trackers/presentation/trackers_screen.dart';
 import '../features/transactions/presentation/transactions_screen.dart';
+import '../features/upi_pay/presentation/scan_pay_screen.dart';
 import '../features/voice/presentation/voice_screen.dart';
 import '../features/web_link/presentation/web_link_screen.dart';
 import '../features/workspace/application/workspace_providers.dart';
@@ -62,6 +63,7 @@ class _Routes {
   static const recurring = '/recurring';
   static const reminders = '/reminders';
   static const billScan = '/bill-scan';
+  static const scanPay = ScanPayScreen.route;
   static const voice = '/voice';
   static const insights = '/insights';
   static const detectedPayments = '/detected-payments';
@@ -92,6 +94,7 @@ class _Routes {
     recurring,
     reminders,
     billScan,
+    scanPay,
     voice,
     insights,
     detectedPayments,
@@ -298,6 +301,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: _Routes.billScan,
         parentNavigatorKey: _rootKey,
         builder: (_, _) => const BillScanScreen(),
+      ),
+      GoRoute(
+        path: _Routes.scanPay,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const ScanPayScreen(),
       ),
       GoRoute(
         path: _Routes.voice,

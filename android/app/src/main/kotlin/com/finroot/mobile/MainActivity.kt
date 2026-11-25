@@ -21,10 +21,50 @@ class MainActivity : FlutterFragmentActivity() {
     // Messages app); Flutter takes it once.
     private var launchShared: String? = null
 
+    // Set when FinRoot was opened from a home-screen widget button
+    // ("scanPay" / "scanBill"); Flutter takes it once.
+    private var launchWidgetAction: String? = null
+    private var widgetChannel: MethodChannel? = null
+    private val upi = UpiBridge(this)
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         launchNotice = takeNoticeId(intent)
         launchShared = takeSharedText(intent)
+        launchWidgetAction = takeWidgetAction(intent)
+        // Home-screen widget (FinRootWidget): the app hands it today's and
+        // this month's spend; a widget button that opened FinRoot is taken once.
+        widgetChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "finroot/home_widget",
+        ).also { it.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "update" -> {
+                    HomeWidgetStore.write(applicationContext, call.arguments as Map<*, *>)
+                    FinRootWidget.refresh(applicationContext)
+                    result.success(null)
+                }
+                "clear" -> {
+                    HomeWidgetStore.clear(applicationContext)
+                    FinRootWidget.refresh(applicationContext)
+                    result.success(null)
+                }
+                "takeLaunchAction" -> {
+                    result.success(launchWidgetAction)
+                    launchWidgetAction = null
+                }
+                else -> result.notImplemented()
+            }
+        } }
+        // Scan & pay: a shop's UPI QR, paid in the person's own UPI app.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "finroot/upi")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "scanQr" -> upi.scanQr(result)
+                    "pay" -> upi.pay(call.arguments as String, result)
+                    else -> result.notImplemented()
+                }
+            }
         // Payment detection (see PaymentListenerService / PaymentPopup).
         channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -90,6 +130,27 @@ class MainActivity : FlutterFragmentActivity() {
         super.onNewIntent(intent)
         takeNoticeId(intent)?.let { channel?.invokeMethod("openNotice", it) }
         takeSharedText(intent)?.let { channel?.invokeMethod("sharedText", it) }
+        takeWidgetAction(intent)?.let { widgetChannel?.invokeMethod("action", it) }
+    }
+
+    @Deprecated("The UPI app's answer comes back through the old result API.")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!upi.onActivityResult(requestCode, resultCode, data)) {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
+
+    private fun takeWidgetAction(intent: Intent?): String? {
+        if (intent == null) return null
+        val action = when (intent.action) {
+            FinRootWidget.ACTION_SCAN_PAY -> "scanPay"
+            FinRootWidget.ACTION_SCAN_BILL -> "scanBill"
+            else -> return null
+        }
+        // Don't act on it again on a configuration change / recreate.
+        intent.action = null
+        return action
     }
 
     private fun takeSharedText(intent: Intent?): String? {

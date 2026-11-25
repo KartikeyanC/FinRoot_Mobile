@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/logging/app_logger.dart';
 import '../../../data/local/database_providers.dart';
+import '../../home_screen_widget/application/home_widget_providers.dart';
 import '../../sync/application/sync_engine.dart';
 import '../data/auth_repository.dart';
 
@@ -35,6 +36,12 @@ class SignOutController {
     } on Object catch (e) {
       log.severe('local data wipe failed: ${e.runtimeType}');
       rethrow;
+    }
+    // The home-screen widget must not keep showing this person's spend.
+    try {
+      await _ref.read(homeWidgetGatewayProvider).clear();
+    } on Object catch (e) {
+      log.warning('home-screen widget not cleared: ${e.runtimeType}');
     }
     log.info('signed out and wiped local data');
   }

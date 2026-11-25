@@ -42,6 +42,27 @@ class TransactionsRepository {
     );
   }
 
+  /// Every cached [type] row for [tenantId] on or after [since], live and
+  /// uncapped — the home-screen widget's "this month" needs all of them, which
+  /// the ledger's 300-row page can't promise. Pending deletes are left out.
+  Stream<List<TransactionEntity>> watchSince(
+    String tenantId,
+    DateTime since, {
+    required TxnType type,
+  }) {
+    final query = _db.select(_db.localTransactions)
+      ..where(
+        (t) =>
+            t.tenantId.equals(tenantId) &
+            t.type.equals(type.wire) &
+            t.occurredAt.isBiggerOrEqualValue(since) &
+            t.syncStatus.equalsValue(LocalSyncStatus.pendingDelete).not(),
+      );
+    return query.watch().map(
+      (rows) => rows.map(_toEntity).toList(growable: false),
+    );
+  }
+
   /// One transaction by id, live. Null once it is gone (a confirmed delete).
   Stream<TransactionEntity?> watchById(String id) {
     final query = _db.select(_db.localTransactions)
