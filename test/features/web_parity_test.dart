@@ -4,6 +4,7 @@ import 'package:finroot_mobile/design/design.dart';
 import 'package:finroot_mobile/domain/constants.dart';
 import 'package:finroot_mobile/features/accounts/application/accounts_providers.dart';
 import 'package:finroot_mobile/features/accounts/domain/account.dart';
+import 'package:finroot_mobile/features/calendar/calendar_events.dart';
 import 'package:finroot_mobile/features/calendar/calendar_screen.dart';
 import 'package:finroot_mobile/features/debts/debts.dart';
 import 'package:finroot_mobile/features/debts/debts_screen.dart';
@@ -167,6 +168,33 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Nothing on this day.'), findsNothing);
       expect(find.textContaining('Travel'), findsWidgets);
+    });
+
+    testWidgets('a day lists what comes due, and later months open', (
+      tester,
+    ) async {
+      final month = DateTime(2026, 10);
+      await _pump(tester, CalendarScreen(today: DateTime(2026, 10, 29)), [
+        calendarMonthProvider(month).overrideWith((ref) => Stream.value([])),
+        calendarEventsProvider(month).overrideWithValue([
+          CalendarEvent(
+            kind: CalendarEventKind.emi,
+            id: 'emi-d1-2',
+            day: DateTime(2026, 10, 10),
+            title: 'HDFC · EMI 2/3',
+            amount: 10000,
+          ),
+        ]),
+      ]);
+      await tester.tap(find.text('10'));
+      await tester.pumpAndSettle();
+      expect(find.text('HDFC · EMI 2/3'), findsOneWidget);
+      expect(find.text('EMI due'), findsOneWidget);
+      expect(find.text('Due'), findsOneWidget); // legend
+      final nextMonth = tester.widget<RoundIconButton>(
+        find.widgetWithIcon(RoundIconButton, Icons.chevron_right_rounded),
+      );
+      expect(nextMonth.onPressed, isNotNull);
     });
   });
 
