@@ -2,9 +2,23 @@ import 'package:decimal/decimal.dart';
 
 import '../../../core/money/money.dart';
 
-/// A manual net-worth line item. The web (`src/lib/netWorthStore.ts`) computes
-/// net worth purely from these — assets minus liabilities — it does **not**
-/// auto-compose from accounts or investments.
+/// Where a synced (read-only) net-worth row comes from.
+enum NetWorthSource {
+  account('/accounts', 'from Accounts'),
+  investment('/investments', 'from Investments'),
+  debt('/debts', 'from Debts');
+
+  const NetWorthSource(this.route, this.label);
+
+  /// The screen that owns the row.
+  final String route;
+  final String label;
+}
+
+/// A net-worth line item: one the person added (`net_worth_entries`), or a
+/// synced one built from accounts, investments or loans
+/// (`net_worth_synced.dart`) — the same balance sheet as the web's Net Worth
+/// page.
 class NetWorthEntry {
   const NetWorthEntry({
     required this.id,
@@ -13,6 +27,7 @@ class NetWorthEntry {
     required this.name,
     required this.amount,
     this.createdAt,
+    this.source,
   });
 
   final String id;
@@ -22,7 +37,11 @@ class NetWorthEntry {
   final Money amount;
   final DateTime? createdAt;
 
+  /// Null for a row the person added; set for a synced, read-only one.
+  final NetWorthSource? source;
+
   bool get isAsset => kind == 'asset';
+  bool get synced => source != null;
 
   factory NetWorthEntry.fromRow(Map<String, dynamic> r) => NetWorthEntry(
     id: r['id'] as String,

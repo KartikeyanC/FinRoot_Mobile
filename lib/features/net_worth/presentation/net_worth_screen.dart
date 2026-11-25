@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
@@ -17,9 +18,9 @@ import '../application/net_worth_providers.dart';
 import '../domain/net_worth.dart';
 import 'entry_form_sheet.dart';
 
-/// Net worth (M11) — a manual asset / liability ledger; net worth is assets
-/// minus liabilities (web `netWorthStore.ts` — it does not auto-compose from
-/// accounts or investments). Menu-gated. Online-only (not cached).
+/// Net worth (M11) — assets minus liabilities: the rows the person adds, plus
+/// accounts, investments and loans pulled in read-only (the web Net Worth page
+/// does the same). Menu-gated. Online-only (not cached).
 class NetWorthScreen extends ConsumerWidget {
   const NetWorthScreen({super.key});
 
@@ -39,10 +40,11 @@ class NetWorthScreen extends ConsumerWidget {
     }
 
     final entries = ref.watch(netWorthEntriesProvider);
+    final all = ref.watch(netWorthAllEntriesProvider);
     final totals = ref.watch(netWorthTotalsProvider);
     final history = ref.watch(netWorthHistoryProvider);
     final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
-    final hasEntries = entries.value?.isNotEmpty ?? false;
+    final hasEntries = all.isNotEmpty;
 
     return AppPage(
       title: 'Net worth',
@@ -64,7 +66,7 @@ class NetWorthScreen extends ConsumerWidget {
             e,
             onRetry: () => ref.invalidate(netWorthEntriesProvider),
           ),
-          data: (list) => ListView(
+          data: (_) => ListView(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.screenGutter,
               AppSpacing.xs,
@@ -72,7 +74,7 @@ class NetWorthScreen extends ConsumerWidget {
               96,
             ),
             children: [
-              if (list.isEmpty)
+              if (all.isEmpty)
                 _Empty(canWrite: canWrite)
               else ...[
                 _HeadlineCard(
@@ -81,13 +83,13 @@ class NetWorthScreen extends ConsumerWidget {
                 ),
                 _GroupSection(
                   title: 'Assets',
-                  entries: list.where((e) => e.isAsset).toList(),
+                  entries: all.where((e) => e.isAsset).toList(),
                   total: totals.assets,
                   canWrite: canWrite,
                 ),
                 _GroupSection(
                   title: 'Liabilities',
-                  entries: list.where((e) => !e.isAsset).toList(),
+                  entries: all.where((e) => !e.isAsset).toList(),
                   total: totals.liabilities,
                   canWrite: canWrite,
                 ),
@@ -281,15 +283,22 @@ class _EntryRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tone = entry.isAsset ? Tones.mint(context) : Tones.coral(context);
+    final source = entry.source;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: ListRow(
-        onTap: canWrite
+        key: ValueKey('nw-${entry.id}'),
+        // A synced row is changed where it comes from.
+        onTap: source != null
+            ? () => context.push(source.route)
+            : canWrite
             ? () => openNetWorthEntryForm(context, editing: entry)
             : null,
         leading: ToneTile(icon: _iconForGroup(entry.group), tone: tone),
         title: entry.name,
-        subtitle: groupLabel(entry.group),
+        subtitle: source == null
+            ? groupLabel(entry.group)
+            : '${groupLabel(entry.group)} · ${source.label}',
         trailing: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: MediaQuery.sizeOf(context).width * 0.5,
@@ -305,7 +314,7 @@ class _EntryRow extends ConsumerWidget {
                 color: entry.isAsset ? null : context.finance.expense,
               ),
             ),
-            if (canWrite)
+            if (canWrite && source == null)
               RowMenu(
                 tooltip: 'Entry actions',
                 onSelected: (v) async {
@@ -349,7 +358,8 @@ class _Empty extends StatelessWidget {
         icon: Icons.balance_outlined,
         title: 'Build the picture',
         message:
-            'Add what you own and what you owe — the difference is your net '
+            'Your accounts, investments and loans show up here on their own. '
+            'Add anything else you own or owe: the difference is your net '
             'worth, and the app tracks it over time.',
         actionLabel: canWrite ? 'Add an item' : null,
         onAction: canWrite ? () => openNetWorthEntryForm(context) : null,
