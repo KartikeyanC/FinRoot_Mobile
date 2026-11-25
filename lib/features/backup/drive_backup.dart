@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show SocketException;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import '../../core/device/device_prefs.dart';
@@ -44,12 +47,9 @@ class GoogleDriveAuth implements DriveAuth {
       return auth?.accessToken;
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) return null;
-      throw ValidationFailure(
-        'Google sign-in failed (${e.code.name}). If this keeps happening, the '
-        'Google Cloud setup for Drive backup is not finished yet.',
-      );
+      throw ValidationFailure(driveSignInProblem(e.code.name, e.description));
     } on PlatformException catch (e) {
-      throw ValidationFailure('Google sign-in failed: ${e.message ?? e.code}');
+      throw ValidationFailure(driveSignInProblem(e.code, e.message));
     }
   }
 
@@ -59,6 +59,34 @@ class GoogleDriveAuth implements DriveAuth {
     await GoogleSignIn.instance.disconnect();
   }
 }
+
+/// What to tell the person when Google refuses sign-in. Google's own reason
+/// used to be dropped ("Google sign-in failed (unknownError)"), which left no
+/// way to tell a Cloud setup gap from a network blip. The Android SDK reports
+/// ApiException codes as "10: Developer console is not set up correctly".
+String driveSignInProblem(String code, String? detail) {
+  final d = (detail ?? '').trim();
+  final l = d.toLowerCase();
+  if (l.contains('developer') || RegExp(r'\b(10|12500):').hasMatch(l)) {
+    return "Google doesn't recognise this copy of FinRoot yet. In Google Cloud "
+        '(Credentials), the Android OAuth client needs package '
+        'com.finroot.mobile and SHA-1 $driveSigningSha1.';
+  }
+  if (l.contains('access_denied') ||
+      l.contains('access blocked') ||
+      l.contains('verification') ||
+      l.contains('test user')) {
+    return 'Google blocked this account for FinRoot. In Google Cloud → '
+        'Audience, add it as a test user, or publish the app.';
+  }
+  if (l.contains('network') || RegExp(r'\b7:').hasMatch(l)) {
+    return "Couldn't reach Google. Check the connection and try again.";
+  }
+  return 'Google sign-in failed ($code${d.isEmpty ? '' : ': $d'}).';
+}
+
+/// The key FinRoot.apk is signed with (docs/GOOGLE_DRIVE_BACKUP.md).
+const driveSigningSha1 = '32:16:DE:DE:3D:A1:68:90:05:C7:DB:CE:F5:FB:77:8E:6C:87:53:33';
 
 final driveAuthProvider = Provider<DriveAuth>((ref) => GoogleDriveAuth(), name: 'driveAuth');
 
@@ -76,6 +104,7 @@ final backupDataSourceProvider = Provider<BackupDataSource>(
 const keepBackups = 30;
 
 const _lastKey = 'drive_backup.last_at';
+const _noDrive = "Couldn't reach Google Drive. Check the connection and try again.";
 const _autoKey = 'drive_backup.auto';
 
 String backupFileName(String workspace, DateTime at) {
@@ -145,6 +174,12 @@ class DriveBackupController extends Notifier<DriveBackupState> {
       return await body();
     } on DriveException catch (e) {
       throw ValidationFailure(e.message);
+    } on SocketException {
+      throw const ValidationFailure(_noDrive);
+    } on http.ClientException {
+      throw const ValidationFailure(_noDrive);
+    } on TimeoutException {
+      throw const ValidationFailure(_noDrive);
     } finally {
       state = state.copyWith(busy: false);
     }

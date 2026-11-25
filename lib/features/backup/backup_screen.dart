@@ -34,6 +34,9 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       if (mounted) _say(f.message);
     } on FormatException catch (e) {
       if (mounted) _say(e.message);
+    } on Object catch (e) {
+      // Anything else used to escape here, and the button just did nothing.
+      if (mounted) _say('Drive backup failed: $e');
     }
   }
 

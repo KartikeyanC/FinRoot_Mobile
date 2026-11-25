@@ -15,6 +15,28 @@ class DriveFile {
   final int? size;
 }
 
+/// Drive's refusal, in words that say what to do. The commonest setup gap,
+/// the Drive API left switched off in the Cloud project, comes back as a 403
+/// whose message names the project; say how to switch it on.
+String driveErrorMessage(int status, String body) {
+  String? google;
+  try {
+    final e = (jsonDecode(body) as Map)['error'];
+    if (e is Map && e['message'] is String) google = e['message'] as String;
+  } on Object {
+    // not JSON: keep the status
+  }
+  final l = (google ?? '').toLowerCase();
+  if (status == 403 &&
+      (l.contains('has not been used') || l.contains('is disabled') || l.contains('accessnotconfigured'))) {
+    return 'The Google Drive API is switched off for FinRoot. In Google Cloud, open '
+        'APIs & Services → Library → Google Drive API → Enable, wait a few minutes, '
+        'then try again.';
+  }
+  if (status == 401) return 'Google sign-in expired. Try again.';
+  return google == null ? 'Google Drive said $status.' : 'Google Drive: $google';
+}
+
 class DriveException implements Exception {
   const DriveException(this.message, {this.status});
   final String message;
@@ -40,14 +62,7 @@ class DriveClient {
     if (r.statusCode >= 200 && r.statusCode < 300) {
       return r.body.isEmpty ? const {} : jsonDecode(r.body) as Map<String, dynamic>;
     }
-    var msg = 'Google Drive said ${r.statusCode}.';
-    try {
-      final e = (jsonDecode(r.body) as Map)['error'];
-      if (e is Map && e['message'] is String) msg = 'Google Drive: ${e['message']}';
-    } on Object {
-      // keep the status message
-    }
-    throw DriveException(msg, status: r.statusCode);
+    throw DriveException(driveErrorMessage(r.statusCode, r.body), status: r.statusCode);
   }
 
   /// The "FinRoot Backups" folder, created on first use.
