@@ -95,13 +95,16 @@ class _DetectedPaymentsScreenState
                   )
                 else if (!value.status.included)
                   const EmptyView(
-                    icon: Icons.shield_outlined,
-                    title: 'Not in this version',
+                    icon: Icons.ios_share_rounded,
+                    title: 'Share bank SMS to FinRoot',
                     message:
-                        'Automatic payment detection needs access to your '
-                        'notifications. Google Play Protect blocks that for apps '
-                        'installed outside the Play Store, so this version leaves '
-                        'it out. Add payments with Quick Add instead.',
+                        'In Messages, long-press a bank SMS, tap Share, then '
+                        'Add to FinRoot: Quick Add opens with the amount, payee '
+                        'and date filled in.\n\n'
+                        'Automatic detection needs access to your '
+                        'notifications, which Google Play Protect blocks for '
+                        'apps installed outside the Play Store, so this version '
+                        'leaves it out. The FinRoot auto-detect APK has it.',
                   )
                 else ...[
                   _SetupCard(status: value.status),
@@ -165,106 +168,106 @@ class _SetupCard extends ConsumerWidget {
           ),
         ),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SwitchListTile(
-            value: status.enabled,
-            onChanged: notifier.setEnabled,
-            title: const Text('Detect my payments'),
-            subtitle: const Text(
-              'Reads payment notifications from Google Pay, PhonePe, Paytm '
-              'and bank apps.',
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SwitchListTile(
+              value: status.enabled,
+              onChanged: notifier.setEnabled,
+              title: const Text('Detect my payments'),
+              subtitle: const Text(
+                'Reads payment notifications from Google Pay, PhonePe, Paytm '
+                'and bank apps.',
+              ),
             ),
-          ),
-          if (status.enabled && !status.hasAccess)
+            if (status.enabled && !status.hasAccess)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xs,
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'One more step: turn on FinRoot under Notification access.',
+                      style: t.bodyMedium,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    FilledButton(
+                      onPressed: notifier.openAccessSettings,
+                      child: const Text('Open Notification access'),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Installed FinRoot from an APK file? If Android says '
+                      '"Restricted setting", open Settings → Apps → FinRoot → '
+                      '⋮ → Allow restricted settings, then try again.',
+                      style: muted,
+                    ),
+                  ],
+                ),
+              ),
+            if (status.enabled) ...[
+              SwitchListTile(
+                value: status.popupEnabled,
+                onChanged: notifier.setPopupEnabled,
+                title: const Text('Pop up when I pay'),
+                subtitle: const Text(
+                  'Shows "₹500 paid — add to FinRoot?" right away. Tap it to '
+                  'add the payment.',
+                ),
+              ),
+              if (status.popupEnabled && !status.canPostNotifications)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    0,
+                    AppSpacing.lg,
+                    AppSpacing.sm,
+                  ),
+                  child: OutlinedButton(
+                    onPressed: notifier.requestPopupPermission,
+                    child: const Text('Allow FinRoot notifications'),
+                  ),
+                ),
+            ],
+            if (status.enabled)
+              SwitchListTile(
+                value: status.smsEnabled,
+                onChanged: notifier.setSmsEnabled,
+                title: const Text('Include bank SMS alerts'),
+                subtitle: const Text(
+                  'Catches payments made by card, net banking or any UPI app. '
+                  'OTPs are never kept.',
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.lg,
                 AppSpacing.xs,
                 AppSpacing.lg,
-                AppSpacing.md,
+                AppSpacing.sm,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Row(
                 children: [
-                  Text(
-                    'One more step: turn on FinRoot under Notification access.',
-                    style: t.bodyMedium,
+                  Icon(
+                    Icons.lock_outline,
+                    size: 16,
+                    color: scheme.onSurfaceVariant,
                   ),
-                  const SizedBox(height: AppSpacing.md),
-                  FilledButton(
-                    onPressed: notifier.openAccessSettings,
-                    child: const Text('Open Notification access'),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'Installed FinRoot from an APK file? If Android says '
-                    '"Restricted setting", open Settings → Apps → FinRoot → '
-                    '⋮ → Allow restricted settings, then try again.',
-                    style: muted,
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      'Stays on this phone. Nothing is saved until you tap Add.',
+                      style: muted,
+                    ),
                   ),
                 ],
               ),
             ),
-          if (status.enabled) ...[
-            SwitchListTile(
-              value: status.popupEnabled,
-              onChanged: notifier.setPopupEnabled,
-              title: const Text('Pop up when I pay'),
-              subtitle: const Text(
-                'Shows "₹500 paid — add to FinRoot?" right away. Tap it to '
-                'add the payment.',
-              ),
-            ),
-            if (status.popupEnabled && !status.canPostNotifications)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  0,
-                  AppSpacing.lg,
-                  AppSpacing.sm,
-                ),
-                child: OutlinedButton(
-                  onPressed: notifier.requestPopupPermission,
-                  child: const Text('Allow FinRoot notifications'),
-                ),
-              ),
           ],
-          if (status.enabled)
-            SwitchListTile(
-              value: status.smsEnabled,
-              onChanged: notifier.setSmsEnabled,
-              title: const Text('Include bank SMS alerts'),
-              subtitle: const Text(
-                'Catches payments made by card, net banking or any UPI app. '
-                'OTPs are never kept.',
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.xs,
-              AppSpacing.lg,
-              AppSpacing.sm,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.lock_outline,
-                  size: 16,
-                  color: scheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    'Stays on this phone. Nothing is saved until you tap Add.',
-                    style: muted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
         ),
       ),
     );
@@ -277,24 +280,29 @@ Future<void> addDetectedPayment(
   WidgetRef ref,
   DetectedPayment p,
 ) async {
-  final saved = await openQuickAdd(
-    context,
-    kind: p.isPaid ? QuickAddKind.expense : QuickAddKind.income,
-    prefill: QuickAddPrefill(
-      amount: p.amount,
-      // The note is what identifies the payment later (and is searchable).
-      note: [
-        if (p.counterparty != null) p.headline,
-        if (p.reference != null) 'Ref ${p.reference}',
-      ].join(' · '),
-      paymentMode: p.paymentMode,
-      occurredAt: p.occurredAt,
-    ),
-  );
+  final saved = await openQuickAddForPayment(context, p);
   if (saved == true) {
     await ref.read(paymentCaptureProvider.notifier).resolve(p);
   }
 }
+
+/// Quick Add filled in from [p]: kind, amount, payee and reference as the
+/// note, payment mode and when it happened. True once saved.
+Future<bool?> openQuickAddForPayment(BuildContext context, DetectedPayment p) =>
+    openQuickAdd(
+      context,
+      kind: p.isPaid ? QuickAddKind.expense : QuickAddKind.income,
+      prefill: QuickAddPrefill(
+        amount: p.amount,
+        // The note is what identifies the payment later (and is searchable).
+        note: [
+          if (p.counterparty != null) p.headline,
+          if (p.reference != null) 'Ref ${p.reference}',
+        ].join(' · '),
+        paymentMode: p.paymentMode,
+        occurredAt: p.occurredAt,
+      ),
+    );
 
 class _PaymentCard extends ConsumerWidget {
   const _PaymentCard({required this.payment, required this.alreadyRecorded});
@@ -406,14 +414,35 @@ class _PaymentCard extends ConsumerWidget {
   }
 }
 
-(Color, Color) _pair(BuildContext context, Color l, Color lf, Color d, Color df) {
+(Color, Color) _pair(
+  BuildContext context,
+  Color l,
+  Color lf,
+  Color d,
+  Color df,
+) {
   final dark = Theme.of(context).brightness == Brightness.dark;
   return dark ? (d, df) : (l, lf);
 }
 
-(Color, Color) _coral(BuildContext c) => _pair(c, AppColors.coralLight,
-    AppColors.coralFgLight, AppColors.coralDark, AppColors.coralFgDark);
-(Color, Color) _mint(BuildContext c) => _pair(c, AppColors.mintLight,
-    AppColors.mintFgLight, AppColors.mintDark, AppColors.mintFgDark);
-(Color, Color) _butter(BuildContext c) => _pair(c, AppColors.butterLight,
-    AppColors.butterFgLight, AppColors.butterDark, AppColors.butterFgDark);
+(Color, Color) _coral(BuildContext c) => _pair(
+  c,
+  AppColors.coralLight,
+  AppColors.coralFgLight,
+  AppColors.coralDark,
+  AppColors.coralFgDark,
+);
+(Color, Color) _mint(BuildContext c) => _pair(
+  c,
+  AppColors.mintLight,
+  AppColors.mintFgLight,
+  AppColors.mintDark,
+  AppColors.mintFgDark,
+);
+(Color, Color) _butter(BuildContext c) => _pair(
+  c,
+  AppColors.butterLight,
+  AppColors.butterFgLight,
+  AppColors.butterDark,
+  AppColors.butterFgDark,
+);

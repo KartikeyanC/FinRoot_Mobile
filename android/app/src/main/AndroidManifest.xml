@@ -69,6 +69,15 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="finroot" android:host="auth-callback"/>
             </intent-filter>
+            <!-- Share a bank SMS to FinRoot: long-press it in Messages, Share,
+                 "Add to FinRoot", and Quick Add opens filled in. It asks for
+                 no permission, so unlike payment detection it is in every
+                 build, side-loaded ones included. -->
+            <intent-filter android:label="@string/share_label">
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
         </activity>
         <!-- flutter_local_notifications receivers (M12, device-unverified).
              Deliver a scheduled notification, and re-schedule pending ones

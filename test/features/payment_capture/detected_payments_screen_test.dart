@@ -68,6 +68,12 @@ class FakeGateway implements PaymentCaptureGateway {
 
   @override
   Stream<String> get openRequests => const Stream.empty();
+
+  @override
+  Future<String?> takeSharedText() async => null;
+
+  @override
+  Stream<String> get sharedTexts => const Stream.empty();
 }
 
 PaymentNotice _gpay(String id, String title) => PaymentNotice(
@@ -109,16 +115,18 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets('a side-loaded build without the feature explains why, no switch', (
-    tester,
-  ) async {
-    final gw = FakeGateway(included: false);
-    await _pump(tester, gw);
-    expect(find.text('Not in this version'), findsOneWidget);
-    expect(find.textContaining('Play Protect'), findsOneWidget);
-    expect(find.byType(Switch), findsNothing);
-    expect(gw.settingsOpened, 0);
-  });
+  testWidgets(
+    'a side-loaded build without the feature explains why, no switch',
+    (tester) async {
+      final gw = FakeGateway(included: false);
+      await _pump(tester, gw);
+      expect(find.text('Share bank SMS to FinRoot'), findsOneWidget);
+      expect(find.textContaining('Add to FinRoot'), findsOneWidget);
+      expect(find.textContaining('Play Protect'), findsOneWidget);
+      expect(find.byType(Switch), findsNothing);
+      expect(gw.settingsOpened, 0);
+    },
+  );
 
   testWidgets('off: only the switch, turning it on asks for access', (
     tester,

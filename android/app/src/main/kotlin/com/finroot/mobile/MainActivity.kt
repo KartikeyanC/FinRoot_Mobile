@@ -17,9 +17,14 @@ class MainActivity : FlutterFragmentActivity() {
     // Set when FinRoot was opened from a payment pop-up; Flutter takes it once.
     private var launchNotice: String? = null
 
+    // Set when FinRoot was opened by sharing text to it (a bank SMS from the
+    // Messages app); Flutter takes it once.
+    private var launchShared: String? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         launchNotice = takeNoticeId(intent)
+        launchShared = takeSharedText(intent)
         // Payment detection (see PaymentListenerService / PaymentPopup).
         channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -65,6 +70,10 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(launchNotice)
                     launchNotice = null
                 }
+                "takeSharedText" -> {
+                    result.success(launchShared)
+                    launchShared = null
+                }
                 "pending" -> result.success(PaymentCaptureStore.pending(ctx))
                 "remove" -> {
                     @Suppress("UNCHECKED_CAST")
@@ -76,10 +85,21 @@ class MainActivity : FlutterFragmentActivity() {
         } }
     }
 
-    // A pop-up tapped while FinRoot is already running.
+    // A pop-up tapped, or text shared, while FinRoot is already running.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         takeNoticeId(intent)?.let { channel?.invokeMethod("openNotice", it) }
+        takeSharedText(intent)?.let { channel?.invokeMethod("sharedText", it) }
+    }
+
+    private fun takeSharedText(intent: Intent?): String? {
+        if (intent?.action != Intent.ACTION_SEND) return null
+        if (intent.type?.startsWith("text/") != true) return null
+        val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+        // Don't hand it over again on a configuration change / recreate.
+        intent.removeExtra(Intent.EXTRA_TEXT)
+        intent.action = null
+        return text?.takeIf { it.isNotBlank() }
     }
 
     private fun takeNoticeId(intent: Intent?): String? {

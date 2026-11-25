@@ -63,6 +63,13 @@ abstract interface class PaymentCaptureGateway {
 
   /// Notices whose pop-up was tapped while FinRoot was already running.
   Stream<String> get openRequests;
+
+  /// Text shared to FinRoot that launched it (Messages → Share → "Add to
+  /// FinRoot"), once (then null).
+  Future<String?> takeSharedText();
+
+  /// Text shared to FinRoot while it was already running.
+  Stream<String> get sharedTexts;
 }
 
 class MethodChannelPaymentCaptureGateway implements PaymentCaptureGateway {
@@ -70,12 +77,14 @@ class MethodChannelPaymentCaptureGateway implements PaymentCaptureGateway {
     if (_supported) {
       _channel.setMethodCallHandler((call) async {
         if (call.method == 'openNotice') _opens.add(call.arguments as String);
+        if (call.method == 'sharedText') _shared.add(call.arguments as String);
       });
     }
   }
 
   static const _channel = MethodChannel('finroot/payment_capture');
   final _opens = StreamController<String>.broadcast();
+  final _shared = StreamController<String>.broadcast();
 
   bool get _supported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -116,6 +125,13 @@ class MethodChannelPaymentCaptureGateway implements PaymentCaptureGateway {
 
   @override
   Stream<String> get openRequests => _opens.stream;
+
+  @override
+  Future<String?> takeSharedText() async =>
+      _supported ? _channel.invokeMethod<String>('takeSharedText') : null;
+
+  @override
+  Stream<String> get sharedTexts => _shared.stream;
 
   @override
   Future<void> openAccessSettings() =>

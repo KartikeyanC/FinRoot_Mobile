@@ -164,7 +164,16 @@ notification access. **Google Play Protect blocks any app installed outside the
 Play Store that asks for it** ("App blocked to protect your device" — the India
 fraud-protection rule), so release builds leave the `PaymentListenerService` out
 by default (`android/app/src/noPaymentDetection/AndroidManifest.xml`). The app
-then reports `included: false` and the Detected payments screen explains why.
+then reports `included: false`, and the Detected payments screen explains how to
+**share a bank SMS to FinRoot** instead: Messages → long-press → Share → "Add to
+FinRoot" opens Quick Add filled in (an `ACTION_SEND` text/plain target on
+`MainActivity`; no permission, so it is in every build).
+
+`windows-installer\work\apk-build.ps1` builds both APKs for a release:
+`Finroot_Version_<v>.apk` (the default above, installs anywhere) and
+`Finroot_Version_<v>_auto-detect.apk` (with the listener; installs via ADB, the
+Play Store, or with Play Protect off). Same key and versionCode, so either
+installs over the other. `-NoAutoDetect` builds the first only.
 
 ```bash
 # Side-loaded APK (default): no notification access, installs cleanly.
