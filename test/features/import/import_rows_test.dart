@@ -75,6 +75,80 @@ void main() {
     expect(parseImportAmount(''), isNull);
   });
 
+  test('more date shapes', () {
+    final want = DateTime(2026, 11, 23);
+    for (final d in [
+      '23-11-26',
+      '23 11 2026',
+      '23Nov2026',
+      '23rd Nov 2026',
+      '23-Nov-26',
+      'Nov 23, 2026',
+      'November 23 2026',
+      '23/11/2026 14:05:00',
+      '2026/11/23',
+    ]) {
+      expect(parseImportDate(d), want, reason: d);
+    }
+  });
+
+  test('amounts with currency marks and Dr / Cr', () {
+    expect(parseImportAmount('Rs.500'), Decimal.parse('500'));
+    expect(parseImportAmount('Rs. 1,250.00'), Decimal.parse('1250'));
+    expect(parseImportAmount('INR 2,000'), Decimal.parse('2000'));
+    expect(parseImportAmount('1,234.50 Dr'), Decimal.parse('1234.5'));
+    expect(parseImportAmount('(500)'), Decimal.parse('500'));
+    expect(parseImportAmount('500.00-'), Decimal.parse('500'));
+    expect(parseImportAmount('Rs. 0.00'), isNull);
+  });
+
+  test('headers are matched loosely', () {
+    expect(normaliseHeader('Withdrawal Amount (INR )'), 'withdrawal amount');
+    expect(normaliseHeader('Deposit Amt.'), 'deposit amt');
+    expect(normaliseHeader('Txn Date'), 'txn date');
+  });
+
+  test('an ICICI-style statement with account details above the table', () {
+    const csv =
+        'Account Number,XXXXXXXX1234\n'
+        'Account Name,R KUMAR\n'
+        'Statement Period,01/11/2026 to 23/11/2026\n'
+        '\n'
+        'S No.,Value Date,Transaction Date,Cheque Number,Transaction Remarks,'
+        'Withdrawal Amount (INR ),Deposit Amount (INR ),Balance (INR )\n'
+        '1,03/11/2026,03/11/2026,,UPI/ZOMATO,"Rs. 450.00",0.00,"9,550.00"\n'
+        '2,05/11/2026,05/11/2026,,NEFT/SALARY,0.00,"85,000.00","94,550.00"\n'
+        '3,not a date,,,CHARGES,10.00,0.00,"94,540.00"\n';
+    final p = parseImportTable(csvTable(utf8.encode(csv)));
+    expect(p.rows, hasLength(2));
+    expect(p.rows[0].date, DateTime(2026, 11, 3));
+    expect(p.rows[0].type, 'expense');
+    expect(p.rows[0].amount, Decimal.parse('450'));
+    expect(p.rows[0].description, 'UPI/ZOMATO');
+    expect(p.rows[1].type, 'income');
+    expect(p.rows[1].amount, Decimal.parse('85000'));
+    // A row whose date can't be read is left out, not dated today.
+    expect(p.undated, 1);
+  });
+
+  test('a single signed amount column: negatives out, positives in', () {
+    const csv =
+        'Date,Description,Amount\n'
+        '01/11/2026,Rent,-15000\n'
+        '02/11/2026,Refund,1200\n';
+    final p = parseImportTable(csvTable(utf8.encode(csv)));
+    expect(p.rows.map((r) => r.type), ['expense', 'income']);
+  });
+
+  test('Dr / Cr written after the amount', () {
+    const csv =
+        'Date,Particulars,Amount\n'
+        '01/11/2026,ATM,"2,000.00 Dr"\n'
+        '02/11/2026,Interest,"120.00 Cr"\n';
+    final p = parseImportTable(csvTable(utf8.encode(csv)));
+    expect(p.rows.map((r) => r.type), ['expense', 'income']);
+  });
+
   test('repeats inside one file are dropped once', () {
     final p = parseImportTable(
       csvTable(

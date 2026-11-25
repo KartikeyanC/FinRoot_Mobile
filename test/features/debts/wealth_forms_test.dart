@@ -40,6 +40,12 @@ class _DebtsGw implements DebtsGateway {
   Future<void> deleteOpenReminders(String t, String d) async {}
   @override
   Future<void> deleteReminders(String t, List<String> ids) async {}
+  @override
+  Future<void> updateReminder(
+    String t,
+    String id,
+    Map<String, dynamic> p,
+  ) async {}
 }
 
 class _SubsGw implements SubscriptionsGateway {

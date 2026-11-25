@@ -17,7 +17,15 @@ class _Gw implements DebtsGateway {
   final reminders = <Map<String, dynamic>>[];
   final deletedOpenFor = <String>[];
   final deletedDebts = <String>[];
+  final reminderUpdates = <Map<String, dynamic>>[];
   bool refuseReminders = false;
+
+  @override
+  Future<void> updateReminder(
+    String tenantId,
+    String id,
+    Map<String, dynamic> patch,
+  ) async => reminderUpdates.add({'id': id, ...patch});
 
   @override
   Future<List<Map<String, dynamic>>> fetch(String tenantId) async => debts;
@@ -223,5 +231,71 @@ void main() {
     await c.read(debtEditorProvider).delete(_debt(const []));
     expect(gw.deletedOpenFor, ['d1']);
     expect(gw.deletedDebts, ['d1']);
+  });
+
+  test('one EMI: new amount and paid, with its reminder', () async {
+    final gw = _Gw();
+    final c = await _container(gw);
+    addTearDown(c.dispose);
+    final debt = _debt([
+      {
+        'month': 1,
+        'dueDate': '2026-12-05',
+        'amount': 10000,
+        'status': 'pending',
+        'reminderId': 'r1',
+      },
+      {
+        'month': 2,
+        'dueDate': '2027-01-05',
+        'amount': 10000,
+        'status': 'pending',
+      },
+      {
+        'month': 3,
+        'dueDate': '2027-02-05',
+        'amount': 10000,
+        'status': 'pending',
+      },
+    ]);
+    await c
+        .read(debtEditorProvider)
+        .updateInstallment(debt, 1, amount: 12000, paid: true);
+    final patch = gw.updates.single;
+    final inst = patch['installments'] as List;
+    expect((inst[0] as Map)['amount'], 12000);
+    expect((inst[0] as Map)['status'], 'paid');
+    expect((inst[0] as Map)['reminderId'], 'r1'); // unknown keys survive
+    expect(patch['total_amount'], 32000);
+    expect(patch['monthly'], 10000);
+    expect(gw.reminderUpdates.single, {
+      'id': 'r1',
+      'amount': 12000,
+      'status': 'completed',
+    });
+  });
+
+  test('a new debt can start with EMIs already paid', () async {
+    final gw = _Gw();
+    final c = await _container(gw);
+    addTearDown(c.dispose);
+    await c
+        .read(debtEditorProvider)
+        .add(
+          DebtDraft(
+            lender: 'Bajaj',
+            category: 'Other',
+            total: 30000,
+            months: 3,
+            firstDue: DateTime(2026, 9, 5),
+            paidBefore: 2,
+          ),
+        );
+    final inst = gw.debts.single['installments'] as List;
+    expect(
+      [for (final i in inst) (i as Map)['status']],
+      ['paid', 'paid', 'pending'],
+    );
+    expect(gw.reminders, hasLength(1));
   });
 }

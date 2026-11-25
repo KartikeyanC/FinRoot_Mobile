@@ -27,8 +27,20 @@ ScanResult _result() => ScanResult(
   date: DateTime(2026, 9, 2),
   total: _inr('300'),
   items: [
-    ScanItem(name: 'Coffee', qty: 2, unit: 'pc', amount: _inr('200'), category: 'Food & Dining'),
-    ScanItem(name: 'Cake', qty: 1, unit: 'pc', amount: _inr('80'), category: 'Food & Dining'),
+    ScanItem(
+      name: 'Coffee',
+      qty: 2,
+      unit: 'pc',
+      amount: _inr('200'),
+      category: 'Food & Dining',
+    ),
+    ScanItem(
+      name: 'Cake',
+      qty: 1,
+      unit: 'pc',
+      amount: _inr('80'),
+      category: 'Food & Dining',
+    ),
   ],
   taxLines: [ScanTaxLine(label: 'GST', amount: _inr('20'))],
 );
@@ -68,7 +80,11 @@ class _FakeQuickAdd implements QuickAddController {
     String? toAccountId,
     String? editingId,
   }) async {
-    submits.add({'amount': amount.amount.toString(), 'category': category, 'note': note});
+    submits.add({
+      'amount': amount.amount.toString(),
+      'category': category,
+      'note': note,
+    });
     return 'txn-1';
   }
 
@@ -77,7 +93,7 @@ class _FakeQuickAdd implements QuickAddController {
 }
 
 ({ProviderContainer c, _FakeCamera cam, _FakeScanGateway gw, _FakeQuickAdd qa})
-    _setup({bool online = true}) {
+_setup({bool online = true}) {
   final cam = _FakeCamera();
   final gw = _FakeScanGateway();
   final qa = _FakeQuickAdd();
@@ -116,17 +132,20 @@ void main() {
     expect(st.approval!.amount.amount.toDouble(), 300);
   });
 
-  test('switching to line items re-derives rows from the same result', () async {
-    final s = _setup();
-    s.cam.next = [_img()];
-    final n = s.c.read(billScanControllerProvider.notifier);
-    await n.captureFromCamera();
-    await n.scan();
-    n.setMode(ScanMode.lineItem);
-    final st = s.c.read(billScanControllerProvider);
-    expect(st.rows, hasLength(3)); // 2 items + 1 tax
-    expect(s.gw.calls, 1); // no re-scan
-  });
+  test(
+    'switching to line items re-derives rows from the same result',
+    () async {
+      final s = _setup();
+      s.cam.next = [_img()];
+      final n = s.c.read(billScanControllerProvider.notifier);
+      await n.captureFromCamera();
+      await n.scan();
+      n.setMode(ScanMode.lineItem);
+      final st = s.c.read(billScanControllerProvider);
+      expect(st.rows, hasLength(3)); // 2 items + 1 tax
+      expect(s.gw.calls, 1); // no re-scan
+    },
+  );
 
   test('editRow and removeRow feed the approval total', () async {
     final s = _setup();
@@ -156,6 +175,17 @@ void main() {
     expect(s.qa.submits.single['category'], 'Food & Dining');
     expect(s.c.read(billScanControllerProvider).phase, BillScanPhase.staging);
     expect(s.c.read(billScanControllerProvider).images, isEmpty);
+  });
+
+  test('split with people logs only your share', () async {
+    final s = _setup();
+    s.cam.next = [_img()];
+    final n = s.c.read(billScanControllerProvider.notifier);
+    await n.captureFromCamera();
+    await n.scan();
+    n.setPeople(2);
+    await n.approve();
+    expect(s.qa.submits.single['amount'], '150');
   });
 
   test('offline scan is refused', () async {

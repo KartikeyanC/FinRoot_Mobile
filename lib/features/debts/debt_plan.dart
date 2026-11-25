@@ -24,6 +24,85 @@ double computeMonthly(double total, int months) =>
 
 double _round2(double v) => (v * 100).roundToDouble() / 100;
 
+/// How many EMIs of a schedule that starts on [firstDue] fell due before
+/// [today]: what someone who starts using FinRoot part-way through a loan
+/// has most likely paid already (a September loan added in November: 2).
+int emisDueBefore(DateTime firstDue, int months, DateTime today) {
+  final day = DateTime(today.year, today.month, today.day);
+  var n = 0;
+  while (n < months && emiDate(firstDue, n).isBefore(day)) {
+    n++;
+  }
+  return n;
+}
+
+/// The `paidAt` of an EMI paid before it was tracked here: noon on its due
+/// day, local time, as UTC ISO — the web writes the same.
+String backfillPaidAt(String dueDate) {
+  final p = dueDate.split('-').map(int.parse).toList();
+  return DateTime(p[0], p[1], p[2], 12).toUtc().toIso8601String();
+}
+
+/// [installments] with the first [count] marked paid on their own due dates
+/// (`backfilled: true`) — EMIs paid before the loan was added to FinRoot.
+List<Map<String, dynamic>> backfillPaid(
+  List<Map<String, dynamic>> installments,
+  int count,
+) => [
+  for (var i = 0; i < installments.length; i++)
+    i < count && installments[i]['status'] != 'paid'
+        ? {
+            ...installments[i],
+            'status': 'paid',
+            'paidAt': backfillPaidAt(installments[i]['dueDate'] as String),
+            'backfilled': true,
+          }
+        : installments[i],
+];
+
+/// [installments] with EMI [month] costing [amount] (to the paisa).
+List<Map<String, dynamic>> withInstallmentAmount(
+  List<Map<String, dynamic>> installments,
+  int month,
+  double amount,
+) => [
+  for (final i in installments)
+    i['month'] == month ? {...i, 'amount': _round2(amount)} : i,
+];
+
+/// [installments] with EMI [month] paid at [now], or back to unpaid.
+List<Map<String, dynamic>> withInstallmentPaid(
+  List<Map<String, dynamic>> installments,
+  int month, {
+  required bool paid,
+  required DateTime now,
+}) => [
+  for (final i in installments)
+    if (i['month'] != month || (paid && i['status'] == 'paid'))
+      i
+    else if (paid)
+      {...i, 'status': 'paid', 'paidAt': now.toUtc().toIso8601String()}
+    else
+      ({...i, 'status': 'pending'}
+        ..remove('paidAt')
+        ..remove('backfilled')),
+];
+
+/// The debt's `total_amount` and `monthly` once EMIs can differ: the sum of
+/// all EMIs, and the next unpaid one (the last, once every EMI is paid).
+({double total, double monthly}) debtTotals(
+  List<Map<String, dynamic>> installments,
+) {
+  double amountOf(Map<String, dynamic> i) =>
+      (i['amount'] as num?)?.toDouble() ?? 0;
+  final total = _round2(installments.fold(0, (s, i) => s + amountOf(i)));
+  final next = installments.where((i) => i['status'] != 'paid').firstOrNull;
+  final monthly = next != null
+      ? amountOf(next)
+      : (installments.isEmpty ? 0.0 : amountOf(installments.last));
+  return (total: total, monthly: monthly);
+}
+
 /// Web `buildInstallments`: equal EMIs rounded to paise, the last one taking
 /// the remainder so they add up to [total] exactly.
 List<Map<String, dynamic>> buildInstallments(
@@ -59,6 +138,7 @@ class DebtDraft {
     required this.firstDue,
     this.notes = '',
     this.currency = 'INR',
+    this.paidBefore = 0,
   });
 
   final String lender;
@@ -68,6 +148,10 @@ class DebtDraft {
   final DateTime firstDue;
   final String notes;
   final String currency;
+
+  /// How many of the first EMIs were paid before the loan was added here
+  /// (only read when the debt is created).
+  final int paidBefore;
 }
 
 /// A `reminders` row for one EMI, as the web writes it.
@@ -120,9 +204,14 @@ planNewDebt({
 }) {
   final id = debtId ?? uuid.v4();
   final reminders = <Map<String, dynamic>>[];
+  final schedule = backfillPaid(
+    buildInstallments(d.total, d.months, d.firstDue),
+    d.paidBefore,
+  );
   final installments = [
-    for (final inst in buildInstallments(d.total, d.months, d.firstDue))
-      if (withReminders)
+    for (final inst in schedule)
+      // An EMI already paid needs no reminder.
+      if (withReminders && inst['status'] != 'paid')
         () {
           final rid = uuid.v4();
           reminders.add(

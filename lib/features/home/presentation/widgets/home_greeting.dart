@@ -10,6 +10,7 @@ import '../../../sync/presentation/sync_status_widgets.dart';
 import '../../../workspace/application/workspace_providers.dart';
 import '../../../workspace/domain/membership.dart';
 import '../../../workspace/presentation/workspace_switcher_sheet.dart';
+import '../../domain/greeting.dart';
 
 /// The top of Home, NineFlow style: a round workspace pill (avatar, name,
 /// chevron) with the sync state beside it, then a big bold greeting with
@@ -65,7 +66,9 @@ class HomeGreeting extends ConsumerWidget {
         Semantics(
           header: true,
           child: Text(
-            name == null ? 'Welcome back' : '${_timeGreeting()}, $name',
+            name == null
+                ? 'Welcome back'
+                : '${timeGreeting(DateTime.now())}, $name',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.display.copyWith(color: palette.ink),
@@ -78,13 +81,6 @@ class HomeGreeting extends ConsumerWidget {
         ),
       ],
     );
-  }
-
-  String _timeGreeting() {
-    final h = DateTime.now().hour;
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
   }
 
   String? _firstName(String? displayName) {

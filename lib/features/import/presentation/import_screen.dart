@@ -17,6 +17,7 @@ import '../../menus/application/menu_providers.dart';
 import '../../menus/presentation/menu_locked_view.dart';
 import '../../payment_capture/domain/bank_sms.dart';
 import '../../payment_capture/domain/ingest_hash.dart';
+import '../../payment_capture/domain/sms_fields.dart';
 import '../../sync/application/sync_engine.dart';
 import '../../transactions/presentation/widgets/category_style.dart';
 import '../../workspace/application/workspace_providers.dart';
@@ -29,9 +30,14 @@ typedef ImportFilePicker = Future<ImportFile?> Function();
 
 final importFilePickerProvider = Provider<ImportFilePicker>(
   (ref) => () async {
+    // On Android the extension filter turns into a MIME-type filter, and many
+    // phones label a .csv as a type it doesn't list ("text/comma-separated-
+    // values", "application/octet-stream"), so the file shows greyed out and
+    // can't be picked. Show every file there; the screen checks the name.
+    final android = Platform.isAndroid;
     final f = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: const ['csv', 'xlsx'],
+      type: android ? FileType.any : FileType.custom,
+      allowedExtensions: android ? null : const ['csv', 'xlsx'],
       dialogTitle: 'Choose a CSV or Excel file',
     );
     if (f == null) return null;
@@ -97,8 +103,21 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     setState(() => _error = null);
     final f = await ref.read(importFilePickerProvider)();
     if (f == null || !mounted) return;
+    final lower = f.name.toLowerCase();
+    final unsupported = lower.endsWith('.xls')
+        ? 'Old Excel (.xls) files can\'t be read. Open it and save it as '
+              '.xlsx or CSV, then try again.'
+        : lower.endsWith('.pdf')
+        ? 'PDF statements can\'t be read on the phone yet. Download the '
+              'statement as Excel or CSV from your bank instead.'
+        : !(lower.endsWith('.csv') || lower.endsWith('.xlsx'))
+        ? 'Choose a .csv or .xlsx file.'
+        : null;
+    if (unsupported != null) {
+      setState(() => _error = unsupported);
+      return;
+    }
     try {
-      final lower = f.name.toLowerCase();
       final table = lower.endsWith('.xlsx')
           ? xlsxTable(f.bytes)
           : csvTable(f.bytes);
@@ -108,9 +127,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         d.rows,
         source: f.name,
         note: [
-          if (parsed.skipped > 0)
-            '${parsed.skipped} line${parsed.skipped == 1 ? '' : 's'} had no '
-                'date and amount and were left out',
+          if (parsed.undated > 0)
+            '${parsed.undated} row${parsed.undated == 1 ? '' : 's'} had a '
+                'date we couldn\'t read and ${parsed.undated == 1 ? 'was' : 'were'} '
+                'left out',
           if (d.duplicates > 0)
             '${d.duplicates} repeated row${d.duplicates == 1 ? '' : 's'} '
                 'counted once',
@@ -133,16 +153,21 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         .where((s) => s.isNotEmpty);
     final rows = <ImportRow>[];
     var unread = 0;
+    var undated = 0;
     for (final c in chunks) {
       final e = extractBankSms(c, receivedAt: now);
       if (e == null) {
         unread++;
         continue;
       }
+      // A pasted message has no arrival time: keep the date printed in it,
+      // however old ("12-Nov-26", "Nov 12, 2026", "12th Nov").
+      final printed = messageDateIn(c, now: now);
+      if (printed == null) undated++;
       final income = e.type == IngestType.income;
       rows.add(
         ImportRow(
-          date: e.occurredAt,
+          date: printed ?? now,
           type: income ? 'income' : 'expense',
           amount: e.amount,
           category: income ? 'Other' : 'Uncategorized',
@@ -157,11 +182,30 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _show(
       d.rows,
       source: 'Pasted messages',
-      note: unread > 0
-          ? '$unread message${unread == 1 ? '' : 's'} weren\'t payments '
-                '(OTPs, reminders, failed payments) and were left out'
-          : null,
+      note: [
+        if (unread > 0)
+          '$unread message${unread == 1 ? '' : 's'} weren\'t payments '
+              '(OTPs, reminders, failed payments) and were left out',
+        if (undated > 0)
+          '$undated message${undated == 1 ? '' : 's'} had no date, so today '
+              'is used. Tap the date to change it',
+      ].join(' · '),
     );
+  }
+
+  Future<void> _pickDate(int i) async {
+    final r = _rows[i];
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: r.date.isAfter(now) ? now : r.date,
+      firstDate: DateTime(2000),
+      lastDate: now,
+    );
+    if (picked == null) return;
+    setState(() {
+      _rows = [..._rows]..[i] = r.copyWith(date: picked);
+    });
   }
 
   Future<void> _shareTemplate() async {
@@ -375,8 +419,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                   ],
                   const SizedBox(height: AppSpacing.md),
                   Text(
-                    'Untick anything you don\'t want. Tap a category to '
-                    'change it.',
+                    'Untick anything you don\'t want. Tap a date or a '
+                    'category to change it.',
                     style: AppTypography.label.copyWith(color: palette.muted),
                   ),
                   const SizedBox(height: AppSpacing.sm),
@@ -393,6 +437,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                               if (!_off.remove(i)) _off.add(i);
                             }),
                             onCategory: () => _pickCategory(i),
+                            onDate: () => _pickDate(i),
                           ),
                         ],
                       ],
@@ -492,11 +537,13 @@ class _PreviewRow extends StatelessWidget {
     required this.on,
     required this.onToggle,
     required this.onCategory,
+    required this.onDate,
   });
   final ImportRow row;
   final bool on;
   final VoidCallback onToggle;
   final VoidCallback onCategory;
+  final VoidCallback onDate;
 
   @override
   Widget build(BuildContext context) {
@@ -535,11 +582,14 @@ class _PreviewRow extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       spacing: AppSpacing.xs,
                       children: [
-                        Text(
-                          DateFormat('d MMM yyyy').format(row.date),
-                          style: AppTypography.label.copyWith(
-                            color: palette.muted,
+                        ActionChip(
+                          key: const ValueKey('import-row-date'),
+                          visualDensity: VisualDensity.compact,
+                          label: Text(
+                            DateFormat('d MMM yyyy').format(row.date),
                           ),
+                          avatar: const Icon(Icons.event_rounded, size: 14),
+                          onPressed: on ? onDate : null,
                         ),
                         ActionChip(
                           visualDensity: VisualDensity.compact,

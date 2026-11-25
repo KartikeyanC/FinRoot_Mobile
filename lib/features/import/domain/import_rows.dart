@@ -42,14 +42,15 @@ class ImportRow {
 
   bool get isIncome => type == 'income';
 
-  ImportRow copyWith({String? category, String? type}) => ImportRow(
-    date: date,
-    type: type ?? this.type,
-    amount: amount,
-    category: category ?? this.category,
-    description: description,
-    currency: currency,
-  );
+  ImportRow copyWith({String? category, String? type, DateTime? date}) =>
+      ImportRow(
+        date: date ?? this.date,
+        type: type ?? this.type,
+        amount: amount,
+        category: category ?? this.category,
+        description: description,
+        currency: currency,
+      );
 
   String get occurredAt =>
       DateTime.utc(date.year, date.month, date.day).toIso8601String();
@@ -70,52 +71,59 @@ class ImportRow {
   String get importHash => sha256.convert(utf8.encode(canonicalKey)).toString();
 }
 
-/// What a file gave: rows, and how many lines had no date and no amount.
+/// What a file gave: rows, how many lines had no amount, and how many had
+/// an amount but a date that could not be read (left out rather than
+/// guessed as today).
 class ImportParse {
-  const ImportParse(this.rows, this.skipped);
+  const ImportParse(this.rows, this.skipped, {this.undated = 0});
   final List<ImportRow> rows;
   final int skipped;
+  final int undated;
 }
 
-// Column names, lower-cased, by meaning.
+// Column names by meaning, in the shape [normaliseHeader] leaves them. A
+// header matches a name exactly, as a plural, or when it starts with the
+// name and a space ("withdrawal amt", "debit amount").
 const _dateCols = [
   'date',
   'txn date',
   'transaction date',
-  'value date',
   'tran date',
   'posting date',
+  'value date',
+  'value dt',
 ];
-const _amountCols = ['amount', 'amt', 'amount (inr)', 'transaction amount'];
-const _debitCols = [
-  'debit',
-  'withdrawal',
-  'withdrawal amt.',
-  'withdrawal amount',
-  'dr',
-  'debit amount',
-];
-const _creditCols = [
-  'credit',
-  'deposit',
-  'deposit amt.',
-  'deposit amount',
-  'cr',
-  'credit amount',
-];
-const _typeCols = ['type', 'transaction type', 'dr/cr', 'cr/dr'];
+const _amountCols = ['amount', 'amt', 'transaction amount', 'txn amount'];
+const _debitCols = ['debit', 'withdrawal', 'dr', 'dr amount', 'paid out'];
+const _creditCols = ['credit', 'deposit', 'cr', 'cr amount', 'paid in'];
+const _typeCols = ['type', 'transaction type', 'txn type', 'dr/cr', 'cr/dr'];
 const _categoryCols = ['category'];
 const _descCols = [
   'description',
   'note',
-  'notes',
   'narration',
   'particulars',
   'remarks',
   'details',
   'transaction details',
+  'transaction remarks',
+  'transaction description',
 ];
 const _currencyCols = ['currency'];
+
+/// A header cell as the column lists spell it: lower case, without text in
+/// brackets or currency marks, punctuation as spaces ("Withdrawal Amount
+/// (INR )" → "withdrawal amount", "Deposit Amt." → "deposit amt").
+String normaliseHeader(String raw) => raw
+    .toLowerCase()
+    .replaceAll(RegExp(r'\([^)]*\)'), ' ')
+    .replaceAll(RegExp(r'₹|\binr\b|\brs\b'), ' ')
+    .replaceAll(RegExp(r'[^a-z0-9/]+'), ' ')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
+
+bool _headerIs(String header, String name) =>
+    header == name || header == '${name}s' || header.startsWith('$name ');
 
 /// Web `EXPENSE_CATEGORY_ALIASES` (`src/lib/importParsers.ts`).
 const _expenseAliases = {
@@ -159,8 +167,9 @@ const _months = {
 };
 
 /// A cell to a calendar day: ISO (2026-11-23), Indian day-first
-/// (23/11/2026, 23-11-26, 23.11.2026), 23-Nov-2026 / 23 Nov 2026, an Excel
-/// date, or an Excel serial number. Null when it is not a date.
+/// (23/11/2026, 23-11-26, 23.11.2026), 23-Nov-2026 / 23 Nov 2026 /
+/// 23rd Nov 26 / 23Nov2026, Nov 23, 2026, an Excel date, or an Excel serial
+/// number. A time after the date is ignored. Null when it is not a date.
 DateTime? parseImportDate(Object? v) {
   if (v == null) return null;
   if (v is DateTime) return DateTime(v.year, v.month, v.day);
@@ -186,34 +195,71 @@ DateTime? parseImportDate(Object? v) {
     return r.month == m ? r : null;
   }
 
+  int? mon(String name) => _months[name.toLowerCase().substring(0, 3)];
+
   var m = RegExp(r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})').firstMatch(s);
   if (m != null) {
     return ok(int.parse(m[1]!), int.parse(m[2]!), int.parse(m[3]!));
   }
-  m = RegExp(r'^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})').firstMatch(s);
+  m = RegExp(r'^(\d{1,2})[-/. ](\d{1,2})[-/. ](\d{4}|\d{2})(?!\d)')
+      .firstMatch(s);
   if (m != null) {
     return ok(int.parse(m[3]!), int.parse(m[2]!), int.parse(m[1]!));
   }
-  m = RegExp(r'^(\d{1,2})[-/ ]([A-Za-z]{3})[A-Za-z]*[-/ ,]+(\d{2,4})')
-      .firstMatch(s);
+  m = RegExp(
+    r'^(\d{1,2})(?:st|nd|rd|th)?[-/ ]?([A-Za-z]{3})[A-Za-z]*\.?[-/ ,]*'
+    r'(\d{4}|\d{2})(?!\d)',
+  ).firstMatch(s);
   if (m != null) {
-    final mon = _months[m[2]!.toLowerCase()];
-    return mon == null ? null : ok(int.parse(m[3]!), mon, int.parse(m[1]!));
+    final mo = mon(m[2]!);
+    return mo == null ? null : ok(int.parse(m[3]!), mo, int.parse(m[1]!));
+  }
+  m = RegExp(
+    r'^([A-Za-z]{3})[A-Za-z]*\.?[ -](\d{1,2})(?:st|nd|rd|th)?,?[ -]*'
+    r'(\d{4}|\d{2})(?!\d)',
+  ).firstMatch(s);
+  if (m != null) {
+    final mo = mon(m[1]!);
+    return mo == null ? null : ok(int.parse(m[3]!), mo, int.parse(m[2]!));
   }
   return null;
 }
 
-/// "₹1,23,456.50", "1,234 Dr", "(500)" → a positive number; null when empty.
+/// "₹1,23,456.50", "Rs.500", "INR 1,250.00", "1,234 Dr", "(500)", "500.00-"
+/// → a positive number; null when empty or zero.
 Decimal? parseImportAmount(Object? v) {
   if (v == null) return null;
   if (v is num) return v == 0 ? null : Decimal.parse(v.abs().toString());
   if (v is DoubleCellValue) return parseImportAmount(v.value);
   if (v is IntCellValue) return parseImportAmount(v.value);
-  final s = '$v'.replaceAll(RegExp(r'[^0-9.\-]'), '');
-  if (s.isEmpty || s == '-' || s == '.') return null;
+  // Currency marks go first, so the dot of "Rs." can't become a decimal
+  // point ("Rs.500" is 500, not 0.50).
+  final s = '$v'
+      .toLowerCase()
+      .replaceAll(RegExp(r'₹|\binr\b|\brs\b\.?'), ' ')
+      .replaceAll(RegExp(r'[^0-9.]'), '');
+  if (s.isEmpty || s == '.') return null;
   final d = Decimal.tryParse(s);
   if (d == null || d == Decimal.zero) return null;
-  return d < Decimal.zero ? -d : d;
+  return d;
+}
+
+/// Which way a signed amount cell points: -1 for "-500", "(500)", "500-" or
+/// "500 Dr"; 1 for "500 Cr"; 0 when it doesn't say.
+int _signOf(Object? v) {
+  if (v is num) return v < 0 ? -1 : 0;
+  if (v is DoubleCellValue) return _signOf(v.value);
+  if (v is IntCellValue) return _signOf(v.value);
+  final s = '$v'.trim().toLowerCase();
+  if (s.isEmpty) return 0;
+  if (s.endsWith('cr')) return 1;
+  if (s.startsWith('-') ||
+      s.endsWith('-') ||
+      s.startsWith('(') ||
+      s.endsWith('dr')) {
+    return -1;
+  }
+  return 0;
 }
 
 String _text(Object? v) {
@@ -223,24 +269,60 @@ String _text(Object? v) {
   return '$v'.trim();
 }
 
-/// Turns a table (first row with two or more filled cells = the header) into
-/// rows. [defaultType] is used when a row says nothing about direction.
+/// Turns a table into rows. The header is the row, among the first 30, that
+/// names the most known columns (bank statements put account details above
+/// the table) and has a date and an amount, debit or credit column; with
+/// none, the first row with two or more filled cells. [defaultType] is used
+/// when a row says nothing about direction.
 ImportParse parseImportTable(
   List<List<Object?>> table, {
   String defaultType = 'expense',
 }) {
-  final headerAt = table.indexWhere(
-    (r) => r.where((c) => _text(c).isNotEmpty).length >= 2,
-  );
-  if (headerAt < 0) return const ImportParse([], 0);
-  final header = [for (final c in table[headerAt]) _text(c).toLowerCase()];
-  int col(List<String> names) {
+  List<String> headerOf(List<Object?> r) => [
+    for (final c in r) normaliseHeader(_text(c)),
+  ];
+  int colIn(List<String> header, List<String> names) {
     for (final n in names) {
-      final i = header.indexOf(n);
+      final i = header.indexWhere((h) => _headerIs(h, n));
       if (i >= 0) return i;
     }
     return -1;
   }
+
+  const kinds = [
+    _dateCols,
+    _amountCols,
+    _debitCols,
+    _creditCols,
+    _typeCols,
+    _categoryCols,
+    _descCols,
+    _currencyCols,
+  ];
+  var headerAt = -1;
+  var bestScore = 0;
+  for (var i = 0; i < table.length && i < 30; i++) {
+    final h = headerOf(table[i]);
+    if (colIn(h, _dateCols) < 0) continue;
+    if (colIn(h, _amountCols) < 0 &&
+        colIn(h, _debitCols) < 0 &&
+        colIn(h, _creditCols) < 0) {
+      continue;
+    }
+    final score = kinds.where((names) => colIn(h, names) >= 0).length;
+    if (score > bestScore) {
+      bestScore = score;
+      headerAt = i;
+    }
+  }
+  if (headerAt < 0) {
+    headerAt = table.indexWhere(
+      (r) => r.where((c) => _text(c).isNotEmpty).length >= 2,
+    );
+  }
+  if (headerAt < 0) return const ImportParse([], 0);
+  final header = headerOf(table[headerAt]);
+  int col(List<String> names) => colIn(header, names);
 
   final cDate = col(_dateCols);
   final cAmount = col(_amountCols);
@@ -252,9 +334,19 @@ ImportParse parseImportTable(
   final cCur = col(_currencyCols);
   Object? at(List<Object?> r, int i) => i >= 0 && i < r.length ? r[i] : null;
 
+  final body = table.skip(headerAt + 1).toList();
+  // One signed Amount column and nothing else saying which way money went:
+  // when some amounts are negative, the positive ones are money in.
+  final signed =
+      cType < 0 &&
+      cDebit < 0 &&
+      cCredit < 0 &&
+      body.any((r) => _signOf(at(r, cAmount)) < 0);
+
   final rows = <ImportRow>[];
   var skipped = 0;
-  for (final r in table.skip(headerAt + 1)) {
+  var undated = 0;
+  for (final r in body) {
     if (r.every((c) => _text(c).isEmpty)) continue;
     final date = parseImportDate(at(r, cDate));
     Decimal? amount;
@@ -268,29 +360,35 @@ ImportParse parseImportTable(
       amount = credit;
       type = 'income';
     } else {
-      amount = parseImportAmount(at(r, cAmount));
+      final cell = at(r, cAmount);
+      amount = parseImportAmount(cell);
       final t = _text(at(r, cType)).toLowerCase();
+      final sign = _signOf(cell);
       if (t.startsWith('inc') || t == 'cr' || t.startsWith('credit')) {
         type = 'income';
       } else if (t.startsWith('exp') || t == 'dr' || t.startsWith('debit')) {
         type = 'expense';
-      } else if (cType < 0 && '${at(r, cAmount)}'.trim().startsWith('-')) {
+      } else if (sign > 0) {
+        type = 'income'; // "500 Cr"
+      } else if (sign < 0) {
         type = 'expense';
+      } else if (signed) {
+        type = 'income';
       }
-    }
-    if (date == null && amount == null) {
-      skipped++;
-      continue;
     }
     if (amount == null) {
       skipped++;
       continue;
     }
+    if (date == null) {
+      // Never guess today: an undated row would land in the wrong month.
+      undated++;
+      continue;
+    }
     final income = type == 'income';
     rows.add(
       ImportRow(
-        // The web stores "today" for a row whose date it cannot read.
-        date: date ?? DateTime.now(),
+        date: date,
         type: type,
         amount: amount,
         category: canonicalCategory(_text(at(r, cCat)), income: income),
@@ -301,7 +399,7 @@ ImportParse parseImportTable(
       ),
     );
   }
-  return ImportParse(rows, skipped);
+  return ImportParse(rows, skipped, undated: undated);
 }
 
 /// A CSV file's bytes to a table (UTF-8, with or without a BOM).

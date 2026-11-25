@@ -162,6 +162,48 @@ class DebtEditor {
     _refresh();
   }
 
+  /// Changes one EMI: its [amount], and/or whether it is [paid]. The debt's
+  /// total and monthly follow its EMIs, and the EMI's reminder follows
+  /// (best effort: amount, and completed once paid).
+  Future<void> updateInstallment(
+    Debt debt,
+    int month, {
+    double? amount,
+    bool? paid,
+  }) async {
+    final tenantId = _check();
+    if (amount != null && (!amount.isFinite || amount <= 0)) {
+      throw const ValidationFailure('Enter the EMI amount');
+    }
+    var list = [
+      for (final i in debt.installments) Map<String, dynamic>.of(i.raw),
+    ];
+    if (amount != null) list = withInstallmentAmount(list, month, amount);
+    if (paid != null) {
+      list = withInstallmentPaid(list, month, paid: paid, now: _clock());
+    }
+    final totals = debtTotals(list);
+    await _gw.updateDebt(tenantId, debt.id, {
+      'installments': list,
+      'total_amount': totals.total,
+      'monthly': totals.monthly,
+    });
+
+    final changed = list.where((i) => i['month'] == month).firstOrNull;
+    final reminderId = changed?['reminderId'] as String?;
+    if (reminderId != null && changed != null) {
+      try {
+        await _gw.updateReminder(tenantId, reminderId, {
+          if (amount != null) 'amount': changed['amount'],
+          if (paid != null) 'status': paid ? 'completed' : 'scheduled',
+        });
+      } on Failure {
+        // The debt is right; a stale reminder is only a nudge.
+      }
+    }
+    _refresh();
+  }
+
   /// Deletes the debt and its upcoming EMI reminders.
   Future<void> delete(Debt debt) async {
     final tenantId = _check();

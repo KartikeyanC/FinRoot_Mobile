@@ -107,4 +107,108 @@ void main() {
     expect(DebtValidators.months('361'), isNotNull);
     expect(DebtValidators.months('12'), isNull);
   });
+
+  group('a loan that started before it was added', () {
+    final sept5 = DateTime(2026, 9, 5);
+
+    test('counts the EMIs already due', () {
+      // A September loan added on 25 November: Sep 5 and Oct 5 are past,
+      // Nov 5 too; Dec 5 is not.
+      expect(emisDueBefore(sept5, 12, DateTime(2026, 11, 25)), 3);
+      expect(emisDueBefore(sept5, 12, DateTime(2026, 11, 5)), 2);
+      expect(emisDueBefore(sept5, 2, DateTime(2027, 6, 1)), 2);
+      expect(
+        emisDueBefore(DateTime(2026, 12, 5), 12, DateTime(2026, 11, 25)),
+        0,
+      );
+    });
+
+    test('back-filled EMIs are paid on their own due dates', () {
+      final list = backfillPaid(buildInstallments(30000, 3, sept5), 2);
+      expect(list[0]['status'], 'paid');
+      expect(list[0]['backfilled'], true);
+      expect(
+        list[0]['paidAt'],
+        DateTime(2026, 9, 5, 12).toUtc().toIso8601String(),
+      );
+      expect(list[1]['status'], 'paid');
+      expect(list[2]['status'], 'pending');
+      expect(list[2].containsKey('paidAt'), isFalse);
+    });
+
+    test('no reminder is scheduled for an EMI already paid', () {
+      final plan = planNewDebt(
+        tenantId: 't1',
+        d: DebtDraft(
+          lender: 'Bajaj',
+          category: 'Other',
+          total: 30000,
+          months: 3,
+          firstDue: sept5,
+          paidBefore: 2,
+        ),
+        withReminders: true,
+        now: DateTime(2026, 11, 25),
+      );
+      expect(plan.reminders, hasLength(1));
+      final inst = plan.debt['installments'] as List;
+      expect((inst[0] as Map).containsKey('reminderId'), isFalse);
+      expect((inst[2] as Map)['reminderId'], plan.reminders.single['id']);
+    });
+  });
+
+  group('editing one EMI', () {
+    final base = buildInstallments(30000, 3, DateTime(2026, 9, 5));
+
+    test('a new amount moves the total; monthly is the next unpaid EMI', () {
+      final list = withInstallmentAmount(base, 1, 12500.456);
+      expect(list[0]['amount'], 12500.46);
+      expect(list[1]['amount'], 10000);
+      final t = debtTotals(list);
+      expect(t.total, 32500.46);
+      expect(t.monthly, 12500.46);
+
+      final paid = withInstallmentPaid(
+        list,
+        1,
+        paid: true,
+        now: DateTime.utc(2026, 9, 6),
+      );
+      expect(debtTotals(paid).monthly, 10000);
+    });
+
+    test('paid and back to unpaid', () {
+      final paid = withInstallmentPaid(
+        backfillPaid(base, 1),
+        2,
+        paid: true,
+        now: DateTime.utc(2026, 10, 6, 8),
+      );
+      expect(paid[1]['status'], 'paid');
+      expect(paid[1]['paidAt'], '2026-10-06T08:00:00.000Z');
+
+      final undone = withInstallmentPaid(
+        paid,
+        1,
+        paid: false,
+        now: DateTime.utc(2026, 11),
+      );
+      expect(undone[0]['status'], 'pending');
+      expect(undone[0].containsKey('paidAt'), isFalse);
+      expect(undone[0].containsKey('backfilled'), isFalse);
+      // Marking a paid EMI paid again keeps its first date.
+      final again = withInstallmentPaid(
+        paid,
+        2,
+        paid: true,
+        now: DateTime.utc(2027),
+      );
+      expect(again[1]['paidAt'], '2026-10-06T08:00:00.000Z');
+    });
+
+    test('all paid: monthly is the last EMI', () {
+      final all = backfillPaid(withInstallmentAmount(base, 3, 9000), 3);
+      expect(debtTotals(all), (total: 29000.0, monthly: 9000.0));
+    });
+  });
 }

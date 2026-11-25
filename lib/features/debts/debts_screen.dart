@@ -8,8 +8,10 @@ import '../../design/design.dart';
 import '../accounts/presentation/wealth_kit.dart';
 import '../sync/application/sync_engine.dart';
 import '../workspace/application/workspace_providers.dart';
+import 'debt_editor.dart';
 import 'debt_form_sheet.dart';
 import 'debts.dart';
+import 'emi_schedule_sheet.dart';
 
 final _due = DateFormat('d MMM yyyy');
 
@@ -125,7 +127,9 @@ class _DebtCard extends ConsumerWidget {
     );
     if (ok != true || !context.mounted) return;
     try {
-      await markInstallmentPaid(ref, debt, i.month);
+      await ref
+          .read(debtEditorProvider)
+          .updateInstallment(debt, i.month, paid: true);
     } on Failure catch (f) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
@@ -254,6 +258,19 @@ class _DebtCard extends ConsumerWidget {
               ],
             ),
           ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: ValueKey('debt-emis-${debt.id}'),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () => openEmiSchedule(context, debt.id),
+              icon: const Icon(Icons.list_alt_rounded, size: 18),
+              label: Text(canWrite ? 'All EMIs · change amounts' : 'All EMIs'),
+            ),
+          ),
           if (debt.notes != null && debt.notes!.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(

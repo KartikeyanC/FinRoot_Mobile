@@ -139,6 +139,8 @@ const _smsApps = {
   'com.android.messaging',
   'com.oneplus.mms',
   'com.miui.smsextra',
+  'com.truecaller',
+  'com.microsoft.android.smsorganizer',
 };
 
 const _upiApps = {

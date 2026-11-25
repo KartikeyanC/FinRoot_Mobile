@@ -20,6 +20,7 @@ class TrackedSubscription {
     this.icon,
     this.renewal,
     this.category,
+    this.intervalMonths = 1,
   });
 
   factory TrackedSubscription.fromRow(Map<String, dynamic> r) =>
@@ -33,6 +34,7 @@ class TrackedSubscription {
         renewal: asDate(r['renewal_date']),
         active: r['status'] != 'cancel',
         category: r['category'] as String?,
+        intervalMonths: _interval(r['interval_months']),
       );
 
   final String id;
@@ -45,9 +47,14 @@ class TrackedSubscription {
   final bool active; // web status: active | cancel
   final String? category;
 
+  /// How many months one bill covers when [frequency] is monthly: 1, 3
+  /// (quarterly), 6 (half-yearly) or any custom 2–60 (`interval_months`,
+  /// migration 20261125120000). Always 1 for weekly and annual.
+  final int intervalMonths;
+
   /// The web's `monthlyEquivalent`.
   double get perMonth => switch (frequency) {
-    'monthly' => amount,
+    'monthly' => amount / intervalMonths,
     'weekly' => amount * 52 / 12,
     _ => amount / 12,
   };
@@ -55,9 +62,30 @@ class TrackedSubscription {
   String get frequencyLabel => switch (frequency) {
     'weekly' => 'week',
     'annual' => 'year',
-    _ => 'month',
+    _ => intervalMonths > 1 ? '$intervalMonths months' : 'month',
   };
+
+  /// The renewal that is still to come on [today]: the stored date, rolled
+  /// forward by whole billing cycles once it has passed.
+  DateTime? upcomingRenewal(DateTime today) => renewal == null
+      ? null
+      : catchUpRenewal(
+          renewal!,
+          frequency,
+          today,
+          intervalMonths: intervalMonths,
+        );
 }
+
+int _interval(Object? v) {
+  final n = (v as num?)?.toInt() ?? 1;
+  return n < 1 ? 1 : n;
+}
+
+/// True when the server refused a write because `interval_months` is not in
+/// the database yet (the migration has not been applied).
+bool _missingIntervalColumn(Object error) =>
+    '$error'.contains('interval_months');
 
 abstract interface class SubscriptionsGateway {
   Future<List<Map<String, dynamic>>> fetch(String tenantId);
@@ -107,6 +135,11 @@ class SupabaseSubscriptionsGateway implements SubscriptionsGateway {
     try {
       await _client.from('tracked_subscriptions').insert(row);
     } catch (error, stack) {
+      if (_missingIntervalColumn(error)) {
+        throw const ValidationFailure(
+          'Custom billing cycles need a database update first (migration 20261125120000).',
+        );
+      }
       throw mapError(error, stack);
     }
   }
@@ -124,6 +157,11 @@ class SupabaseSubscriptionsGateway implements SubscriptionsGateway {
           .eq('id', id)
           .eq('tenant_id', tenantId);
     } catch (error, stack) {
+      if (_missingIntervalColumn(error)) {
+        throw const ValidationFailure(
+          'Custom billing cycles need a database update first (migration 20261125120000).',
+        );
+      }
       throw mapError(error, stack);
     }
   }
@@ -185,6 +223,7 @@ class SubscriptionDraft {
     required this.frequency,
     required this.renewal,
     this.icon = '💳',
+    this.intervalMonths = 1,
   });
 
   final String name;
@@ -195,8 +234,14 @@ class SubscriptionDraft {
   final String frequency;
   final DateTime renewal;
 
+  /// Months per bill for a monthly cycle (see
+  /// [TrackedSubscription.intervalMonths]); 1 otherwise.
+  final int intervalMonths;
+
   /// The columns the web's `recordToRow` writes for these fields.
-  Map<String, dynamic> toRow() => {
+  /// `interval_months` goes only when [withInterval] — before the migration
+  /// that adds it is applied, a plain monthly subscription still saves.
+  Map<String, dynamic> toRow({bool withInterval = false}) => {
     'name': name.trim(),
     'icon': icon.trim().isEmpty ? null : icon.trim(),
     'amount': amount,
@@ -205,24 +250,58 @@ class SubscriptionDraft {
         '${renewal.year.toString().padLeft(4, '0')}-'
         '${renewal.month.toString().padLeft(2, '0')}-'
         '${renewal.day.toString().padLeft(2, '0')}',
+    if (withInterval)
+      'interval_months': frequency == 'monthly' ? intervalMonths : 1,
   };
 }
 
-/// The renewal after [from]: a week, a month or a year on.
-DateTime nextRenewal(DateTime from, String frequency) => switch (frequency) {
-  'weekly' => DateTime(from.year, from.month, from.day + 7),
-  'annual' => DateTime(from.year + 1, from.month, from.day),
-  _ => DateTime(from.year, from.month + 1, from.day),
+/// [d] moved by [months], the day kept where the month has it and clamped
+/// to the month's last day where it doesn't (31 Jan + 1 = 28/29 Feb).
+DateTime _addMonths(DateTime d, int months) {
+  final first = DateTime(d.year, d.month + months);
+  final last = DateTime(first.year, first.month + 1, 0).day;
+  return DateTime(first.year, first.month, d.day > last ? last : d.day);
+}
+
+/// The renewal [k] billing cycles after [from], counted from [from] itself,
+/// so a bill on the 31st comes back to the 31st after a short month. The
+/// web's `nextRenewal` steps the same way.
+DateTime renewalAfter(
+  DateTime from,
+  String frequency,
+  int k, {
+  int intervalMonths = 1,
+}) => switch (frequency) {
+  'weekly' => DateTime(from.year, from.month, from.day + 7 * k),
+  'annual' => _addMonths(from, 12 * k),
+  _ => _addMonths(from, (intervalMonths < 1 ? 1 : intervalMonths) * k),
 };
 
+/// The renewal after [from]: a week, N months or a year on.
+DateTime nextRenewal(
+  DateTime from,
+  String frequency, {
+  int intervalMonths = 1,
+}) => renewalAfter(from, frequency, 1, intervalMonths: intervalMonths);
+
 /// The first renewal on or after [today], stepping from a date that passed.
-DateTime catchUpRenewal(DateTime renewal, String frequency, DateTime today) {
+DateTime catchUpRenewal(
+  DateTime renewal,
+  String frequency,
+  DateTime today, {
+  int intervalMonths = 1,
+}) {
   final day = DateTime(today.year, today.month, today.day);
-  var d = renewal;
-  for (var i = 0; i < 1000 && d.isBefore(day); i++) {
-    d = nextRenewal(d, frequency);
+  for (var k = 0; k < 5000; k++) {
+    final d = renewalAfter(
+      renewal,
+      frequency,
+      k,
+      intervalMonths: intervalMonths,
+    );
+    if (!d.isBefore(day)) return d;
   }
-  return d;
+  return renewal;
 }
 
 /// Add, edit and delete tracked subscriptions (the web's SubscriptionsPanel).
@@ -248,7 +327,7 @@ class SubscriptionEditor {
   Future<void> add(SubscriptionDraft d) async {
     final tenantId = _check();
     await _gw.insert({
-      ...d.toRow(),
+      ...d.toRow(withInterval: d.intervalMonths > 1),
       'tenant_id': tenantId,
       'currency': 'INR',
       'status': 'active',
@@ -258,7 +337,11 @@ class SubscriptionEditor {
 
   Future<void> edit(TrackedSubscription s, SubscriptionDraft d) async {
     final tenantId = _check();
-    await _gw.update(tenantId, s.id, d.toRow());
+    await _gw.update(
+      tenantId,
+      s.id,
+      d.toRow(withInterval: d.intervalMonths > 1 || s.intervalMonths > 1),
+    );
     _ref.invalidate(trackedSubscriptionsProvider);
   }
 

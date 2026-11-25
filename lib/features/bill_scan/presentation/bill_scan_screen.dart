@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure.dart';
+import '../../../core/money/money.dart';
 import '../../../core/widgets/date_time_field.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
@@ -119,8 +120,10 @@ class _Staging extends ConsumerWidget {
         if (state.rejected.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           for (final r in state.rejected)
-            Text('• ${r.reason}',
-                style: tt.bodySmall?.copyWith(color: scheme.error)),
+            Text(
+              '• ${r.reason}',
+              style: tt.bodySmall?.copyWith(color: scheme.error),
+            ),
         ],
         if (state.error != null) ...[
           const SizedBox(height: AppSpacing.md),
@@ -231,7 +234,15 @@ class _Review extends ConsumerWidget {
     final result = state.result!;
     final parts = partitionRows(state.rows);
     final approval = state.approval;
+    final planned = state.planned;
     final recon = state.reconciliation;
+    var plannedTotal = Money.zero(
+      approval?.amount.currency ?? result.total.currency,
+    );
+    for (final p in planned) {
+      plannedTotal = plannedTotal + p.amount;
+    }
+    final categories = {for (final r in state.rows) r.category}.length;
 
     return Column(
       children: [
@@ -245,10 +256,7 @@ class _Review extends ConsumerWidget {
             ),
             children: [
               Padding(
-                padding: const EdgeInsets.only(
-                  left: 4,
-                  bottom: AppSpacing.sm,
-                ),
+                padding: const EdgeInsets.only(left: 4, bottom: AppSpacing.sm),
                 child: Text(
                   result.merchant.isEmpty ? 'Receipt' : result.merchant,
                   style: AppTypography.title.copyWith(
@@ -258,13 +266,12 @@ class _Review extends ConsumerWidget {
               ),
               MetricCard(
                 eyebrow: 'Receipt total',
-                figure: approval == null
-                    ? '—'
-                    : approval.amount.format(),
+                figure: approval == null ? '—' : approval.amount.format(),
                 figureSuffix: result.date == null
                     ? null
                     : '${result.date!.day}/${result.date!.month}/${result.date!.year}',
-                status: '${parts.items.length} '
+                status:
+                    '${parts.items.length} '
                     '${parts.items.length == 1 ? 'item' : 'items'} to review',
               ),
               const SizedBox(height: AppSpacing.md),
@@ -283,8 +290,14 @@ class _Review extends ConsumerWidget {
                 onSelected: c.setMode,
               ),
               const SizedBox(height: AppSpacing.md),
-              if (recon != null && !recon.matches)
-                _ReconWarning(recon: recon),
+              _SplitOptions(
+                state: state,
+                categories: categories,
+                onSaveMode: c.setSaveMode,
+                onPeople: c.setPeople,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              if (recon != null && !recon.matches) _ReconWarning(recon: recon),
               for (final row in parts.items)
                 _ItemCard(
                   row: row,
@@ -307,13 +320,21 @@ class _Review extends ConsumerWidget {
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.lg),
             child: FilledButton(
-              onPressed: approval != null && approval.amount.isPositive
+              key: const ValueKey('bill-approve'),
+              onPressed:
+                  planned.isNotEmpty &&
+                      planned.every((p) => p.amount.isPositive)
                   ? () => _approve(context, ref)
                   : null,
               child: Text(
-                approval == null
+                planned.isEmpty
                     ? 'Nothing to log'
-                    : 'Log expense · ${approval.amount.format()}',
+                    : planned.length > 1
+                    ? 'Log ${planned.length} expenses · '
+                          '${plannedTotal.format()}'
+                    : state.people > 1
+                    ? 'Log your share · ${plannedTotal.format()}'
+                    : 'Log expense · ${plannedTotal.format()}',
               ),
             ),
           ),
@@ -324,14 +345,110 @@ class _Review extends ConsumerWidget {
 
   Future<void> _approve(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
+    final count = ref.read(billScanControllerProvider).planned.length;
     try {
       await ref.read(billScanControllerProvider.notifier).approve();
       messenger.showSnackBar(
-        const SnackBar(content: Text('Logged to your expenses')),
+        SnackBar(
+          content: Text(
+            count > 1
+                ? '$count expenses logged, one per category'
+                : 'Logged to your expenses',
+          ),
+        ),
       );
     } on Failure catch (f) {
       messenger.showSnackBar(SnackBar(content: Text(f.message)));
     }
+  }
+}
+
+/// The split options: one expense or one per category (line items with
+/// more than one category), and how many people share the bill.
+class _SplitOptions extends StatelessWidget {
+  const _SplitOptions({
+    required this.state,
+    required this.categories,
+    required this.onSaveMode,
+    required this.onPeople,
+  });
+  final BillScanState state;
+  final int categories;
+  final ValueChanged<BillSaveMode> onSaveMode;
+  final ValueChanged<int> onPeople;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final byCategory = state.mode == ScanMode.lineItem && categories > 1;
+    final people = state.people;
+    return AppCard(
+      key: const ValueKey('bill-split'),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Split',
+            style: AppTypography.bodyStrong.copyWith(color: palette.ink),
+          ),
+          if (byCategory) ...[
+            const SizedBox(height: AppSpacing.sm),
+            SegmentedButton<BillSaveMode>(
+              key: const ValueKey('bill-save-mode'),
+              segments: [
+                const ButtonSegment(
+                  value: BillSaveMode.single,
+                  label: Text('One expense'),
+                ),
+                ButtonSegment(
+                  value: BillSaveMode.byCategory,
+                  label: Text('By category ($categories)'),
+                ),
+              ],
+              selected: {state.saveMode},
+              showSelectedIcon: false,
+              onSelectionChanged: (v) => onSaveMode(v.first),
+            ),
+          ] else if (state.mode == ScanMode.lumpsum) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Choose Line items to save each category separately.',
+              style: AppTypography.label.copyWith(color: palette.muted),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  people == 1
+                      ? 'Only me'
+                      : 'Shared by $people people · you log your share',
+                  style: AppTypography.body.copyWith(color: palette.ink),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('bill-people-less'),
+                tooltip: 'One person fewer',
+                onPressed: people > 1 ? () => onPeople(people - 1) : null,
+                icon: const Icon(Icons.remove_rounded),
+              ),
+              Text(
+                '$people',
+                style: AppTypography.bodyStrong.copyWith(color: palette.ink),
+              ),
+              IconButton(
+                key: const ValueKey('bill-people-more'),
+                tooltip: 'One person more',
+                onPressed: people < 20 ? () => onPeople(people + 1) : null,
+                icon: const Icon(Icons.person_add_alt_rounded),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -430,9 +547,8 @@ class _ReconWarning extends StatelessWidget {
               'These lines add up to ${recon.computed.format()}, but the '
               'receipt total is ${recon.stated.format()}. Check for a missed '
               'or mis-read line.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onTertiaryContainer,
-              ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: scheme.onTertiaryContainer),
             ),
           ),
         ],
@@ -456,9 +572,8 @@ class _ErrorNote extends StatelessWidget {
       ),
       child: Text(
         failure.message,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: scheme.onErrorContainer,
-        ),
+        style: Theme.of(context).textTheme.bodyMedium
+            ?.copyWith(color: scheme.onErrorContainer),
       ),
     );
   }

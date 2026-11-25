@@ -57,10 +57,11 @@ class SubscriptionsScreen extends ConsumerWidget {
                     : null,
               );
             }
+            final now = DateTime.now();
             final active = list.where((s) => s.active).toList()
               ..sort(
-                (a, b) => (a.renewal ?? DateTime(9999)).compareTo(
-                  b.renewal ?? DateTime(9999),
+                (a, b) => (a.upcomingRenewal(now) ?? DateTime(9999)).compareTo(
+                  b.upcomingRenewal(now) ?? DateTime(9999),
                 ),
               );
             final cancelled = list.where((s) => !s.active).toList();
@@ -118,7 +119,11 @@ class _SubTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
-    final days = sub.renewal?.difference(DateTime.now()).inDays;
+    final now = DateTime.now();
+    final renews = sub.upcomingRenewal(now);
+    final days = renews
+        ?.difference(DateTime(now.year, now.month, now.day))
+        .inDays;
     final soon = sub.active && days != null && days <= 3;
     final tone = sub.active
         ? Tones.byIndex(context, index)
@@ -127,7 +132,7 @@ class _SubTile extends ConsumerWidget {
         ? sub.icon!
         : sub.name.characters.first.toUpperCase();
     final parts = [
-      if (sub.renewal != null) 'renews ${_date.format(sub.renewal!)}',
+      if (renews != null) 'renews ${_date.format(renews)}',
       if (sub.category != null && sub.category!.isNotEmpty) sub.category!,
     ];
 

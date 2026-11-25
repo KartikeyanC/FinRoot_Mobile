@@ -178,6 +178,97 @@ void main() {
         DateTime(2026, 10, 31, 13, 59, 59),
       );
     });
+
+    test('more of the shapes banks print', () {
+      final want = DateTime(2026, 10, 31, 13, 5);
+      for (final text in [
+        'on Oct 31, 2026 at 1:05 PM',
+        'on 31st Oct 2026 13:05',
+        'on 31-Oct 13:05', // no year
+        'on 2026/10/31 13:05',
+        'at 13:05 on 31-10-26', // time first
+        'on 31-10-26 at 1:05 p.m.',
+      ]) {
+        expect(alertTimeIn(text, receivedAt: received), want, reason: text);
+      }
+    });
+
+    test('a payee that starts like a month is not a date', () {
+      expect(
+        alertTimeIn(
+          'Rs 500 paid to 7 MARKETS on 31-10-26 13:05',
+          receivedAt: received,
+        ),
+        DateTime(2026, 10, 31, 13, 5),
+      );
+    });
+
+    test('a clock is never read as a year', () {
+      // "31 Oct 10:30" has no year; 10 is the hour, not 2010.
+      expect(
+        alertTimeIn('on 31 Oct 10:30', receivedAt: received),
+        DateTime(2026, 10, 31, 10, 30),
+      );
+    });
+  });
+
+  group('messageDateIn (pasted messages)', () {
+    final now = DateTime(2026, 11, 25, 9);
+
+    test('keeps the printed date, however old', () {
+      expect(
+        messageDateIn(
+          'Rs.1,250.00 debited from A/c XX1234 on 03-09-26 to SWIGGY',
+          now: now,
+        ),
+        DateTime(2026, 9, 3),
+      );
+      expect(
+        messageDateIn('INR 500 spent on card XX4321 on 12-Nov-26', now: now),
+        DateTime(2026, 11, 12),
+      );
+    });
+
+    test('reads the formats a normal message uses', () {
+      final want = DateTime(2026, 11, 12);
+      for (final text in [
+        'paid on 12/11/2026',
+        'paid on 12.11.26',
+        'paid on 12Nov2026',
+        'paid on 12 November 2026',
+        'paid on 12th Nov 2026',
+        'paid on Nov 12, 2026',
+        'paid on November 12 2026',
+        'paid on 2026-11-12',
+        'paid on 2026/11/12',
+        'paid on 12-Nov', // no year: this year
+      ]) {
+        expect(messageDateIn(text, now: now), want, reason: text);
+      }
+    });
+
+    test('keeps the time when one is printed', () {
+      expect(
+        messageDateIn('debited on 12-11-26 14:05:09', now: now),
+        DateTime(2026, 11, 12, 14, 5, 9),
+      );
+    });
+
+    test('a date with no year that would be in the future is last year', () {
+      expect(
+        messageDateIn('paid on 28 Dec', now: DateTime(2027, 1, 2)),
+        DateTime(2026, 12, 28),
+      );
+    });
+
+    test('null when there is no date, or it is in the future', () {
+      expect(
+        messageDateIn('Rs 500 debited. Avl bal Rs 9,000', now: now),
+        isNull,
+      );
+      expect(messageDateIn('paid on 30-12-26', now: now), isNull);
+      expect(messageDateIn('paid on 31-02-26', now: now), isNull);
+    });
   });
 
   test('bankFromSender', () {

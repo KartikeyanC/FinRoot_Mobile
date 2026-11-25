@@ -39,17 +39,16 @@ class ScannedRow {
     String? category,
     Money? amount,
     DateTime? date,
-  }) =>
-      ScannedRow(
-        id: id,
-        name: name ?? this.name,
-        category: category ?? this.category,
-        amount: amount ?? this.amount,
-        date: date ?? this.date,
-        qty: qty,
-        unit: unit,
-        kind: kind,
-      );
+  }) => ScannedRow(
+    id: id,
+    name: name ?? this.name,
+    category: category ?? this.category,
+    amount: amount ?? this.amount,
+    date: date ?? this.date,
+    qty: qty,
+    unit: unit,
+    kind: kind,
+  );
 }
 
 enum ScanMode { lumpsum, lineItem }
@@ -77,8 +76,9 @@ List<ScannedRow> rowsFromScanResult(
                 today.minute,
               )
             : printed);
-  final fallbackCategory =
-      result.items.isNotEmpty ? result.items.first.category : 'Shopping';
+  final fallbackCategory = result.items.isNotEmpty
+      ? result.items.first.category
+      : 'Shopping';
 
   if (mode == ScanMode.lumpsum) {
     return [
@@ -151,6 +151,89 @@ ApprovalTransaction? buildApprovalTransaction(
   );
 }
 
+/// How Approve saves a reviewed receipt.
+enum BillSaveMode {
+  /// One expense in the most common category (the default).
+  single,
+
+  /// One expense per category: a supermarket bill with groceries and
+  /// household items becomes two entries, each in its own category.
+  byCategory,
+}
+
+/// Your share of [m] when a bill is split [people] ways, to the paisa.
+Money shareOf(Money m, int people) => people <= 1
+    ? m
+    : Money(
+        (m.amount / Decimal.fromInt(people))
+            .toDecimal(scaleOnInfinitePrecision: 10)
+            .round(scale: 2),
+        m.currency,
+      );
+
+/// What Approve logs, with the split options: [BillSaveMode.single] is
+/// [buildApprovalTransaction]; [BillSaveMode.byCategory] sums the rows of
+/// each category (in the order they first appear) and names the items. With
+/// [people] above 1 every amount becomes your share. The web's
+/// `planBillExpenses` (`src/lib/billScan.ts`) plans the same entries.
+List<ApprovalTransaction> planBillExpenses(
+  List<ScannedRow> rows,
+  String merchant, {
+  BillSaveMode mode = BillSaveMode.single,
+  int people = 1,
+}) {
+  if (rows.isEmpty) return const [];
+  final n = people.clamp(1, 20);
+  String withShare(String d) => n > 1 ? '$d (your share, split $n ways)' : d;
+
+  if (mode == BillSaveMode.single) {
+    final one = buildApprovalTransaction(rows, merchant)!;
+    return [
+      ApprovalTransaction(
+        amount: shareOf(one.amount, n),
+        category: one.category,
+        description: withShare(one.description),
+        date: one.date,
+      ),
+    ];
+  }
+
+  final currency = rows.first.amount.currency;
+  final byCategory = <String, List<ScannedRow>>{};
+  for (final r in rows) {
+    (byCategory[r.category] ??= []).add(r);
+  }
+  final name = merchant.trim();
+  final out = <ApprovalTransaction>[];
+  for (final e in byCategory.entries) {
+    var sum = Money.zero(currency);
+    for (final r in e.value) {
+      sum = sum + Money(r.amount.amount, currency);
+    }
+    if (!sum.isPositive) continue; // a category that is only a discount
+    final items = [
+      for (final r in e.value)
+        if (r.kind == ScanRowKind.item && r.name.trim().isNotEmpty)
+          r.name.trim(),
+    ].join(', ');
+    var d = [
+      if (name.isNotEmpty) name,
+      if (items.isNotEmpty) items,
+    ].join(' · ');
+    if (d.isEmpty) d = e.key;
+    if (d.length > 80) d = '${d.substring(0, 79)}…';
+    out.add(
+      ApprovalTransaction(
+        amount: shareOf(sum, n),
+        category: e.key,
+        description: withShare(d),
+        date: rows.first.date,
+      ),
+    );
+  }
+  return out;
+}
+
 class ApprovalTransaction {
   const ApprovalTransaction({
     required this.amount,
@@ -200,6 +283,12 @@ class Reconciliation {
 ({List<ScannedRow> items, List<ScannedRow> taxes}) partitionRows(
   List<ScannedRow> rows,
 ) => (
-  items: [for (final r in rows) if (r.kind == ScanRowKind.item) r],
-  taxes: [for (final r in rows) if (r.kind == ScanRowKind.tax) r],
+  items: [
+    for (final r in rows)
+      if (r.kind == ScanRowKind.item) r,
+  ],
+  taxes: [
+    for (final r in rows)
+      if (r.kind == ScanRowKind.tax) r,
+  ],
 );

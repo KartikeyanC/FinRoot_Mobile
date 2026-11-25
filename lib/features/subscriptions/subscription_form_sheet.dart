@@ -20,11 +20,27 @@ Future<void> openSubscriptionForm(
 /// Emoji the picker offers; any other can be typed.
 const _icons = ['💳', '📺', '🎵', '☁️', '🎮', '💪', '📰', '📱', '🛒', '🚗'];
 
-const _frequencies = {
-  'weekly': 'Weekly',
-  'monthly': 'Monthly',
-  'annual': 'Yearly',
+/// The billing cycles offered: key → (stored frequency, months per bill,
+/// label). "Custom" asks for the number of months.
+const _cycles = <String, (String, int, String)>{
+  'weekly': ('weekly', 1, 'Weekly'),
+  'monthly': ('monthly', 1, 'Monthly'),
+  'quarterly': ('monthly', 3, 'Every 3 months'),
+  'half-yearly': ('monthly', 6, 'Every 6 months'),
+  'annual': ('annual', 1, 'Yearly'),
+  'custom': ('monthly', 0, 'Custom…'),
 };
+
+String _cycleOf(String frequency, int months) {
+  if (frequency == 'weekly') return 'weekly';
+  if (frequency == 'annual') return 'annual';
+  return switch (months) {
+    1 => 'monthly',
+    3 => 'quarterly',
+    6 => 'half-yearly',
+    _ => 'custom',
+  };
+}
 
 class _SubscriptionFormSheet extends ConsumerStatefulWidget {
   const _SubscriptionFormSheet({this.editing});
@@ -41,7 +57,8 @@ class _SubscriptionFormSheetState
   final _name = TextEditingController();
   final _amount = TextEditingController();
   final _icon = TextEditingController(text: '💳');
-  String _frequency = 'monthly';
+  final _months = TextEditingController(text: '2');
+  String _cycle = 'monthly';
   DateTime? _renewal;
   bool _busy = false;
   String? _error;
@@ -58,9 +75,8 @@ class _SubscriptionFormSheetState
           ? e.amount.toInt().toString()
           : e.amount.toString();
       if (e.icon != null && e.icon!.isNotEmpty) _icon.text = e.icon!;
-      _frequency = _frequencies.containsKey(e.frequency)
-          ? e.frequency
-          : 'monthly';
+      _cycle = _cycleOf(e.frequency, e.intervalMonths);
+      if (_cycle == 'custom') _months.text = '${e.intervalMonths}';
       _renewal = e.renewal;
     } else {
       final now = DateTime.now();
@@ -73,7 +89,16 @@ class _SubscriptionFormSheetState
     _name.dispose();
     _amount.dispose();
     _icon.dispose();
+    _months.dispose();
     super.dispose();
+  }
+
+  String get _frequency => _cycles[_cycle]!.$1;
+
+  int get _intervalMonths {
+    final c = _cycles[_cycle]!;
+    if (_cycle != 'custom') return c.$2;
+    return int.tryParse(_months.text.trim()) ?? 1;
   }
 
   SubscriptionDraft _draft() => SubscriptionDraft(
@@ -81,6 +106,7 @@ class _SubscriptionFormSheetState
     icon: _icon.text,
     amount: double.parse(_amount.text.replaceAll(',', '').trim()),
     frequency: _frequency,
+    intervalMonths: _intervalMonths,
     renewal: _renewal!,
   );
 
@@ -138,7 +164,12 @@ class _SubscriptionFormSheetState
     final today = DateTime(now.year, now.month, now.day);
     final passed = _renewal != null && _renewal!.isBefore(today);
     final caughtUp = passed
-        ? catchUpRenewal(_renewal!, _frequency, today)
+        ? catchUpRenewal(
+            _renewal!,
+            _frequency,
+            today,
+            intervalMonths: _intervalMonths < 1 ? 1 : _intervalMonths,
+          )
         : null;
 
     return SheetFrame(
@@ -229,21 +260,43 @@ class _SubscriptionFormSheetState
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: LabeledField(
-                label: 'Every',
+                label: 'Billed',
                 child: DropdownButtonFormField<String>(
                   key: const ValueKey('sub-frequency'),
-                  initialValue: _frequency,
+                  initialValue: _cycle,
                   isExpanded: true,
                   items: [
-                    for (final e in _frequencies.entries)
-                      DropdownMenuItem(value: e.key, child: Text(e.value)),
+                    for (final e in _cycles.entries)
+                      DropdownMenuItem(value: e.key, child: Text(e.value.$3)),
                   ],
-                  onChanged: (v) => setState(() => _frequency = v ?? 'monthly'),
+                  onChanged: (v) => setState(() => _cycle = v ?? 'monthly'),
                 ),
               ),
             ),
           ],
         ),
+        if (_cycle == 'custom')
+          LabeledField(
+            label: 'Every how many months?',
+            child: TextFormField(
+              key: const ValueKey('sub-months'),
+              controller: _months,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                hintText: '2',
+                suffixText: 'months',
+                prefixIcon: Icon(Icons.event_repeat_rounded),
+              ),
+              onChanged: (_) => setState(() {}),
+              validator: (v) {
+                final n = int.tryParse((v ?? '').trim());
+                if (n == null || n < 2 || n > 60) {
+                  return 'Between 2 and 60 months';
+                }
+                return null;
+              },
+            ),
+          ),
         DatePickField(
           key: const ValueKey('sub-renewal'),
           label: 'Next renewal',

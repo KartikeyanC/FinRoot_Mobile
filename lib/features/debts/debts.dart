@@ -15,6 +15,7 @@ class DebtInstallment {
     required this.dueDate,
     required this.amount,
     required this.paid,
+    this.backfilled = false,
     this.raw = const {},
   });
 
@@ -23,6 +24,7 @@ class DebtInstallment {
     dueDate: asDate(j['dueDate']),
     amount: asDouble(j['amount']),
     paid: j['status'] == 'paid',
+    backfilled: j['backfilled'] == true,
     raw: j,
   );
 
@@ -30,6 +32,10 @@ class DebtInstallment {
   final DateTime? dueDate;
   final double amount;
   final bool paid;
+
+  /// Paid before the loan was added to FinRoot (ticked off when it was
+  /// added, dated on its due day).
+  final bool backfilled;
 
   /// The stored object, so fields this app doesn't know (reminderId,
   /// transactionId…) survive a write.
@@ -138,6 +144,13 @@ abstract interface class DebtsGateway {
 
   /// Deletes reminders by id (rolling back a half-made debt).
   Future<void> deleteReminders(String tenantId, List<String> ids);
+
+  /// Changes one reminder (an EMI's amount, or its status once paid).
+  Future<void> updateReminder(
+    String tenantId,
+    String id,
+    Map<String, dynamic> patch,
+  );
 }
 
 class SupabaseDebtsGateway implements DebtsGateway {
@@ -216,6 +229,19 @@ class SupabaseDebtsGateway implements DebtsGateway {
         .eq('source', 'debt')
         .eq('source_id', debtId)
         .neq('status', 'completed'),
+  );
+
+  @override
+  Future<void> updateReminder(
+    String tenantId,
+    String id,
+    Map<String, dynamic> patch,
+  ) => _guard(
+    () => _client
+        .from('reminders')
+        .update(patch)
+        .eq('id', id)
+        .eq('tenant_id', tenantId),
   );
 
   @override

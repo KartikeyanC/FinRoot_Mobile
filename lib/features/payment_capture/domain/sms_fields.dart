@@ -63,17 +63,44 @@ const _months = {
   'dec': 12,
 };
 
-// dd-mm-yy(yy) / dd/mm/yyyy / dd.mm.yy
-final _numericDate = _re(r'\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})\b');
-// 31Oct26 / 31-Oct-2026 / 31 Oct 2026 / 31-OCT-26
+// A month name, short or full, as a whole word — "7 MARKETS" is not a date.
+const _mon =
+    r'(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|'
+    r'aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)'
+    r'(?![a-z])\.?';
+
+// A year that is not the start of a clock ("12 Dec 10:30" has no year).
+const _year = r'(\d{4}|\d{2})(?![\d:])';
+
+// dd-mm-yy(yy) / dd/mm/yyyy / dd.mm.yy — day first, the Indian way.
+final _numericDate = _re([r'\b(\d{1,2})[-/.](\d{1,2})[-/.]', _year].join());
+// 31Oct26 / 31-Oct-2026 / 31 Oct 2026 / 12th Nov 2026 / 12-Nov (no year).
 final _namedDate = _re(
-  r'\b(\d{1,2})[-/ ]?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*'
-  r'[-/ ,]*(\d{2}|\d{4})\b',
+  [
+    r'\b(\d{1,2})(?:st|nd|rd|th)?[-/ ]?',
+    _mon,
+    r'(?:[-/ ,]*',
+    _year,
+    ')?',
+  ].join(),
 );
-// 2026-10-31
-final _isoDate = _re(r'\b(\d{4})-(\d{2})-(\d{2})\b');
-// 14:05 / 14:05:12 / 2:05 PM / 02:05pm
-final _clock = _re(r'\b(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?\b');
+// Nov 12, 2026 / November 12 2026 / Nov 12 (no year) — month first.
+final _monthFirstDate = _re(
+  [
+    r'\b',
+    _mon,
+    r'[ -]?(\d{1,2})(?:st|nd|rd|th)?(?![\d:])',
+    r'(?:,?[ -]*',
+    _year,
+    ')?',
+  ].join(),
+);
+// 2026-10-31 / 2026/10/31 / 2026.10.31
+final _isoDate = _re(r'\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)');
+// 14:05 / 14:05:12 / 2:05 PM / 02:05pm / 2:05 p.m.
+final _clock = _re(
+  r'\b(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*([ap])\.?\s?m(?![a-z])\.?)?',
+);
 
 /// How far the printed time may sit from when the alert arrived before it is
 /// distrusted (a typo'd year, a "valid till" date, a reference that looks like
@@ -87,72 +114,157 @@ const _maxAhead = Duration(minutes: 10);
 /// in a minute, and the minute is part of the de-dup key — the arrival time is
 /// the better guess then, and the caller falls back to it.
 DateTime? alertTimeIn(String text, {required DateTime receivedAt}) {
-  final date = _dateIn(text);
+  final date = _dateIn(text, ref: receivedAt);
   if (date == null) return null;
+  final clock = _clockNear(text, date);
+  if (clock == null) return null;
 
-  // The clock must follow the date closely ("31-10-26 14:05", "on 31Oct26 at
-  // 2:05 PM"); a time elsewhere in the text is something else.
-  final after = text.substring(date.end);
-  final c = _clock.firstMatch(after);
-  if (c == null || c.start > 12) return null;
+  final at = DateTime(
+    date.year,
+    date.month,
+    date.day,
+    clock.hour,
+    clock.minute,
+    clock.second,
+  );
+  if (at.isAfter(receivedAt.add(_maxAhead))) return null;
+  if (at.isBefore(receivedAt.subtract(_maxDelay))) return null;
+  return at;
+}
 
+/// The date a message carries, with its time when one is printed next to it
+/// (midnight otherwise), or null when it names no date.
+///
+/// For messages pasted into Import: unlike [alertTimeIn] there is no arrival
+/// time to check against — an alert copied from last month keeps last
+/// month's date. Only a date more than a day in the future is distrusted.
+DateTime? messageDateIn(String text, {required DateTime now}) {
+  final date = _dateIn(text, ref: now);
+  if (date == null) return null;
+  final day = DateTime(date.year, date.month, date.day);
+  if (day.isAfter(now.add(const Duration(days: 1)))) return null;
+  final clock = _clockNear(text, date);
+  return DateTime(
+    date.year,
+    date.month,
+    date.day,
+    clock?.hour ?? 0,
+    clock?.minute ?? 0,
+    clock?.second ?? 0,
+  );
+}
+
+typedef _Date = ({
+  int year,
+  int month,
+  int day,
+  int start,
+  int end,
+  bool hasYear,
+});
+typedef _Clock = ({int hour, int minute, int second});
+
+/// The first real calendar date in [text]. A date with no year takes [ref]'s
+/// year — or the year before, when that would put it more than a day after
+/// [ref] ("28 Dec" read on 2 Jan is last December).
+_Date? _dateIn(String text, {required DateTime ref}) {
+  int fullYear(String y) => y.length == 2 ? 2000 + int.parse(y) : int.parse(y);
+  int month(String m) => _months[m.toLowerCase().substring(0, 3)]!;
+
+  _Date? best;
+  void consider(RegExpMatch m, int? y, int mo, int d) {
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return;
+    var year = y ?? ref.year;
+    if (y == null &&
+        DateTime(year, mo, d).isAfter(ref.add(const Duration(days: 1)))) {
+      year--;
+    }
+    if (year < 2000 || year > 2100) return;
+    final real = DateTime(year, mo, d);
+    if (real.month != mo || real.day != d) return; // 31-02
+    final b = best;
+    final hasYear = y != null;
+    // A date that prints its year beats one that doesn't; then the earliest
+    // wins; at the same place, the longer reading ("12 Nov 26" over "Nov 26").
+    final better =
+        b == null ||
+        (hasYear && !b.hasYear) ||
+        (hasYear == b.hasYear &&
+            (m.start < b.start || (m.start == b.start && m.end > b.end)));
+    if (better) {
+      best = (
+        year: year,
+        month: mo,
+        day: d,
+        start: m.start,
+        end: m.end,
+        hasYear: hasYear,
+      );
+    }
+  }
+
+  for (final m in _numericDate.allMatches(text)) {
+    consider(
+      m,
+      fullYear(m.group(3)!),
+      int.parse(m.group(2)!),
+      int.parse(m.group(1)!),
+    );
+  }
+  for (final m in _namedDate.allMatches(text)) {
+    final y = m.group(3);
+    consider(
+      m,
+      y == null ? null : fullYear(y),
+      month(m.group(2)!),
+      int.parse(m.group(1)!),
+    );
+  }
+  for (final m in _monthFirstDate.allMatches(text)) {
+    final y = m.group(3);
+    consider(
+      m,
+      y == null ? null : fullYear(y),
+      month(m.group(1)!),
+      int.parse(m.group(2)!),
+    );
+  }
+  for (final m in _isoDate.allMatches(text)) {
+    consider(
+      m,
+      int.parse(m.group(1)!),
+      int.parse(m.group(2)!),
+      int.parse(m.group(3)!),
+    );
+  }
+  return best;
+}
+
+/// The clock printed right next to [date]: just after it ("31-10-26 14:05",
+/// "on 31Oct26 at 2:05 PM") or just before it ("14:05 on 31-10-26"). A time
+/// elsewhere in the text is something else.
+_Clock? _clockNear(String text, _Date date) {
+  final after = _clock.firstMatch(text.substring(date.end));
+  if (after != null && after.start <= 12) return _clockOf(after);
+
+  final before = text.substring(0, date.start);
+  final lead = _clock.allMatches(before).lastOrNull;
+  if (lead != null && before.length - lead.end <= 12) return _clockOf(lead);
+  return null;
+}
+
+_Clock? _clockOf(RegExpMatch c) {
   var hour = int.parse(c.group(1)!);
   final minute = int.parse(c.group(2)!);
   final second = int.tryParse(c.group(3) ?? '') ?? 0;
   final ampm = c.group(4)?.toLowerCase();
   if (ampm != null) {
     if (hour < 1 || hour > 12) return null;
-    if (ampm == 'pm' && hour != 12) hour += 12;
-    if (ampm == 'am' && hour == 12) hour = 0;
+    if (ampm == 'p' && hour != 12) hour += 12;
+    if (ampm == 'a' && hour == 12) hour = 0;
   }
   if (hour > 23 || minute > 59 || second > 59) return null;
-
-  final at = DateTime(date.year, date.month, date.day, hour, minute, second);
-  if (at.month != date.month || at.day != date.day) return null; // 31-02
-  if (at.isAfter(receivedAt.add(_maxAhead))) return null;
-  if (at.isBefore(receivedAt.subtract(_maxDelay))) return null;
-  return at;
-}
-
-typedef _Date = ({int year, int month, int day, int end});
-
-_Date? _dateIn(String text) {
-  _Date? pick(_Date? a, _Date? b) =>
-      a == null ? b : (b == null ? a : (a.end <= b.end ? a : b));
-  int year(String y) => y.length == 2 ? 2000 + int.parse(y) : int.parse(y);
-
-  _Date? numeric;
-  final n = _numericDate.firstMatch(text);
-  if (n != null) {
-    final d = int.parse(n.group(1)!), m = int.parse(n.group(2)!);
-    if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
-      numeric = (year: year(n.group(3)!), month: m, day: d, end: n.end);
-    }
-  }
-
-  _Date? named;
-  final w = _namedDate.firstMatch(text);
-  if (w != null) {
-    final d = int.parse(w.group(1)!);
-    if (d >= 1 && d <= 31) {
-      named = (
-        year: year(w.group(3)!),
-        month: _months[w.group(2)!.toLowerCase().substring(0, 3)]!,
-        day: d,
-        end: w.end,
-      );
-    }
-  }
-
-  _Date? iso;
-  final i = _isoDate.firstMatch(text);
-  if (i != null) {
-    final m = int.parse(i.group(2)!), d = int.parse(i.group(3)!);
-    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-      iso = (year: int.parse(i.group(1)!), month: m, day: d, end: i.end);
-    }
-  }
-  return pick(pick(numeric, named), iso);
+  return (hour: hour, minute: minute, second: second);
 }
 
 // ---------------------------------------------------------------------------

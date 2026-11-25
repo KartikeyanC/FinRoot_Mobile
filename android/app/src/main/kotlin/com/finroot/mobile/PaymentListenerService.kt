@@ -80,6 +80,8 @@ class PaymentListenerService : NotificationListenerService() {
             "com.android.messaging",
             "com.oneplus.mms",
             "com.miui.smsextra",
+            "com.truecaller",
+            "com.microsoft.android.smsorganizer",
         )
 
         private val OTP = Regex(

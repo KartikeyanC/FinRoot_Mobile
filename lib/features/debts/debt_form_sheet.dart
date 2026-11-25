@@ -33,10 +33,18 @@ class _DebtFormSheetState extends ConsumerState<_DebtFormSheet> {
   final _formKey = GlobalKey<FormState>();
   final _lender = TextEditingController();
   final _total = TextEditingController();
+  final _emi = TextEditingController();
   final _months = TextEditingController();
   final _notes = TextEditingController();
   String _category = 'Other';
   DateTime? _firstDue;
+
+  /// The person knows their EMI, not the total: total = EMI × months.
+  bool _byEmi = false;
+
+  /// How many EMIs were paid before the loan was added (null = the number
+  /// of due dates already past).
+  int? _paidBeforeChoice;
   bool _busy = false;
   String? _error;
 
@@ -70,14 +78,32 @@ class _DebtFormSheetState extends ConsumerState<_DebtFormSheet> {
   void dispose() {
     _lender.dispose();
     _total.dispose();
+    _emi.dispose();
     _months.dispose();
     _notes.dispose();
     super.dispose();
   }
 
-  double get _totalValue =>
-      double.tryParse(_total.text.replaceAll(',', '').trim()) ?? 0;
+  static double _number(TextEditingController c) =>
+      double.tryParse(c.text.replaceAll(',', '').trim()) ?? 0;
+
+  double get _totalValue => _byEmi
+      ? ((_number(_emi) * _monthsValue) * 100).roundToDouble() / 100
+      : _number(_total);
   int get _monthsValue => int.tryParse(_months.text.trim()) ?? 0;
+
+  /// EMIs whose date passed before today — offered as already paid when a
+  /// loan is added part-way through.
+  int get _pastDue {
+    final first = _firstDue;
+    if (_editing != null || first == null || _monthsValue < 1) return 0;
+    return emisDueBefore(first, _monthsValue, DateTime.now());
+  }
+
+  int get _paidBefore {
+    final n = _paidBeforeChoice ?? _pastDue;
+    return n.clamp(0, _monthsValue < 0 ? 0 : _monthsValue);
+  }
 
   DebtDraft _draft() => DebtDraft(
     lender: _lender.text,
@@ -87,6 +113,7 @@ class _DebtFormSheetState extends ConsumerState<_DebtFormSheet> {
     firstDue: _firstDue!,
     notes: _notes.text,
     currency: _editing?.currency ?? 'INR',
+    paidBefore: _editing == null ? _paidBefore : 0,
   );
 
   Future<void> _submit() async {
@@ -109,6 +136,9 @@ class _DebtFormSheetState extends ConsumerState<_DebtFormSheet> {
           content: Text(
             _editing != null
                 ? 'Debt updated'
+                : _paidBefore > 0
+                ? 'Debt added · $_paidBefore EMIs already paid, '
+                      '${_monthsValue - _paidBefore} to go'
                 : 'Debt added · $_monthsValue EMIs scheduled',
           ),
         ),
@@ -158,6 +188,7 @@ class _DebtFormSheetState extends ConsumerState<_DebtFormSheet> {
     }
     final monthly = computeMonthly(total, months);
     final last = emiDate(first, months - 1);
+    final paid = _paidBefore;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.lg),
       child: Container(
@@ -187,8 +218,71 @@ class _DebtFormSheetState extends ConsumerState<_DebtFormSheet> {
                     '${DateFormat('d MMM yyyy').format(last)}',
                     style: AppTypography.label.copyWith(color: palette.muted),
                   ),
+                  if (paid > 0)
+                    Text(
+                      '$paid already paid · '
+                      '${MoneyFormat.money(total - monthly * paid)} left',
+                      style: AppTypography.label.copyWith(color: palette.muted),
+                    ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "EMIs already paid": for a loan that began before it was added here.
+  Widget _paidBeforeField(BuildContext context) {
+    final palette = context.palette;
+    final n = _paidBefore;
+    final months = _monthsValue;
+    void set(int v) => setState(() => _paidBeforeChoice = v.clamp(0, months));
+    return LabeledField(
+      label: 'EMIs already paid before today',
+      child: Container(
+        key: const ValueKey('debt-paid-before'),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: palette.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: palette.line),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              key: const ValueKey('debt-paid-before-less'),
+              tooltip: 'One fewer',
+              onPressed: n > 0 ? () => set(n - 1) : null,
+              icon: const Icon(Icons.remove_rounded),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    '$n of $months',
+                    style: AppTypography.bodyStrong.copyWith(
+                      color: palette.ink,
+                    ),
+                  ),
+                  Text(
+                    n == 0
+                        ? 'None ticked off'
+                        : 'Marked paid on their due dates',
+                    style: AppTypography.label.copyWith(color: palette.muted),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('debt-paid-before-more'),
+              tooltip: 'One more',
+              onPressed: n < months ? () => set(n + 1) : null,
+              icon: const Icon(Icons.add_rounded),
             ),
           ],
         ),
@@ -207,7 +301,8 @@ class _DebtFormSheetState extends ConsumerState<_DebtFormSheet> {
       subtitle: editing
           ? (_locked
                 ? '${_editing!.paidCount} of ${_editing!.duration} EMIs are '
-                      'paid, so the amount and dates are fixed.'
+                      'paid, so the total and dates are fixed. To change one '
+                      'EMI\'s amount, open the loan\'s EMI list.'
                 : 'Change the details or the EMI schedule.')
           : 'A loan or EMI plan. FinRoot splits it into monthly EMIs and '
                 'reminds you before each one.',
@@ -243,21 +338,68 @@ class _DebtFormSheetState extends ConsumerState<_DebtFormSheet> {
             validator: DebtValidators.lender,
           ),
         ),
-        LabeledField(
-          label: 'Amount borrowed',
-          child: TextFormField(
-            key: const ValueKey('debt-total'),
-            controller: _total,
-            enabled: !_locked,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              hintText: '30000',
-              prefixIcon: Icon(Icons.currency_rupee_rounded),
+        if (!_locked)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: SegmentedButton<bool>(
+              key: const ValueKey('debt-amount-mode'),
+              segments: const [
+                ButtonSegment(value: false, label: Text('Total amount')),
+                ButtonSegment(value: true, label: Text('EMI amount')),
+              ],
+              selected: {_byEmi},
+              showSelectedIcon: false,
+              onSelectionChanged: (v) => setState(() {
+                _byEmi = v.first;
+                // Carry the figure across so switching loses nothing.
+                final months = _monthsValue;
+                if (_byEmi && _number(_total) > 0 && months > 0) {
+                  _emi.text = _plain(
+                    (_number(_total) / months * 100).roundToDouble() / 100,
+                  );
+                } else if (!_byEmi && _number(_emi) > 0 && months > 0) {
+                  _total.text = _plain(_number(_emi) * months);
+                }
+              }),
             ),
-            onChanged: (_) => setState(() {}),
-            validator: DebtValidators.total,
           ),
-        ),
+        if (_byEmi && !_locked)
+          LabeledField(
+            label: 'EMI amount (each month)',
+            child: TextFormField(
+              key: const ValueKey('debt-emi'),
+              controller: _emi,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                hintText: '2500',
+                prefixIcon: Icon(Icons.currency_rupee_rounded),
+              ),
+              onChanged: (_) => setState(() {}),
+              validator: (v) => DebtValidators.total(v) == null
+                  ? null
+                  : 'Enter the EMI amount',
+            ),
+          )
+        else
+          LabeledField(
+            label: 'Total to repay',
+            child: TextFormField(
+              key: const ValueKey('debt-total'),
+              controller: _total,
+              enabled: !_locked,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                hintText: '30000',
+                prefixIcon: Icon(Icons.currency_rupee_rounded),
+              ),
+              onChanged: (_) => setState(() {}),
+              validator: DebtValidators.total,
+            ),
+          ),
         LabeledField(
           label: 'Number of monthly EMIs',
           child: Column(
@@ -301,10 +443,14 @@ class _DebtFormSheetState extends ConsumerState<_DebtFormSheet> {
           enabled: !_locked,
           firstDate: DateTime(now.year - 30),
           lastDate: DateTime(now.year + 40),
-          onChanged: (d) => setState(() => _firstDue = d),
+          onChanged: (d) => setState(() {
+            _firstDue = d;
+            _paidBeforeChoice = null;
+          }),
           validator: (_) =>
               _firstDue == null ? 'Pick the first EMI date' : null,
         ),
+        if (!editing && _pastDue > 0) _paidBeforeField(context),
         _preview(context),
         LabeledField(
           label: 'Category',

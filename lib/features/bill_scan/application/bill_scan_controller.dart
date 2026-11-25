@@ -23,6 +23,8 @@ class BillScanState {
     this.rows = const [],
     this.error,
     this.rejected = const [],
+    this.saveMode = BillSaveMode.single,
+    this.people = 1,
   });
 
   final BillScanPhase phase;
@@ -37,16 +39,30 @@ class BillScanState {
   /// Transient — why the last add dropped some images.
   final List<RejectedImage> rejected;
 
-  bool get canScan =>
-      images.isNotEmpty && phase != BillScanPhase.scanning;
+  /// One expense, or one per category (line items only).
+  final BillSaveMode saveMode;
 
-  ApprovalTransaction? get approval => result == null
-      ? null
-      : buildApprovalTransaction(rows, result!.merchant);
+  /// How many people share the bill; above 1 only your share is logged.
+  final int people;
 
-  Reconciliation? get reconciliation => result == null
-      ? null
-      : Reconciliation.of(rows, result!.total);
+  bool get canScan => images.isNotEmpty && phase != BillScanPhase.scanning;
+
+  ApprovalTransaction? get approval =>
+      result == null ? null : buildApprovalTransaction(rows, result!.merchant);
+
+  /// The expenses Approve will log, with the split options applied. Per
+  /// category only means something with line items.
+  List<ApprovalTransaction> get planned => result == null
+      ? const []
+      : planBillExpenses(
+          rows,
+          result!.merchant,
+          mode: mode == ScanMode.lineItem ? saveMode : BillSaveMode.single,
+          people: people,
+        );
+
+  Reconciliation? get reconciliation =>
+      result == null ? null : Reconciliation.of(rows, result!.total);
 
   BillScanState copyWith({
     BillScanPhase? phase,
@@ -56,6 +72,8 @@ class BillScanState {
     List<ScannedRow>? rows,
     Failure? error,
     List<RejectedImage>? rejected,
+    BillSaveMode? saveMode,
+    int? people,
     bool clearError = false,
     bool clearResult = false,
   }) => BillScanState(
@@ -66,6 +84,8 @@ class BillScanState {
     rows: rows ?? this.rows,
     error: clearError ? null : (error ?? this.error),
     rejected: rejected ?? this.rejected,
+    saveMode: saveMode ?? this.saveMode,
+    people: people ?? this.people,
   );
 }
 
@@ -93,9 +113,7 @@ class BillScanController extends Notifier<BillScanState> {
       state = state.copyWith(error: f);
       return;
     } catch (_) {
-      state = state.copyWith(
-        error: const UnexpectedFailure(),
-      );
+      state = state.copyWith(error: const UnexpectedFailure());
       return;
     }
     if (picked.isEmpty) {
@@ -116,7 +134,10 @@ class BillScanController extends Notifier<BillScanState> {
 
   void removeImage(String id) {
     state = state.copyWith(
-      images: [for (final i in state.images) if (i.id != id) i],
+      images: [
+        for (final i in state.images)
+          if (i.id != id) i,
+      ],
       clearResult: true,
       rows: const [],
       phase: BillScanPhase.staging,
@@ -158,7 +179,9 @@ class BillScanController extends Notifier<BillScanState> {
   void setMode(ScanMode mode) {
     final result = state.result;
     if (result == null || mode == state.mode) return;
-    final today = state.rows.isNotEmpty ? state.rows.first.date : DateTime.now();
+    final today = state.rows.isNotEmpty
+        ? state.rows.first.date
+        : DateTime.now();
     state = state.copyWith(
       mode: mode,
       // Keep the date and time already chosen on the review screen.
@@ -189,32 +212,55 @@ class BillScanController extends Notifier<BillScanState> {
     );
   }
 
+  void setSaveMode(BillSaveMode m) => state = state.copyWith(saveMode: m);
+
+  void setPeople(int n) => state = state.copyWith(people: n.clamp(1, 20));
+
   void removeRow(String id) {
     state = state.copyWith(
-      rows: [for (final r in state.rows) if (r.id != id) r],
+      rows: [
+        for (final r in state.rows)
+          if (r.id != id) r,
+      ],
     );
   }
 
-  /// Log the reviewed receipt as a single expense through the normal Quick Add
-  /// path (cache + outbox, offline-safe). Returns the new transaction id.
+  /// Log the reviewed receipt through the normal Quick Add path (cache +
+  /// outbox, offline-safe): one expense, one per category, or your share.
+  /// Returns the first new transaction id.
   Future<String> approve() async {
-    final approval = state.approval;
-    if (approval == null || !approval.amount.isPositive) {
+    final planned = state.planned;
+    if (planned.isEmpty || !planned.every((p) => p.amount.isPositive)) {
       throw const ValidationFailure('Nothing to log — add or keep a line.');
     }
     state = state.copyWith(clearError: true);
+    final quickAdd = ref.read(quickAddControllerProvider);
+    final ids = <String>[];
     try {
-      final id = await ref.read(quickAddControllerProvider).submit(
-        kind: QuickAddKind.expense,
-        amount: approval.amount,
-        occurredAt: approval.date,
-        category: approval.category,
-        note: approval.description,
-      );
+      for (final p in planned) {
+        ids.add(
+          await quickAdd.submit(
+            kind: QuickAddKind.expense,
+            amount: p.amount,
+            occurredAt: p.date,
+            category: p.category,
+            note: p.description,
+          ),
+        );
+      }
       reset();
-      return id;
+      return ids.first;
     } on Failure catch (f) {
-      state = state.copyWith(error: f);
+      // Entries already logged stay logged; keep only the rest to retry.
+      if (ids.isNotEmpty) {
+        state = state.copyWith(
+          error: ValidationFailure(
+            '${ids.length} of ${planned.length} logged. ${f.message}',
+          ),
+        );
+      } else {
+        state = state.copyWith(error: f);
+      }
       rethrow;
     }
   }
@@ -222,6 +268,6 @@ class BillScanController extends Notifier<BillScanState> {
 
 final billScanControllerProvider =
     NotifierProvider<BillScanController, BillScanState>(
-  BillScanController.new,
-  name: 'billScanController',
-);
+      BillScanController.new,
+      name: 'billScanController',
+    );
