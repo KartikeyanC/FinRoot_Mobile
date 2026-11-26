@@ -2,8 +2,8 @@
 <!-- Widget "Scan bill" / "Add": quieter round buttons. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
-    <solid android:color="#FF26302D" />
+    <solid android:color="@color/widget_button_fill" />
     <stroke
         android:width="1dp"
-        android:color="#33FFFFFF" />
+        android:color="@color/widget_button_stroke" />
 </shape>

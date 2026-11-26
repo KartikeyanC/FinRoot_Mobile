@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widget colours, dark (the phone's dark theme): near-black
+     that warms to FinRoot green at the foot. Light set: values/. -->
+<resources>
+    <color name="widget_bg_start">#FF161A19</color>
+    <color name="widget_bg_center">#FF121816</color>
+    <color name="widget_bg_end">#FF0C3A2D</color>
+    <color name="widget_text">#FFFFFFFF</color>
+    <color name="widget_text_soft">#D9FFFFFF</color>
+    <color name="widget_text_muted">#A6FFFFFF</color>
+    <color name="widget_button_fill">#FF26302D</color>
+    <color name="widget_button_stroke">#33FFFFFF</color>
+    <color name="widget_button_icon">#FFFFFFFF</color>
+    <color name="widget_track">#33FFFFFF</color>
+</resources>

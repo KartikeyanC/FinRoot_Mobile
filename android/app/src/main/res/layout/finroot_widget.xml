@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- FinRoot home-screen widget (FinRootWidget.kt): today's and this month's
+<!-- FinRoot home-screen widget (FinRootWidget.kt). Light or dark with the
+     phone (values[-night]/widget_colors.xml): today's and this month's
      spend on top, then Scan & pay (the green hero), Scan bill and Add.
      RemoteViews only: layouts, TextView and ImageView, no plain View. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -26,7 +27,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/widget_today"
-                android:textColor="#A6FFFFFF"
+                android:textColor="@color/widget_text_muted"
                 android:textSize="12sp" />
 
             <TextView
@@ -36,7 +37,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="@string/widget_zero"
-                android:textColor="#FFFFFFFF"
+                android:textColor="@color/widget_text"
                 android:textSize="20sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -51,7 +52,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/widget_month"
-                android:textColor="#A6FFFFFF"
+                android:textColor="@color/widget_text_muted"
                 android:textSize="12sp" />
 
             <TextView
@@ -61,7 +62,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="@string/widget_zero"
-                android:textColor="#FFFFFFFF"
+                android:textColor="@color/widget_text"
                 android:textSize="20sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -89,7 +90,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="#D9FFFFFF"
+            android:textColor="@color/widget_text_soft"
             android:textSize="12sp" />
 
         <FrameLayout
@@ -126,7 +127,7 @@
         android:layout_marginTop="8dp"
         android:ellipsize="end"
         android:maxLines="1"
-        android:textColor="#D9FFFFFF"
+        android:textColor="@color/widget_text_soft"
         android:textSize="12sp"
         android:visibility="gone" />
 
@@ -164,7 +165,7 @@
                 android:layout_marginTop="4dp"
                 android:maxLines="1"
                 android:text="@string/widget_pay"
-                android:textColor="#FFFFFFFF"
+                android:textColor="@color/widget_text"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -180,6 +181,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="@drawable/widget_button"
+                android:tint="@color/widget_button_icon"
                 android:contentDescription="@string/widget_bill"
                 android:padding="12dp"
                 android:src="@drawable/ic_widget_bill" />
@@ -190,7 +192,7 @@
                 android:layout_marginTop="4dp"
                 android:maxLines="1"
                 android:text="@string/widget_bill"
-                android:textColor="#FFFFFFFF"
+                android:textColor="@color/widget_text"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -206,6 +208,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="@drawable/widget_button"
+                android:tint="@color/widget_button_icon"
                 android:contentDescription="@string/widget_add"
                 android:padding="12dp"
                 android:src="@drawable/ic_quick_add" />
@@ -216,7 +219,7 @@
                 android:layout_marginTop="4dp"
                 android:maxLines="1"
                 android:text="@string/widget_add"
-                android:textColor="#FFFFFFFF"
+                android:textColor="@color/widget_text"
                 android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>

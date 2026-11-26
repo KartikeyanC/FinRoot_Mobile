@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widget colours, light (the phone's light theme). The dark set
+     is in values-night/widget_colors.xml; Android picks one to match the
+     phone's dark-theme setting. The green Scan & pay button is the same in
+     both. -->
+<resources>
+    <color name="widget_bg_start">#FFFFFFFF</color>
+    <color name="widget_bg_center">#FFFAF7F0</color>
+    <color name="widget_bg_end">#FFE3F3EC</color>
+    <color name="widget_text">#FF111111</color>
+    <color name="widget_text_soft">#FF3A3833</color>
+    <color name="widget_text_muted">#FF656058</color>
+    <color name="widget_button_fill">#FFF0EBE2</color>
+    <color name="widget_button_stroke">#1F000000</color>
+    <color name="widget_button_icon">#FF0D7A5F</color>
+    <color name="widget_track">#1F000000</color>
+</resources>
