@@ -98,6 +98,42 @@ void main() {
         isNot(contains('tn')),
       );
     });
+
+    test('the QR\'s own fields reach the UPI app exactly as printed', () {
+      // Re-encoding these ("+" to a space, "@" to %40) made the UPI app
+      // decline the payment: the link no longer matched the bank's QR.
+      const fields =
+          'pa=Q81234@ybl&pn=Tea+Stall&mc=5812&mode=02&purpose=00'
+          '&tr=BCR2DN4T&orgid=159761&sign=MEQCIG+ab/cd9==';
+      final p = parseUpiQr('upi://pay?$fields')!;
+      expect(p.signed, isTrue);
+      final link = upiPayUri(p, amount: d('80'), note: 'Chai').toString();
+      // A signed QR gets the typed amount and nothing else.
+      expect(link, 'upi://pay?$fields&am=80.00');
+    });
+
+    test('an unsigned QR keeps its fields, "@" and all', () {
+      final p = parseUpiQr(
+        'upi://pay?pa=BHARATPE.90@fbpe&pn=BharatPe%20Merchant&tn=Pay%20Shop',
+      )!;
+      expect(
+        upiPayUri(p, amount: d('12.5'), note: 'Mine').toString(),
+        'upi://pay?pa=BHARATPE.90@fbpe&pn=BharatPe%20Merchant'
+        '&tn=Pay%20Shop&am=12.50&cu=INR',
+      );
+    });
+
+    test(
+      'a blank or zero amount is filled in place; plain spaces go as %20',
+      () {
+        final p = parseUpiQr('UPI://PAY/?PA=Ravi.K@oksbi&AM=0&PN=Ravi Kumar')!;
+        expect(
+          upiPayUri(p, amount: d('300'), note: 'Rent share').toString(),
+          'upi://pay?PA=Ravi.K@oksbi&am=300.00&PN=Ravi%20Kumar&cu=INR'
+          '&tn=Rent%20share',
+        );
+      },
+    );
   });
 
   group('parseUpiResponse', () {
@@ -125,6 +161,13 @@ void main() {
       expect(parseUpiResponse('status=PENDING').status, UpiStatus.submitted);
       expect(parseUpiResponse('Status=FAILURE').status, UpiStatus.failure);
       expect(parseUpiResponse('Status=Failed').status, UpiStatus.failure);
+    });
+
+    test('a failure carries the UPI app\'s response code', () {
+      final o = parseUpiResponse('Status=FAILURE&responseCode=U16&txnId=');
+      expect(o.status, UpiStatus.failure);
+      expect(o.responseCode, 'U16');
+      expect(parseUpiResponse('Status=FAILURE').responseCode, isNull);
     });
 
     test('no answer is unknown, never failure', () {

@@ -141,9 +141,12 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
           case UpiStatus.success || UpiStatus.submitted:
             await _record(payee, amount, outcome);
           case UpiStatus.failure:
+            final code = outcome.responseCode;
             _say(
-              'The payment didn\'t go through, so nothing was added to '
-              'FinRoot.',
+              'The payment didn\'t go through'
+              '${code == null ? '' : ' (your UPI app said: $code)'}, so '
+              'nothing was added to FinRoot. If it keeps failing, try '
+              'another UPI app.',
             );
           case UpiStatus.unknown:
             if (await _askIfPaid(payee, amount)) {

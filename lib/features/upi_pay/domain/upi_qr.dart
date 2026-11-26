@@ -9,6 +9,7 @@ class UpiPayee {
   const UpiPayee({
     required this.vpa,
     required this.params,
+    this.query = '',
     this.name,
     this.amount,
     this.note,
@@ -25,8 +26,17 @@ class UpiPayee {
   /// Every field of the QR, keys lower-cased, in their original order.
   final Map<String, String> params;
 
+  /// The QR's fields exactly as printed (the text after "?"). The UPI app
+  /// gets these back untouched: a re-encoded field ("+" turned into a space,
+  /// "@" into "%40") no longer matches what the shop's bank issued, and the
+  /// payment is declined.
+  final String query;
+
   String get displayName => name ?? vpa;
   bool get fixedAmount => amount != null;
+
+  /// A bank-signed QR (`sign`): any field FinRoot added would break it.
+  bool get signed => (params['sign'] ?? '').isNotEmpty;
 }
 
 final _vpa = RegExp(r'^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\-]{1,64}$');
@@ -44,8 +54,9 @@ UpiPayee? parseUpiQr(String raw) {
       .replaceAll(RegExp(r'/+$'), '');
   if (head != 'upi://pay') return null;
 
+  final query = text.substring(q + 1);
   final params = <String, String>{};
-  for (final part in text.substring(q + 1).split('&')) {
+  for (final part in query.split('&')) {
     if (part.isEmpty) continue;
     final eq = part.indexOf('=');
     final key = (eq < 0 ? part : part.substring(0, eq)).trim().toLowerCase();
@@ -63,6 +74,7 @@ UpiPayee? parseUpiQr(String raw) {
     amount: am != null && am > Decimal.zero ? am : null,
     note: orNull(params['tn']),
     params: params,
+    query: query,
   );
 }
 
@@ -74,19 +86,36 @@ String _decode(String s) {
   }
 }
 
-/// The link handed to the UPI app: the QR's own fields, with the amount the
-/// person typed (unless the QR fixed one), INR, and their note when the QR
-/// had none.
+/// The link handed to the UPI app: the QR's own fields byte for byte, as the
+/// UPI app would read them scanning the QR itself, plus only what's missing —
+/// the amount the person typed (unless the QR fixed one) and, on a QR the
+/// bank didn't sign, INR and their note when the QR had none.
 Uri upiPayUri(UpiPayee payee, {required Decimal amount, String? note}) {
-  final fields = Map<String, String>.of(payee.params);
-  if (!payee.fixedAmount) fields['am'] = amount.toStringAsFixed(2);
-  fields['cu'] = 'INR';
-  final n = note?.trim() ?? '';
-  if (n.isNotEmpty && (fields['tn'] ?? '').isEmpty) fields['tn'] = n;
-  final query = fields.entries
-      .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
-      .join('&');
-  return Uri.parse('upi://pay?$query');
+  final parts = payee.query.split('&').where((p) => p.isNotEmpty).toList();
+  String keyOf(String part) {
+    final eq = part.indexOf('=');
+    return (eq < 0 ? part : part.substring(0, eq)).trim().toLowerCase();
+  }
+
+  void put(String key, String value) {
+    final field = '$key=$value';
+    final i = parts.indexWhere((p) => keyOf(p) == key);
+    if (i < 0) {
+      parts.add(field);
+    } else {
+      parts[i] = field; // a blank "am=" or "am=0": the typed amount, in place
+    }
+  }
+
+  if (!payee.fixedAmount) put('am', amount.toStringAsFixed(2));
+  if (!payee.signed) {
+    if ((payee.params['cu'] ?? '').isEmpty) put('cu', 'INR');
+    final n = note?.trim() ?? '';
+    if (n.isNotEmpty && payee.note == null) put('tn', Uri.encodeComponent(n));
+  }
+  // A name printed with plain spaces ("pn=Sri Sai Stores") is the one change:
+  // %20 reads the same, and keeps the link valid for the UPI app.
+  return Uri.parse('upi://pay?${parts.join('&').replaceAll(' ', '%20')}');
 }
 
 enum UpiStatus {
@@ -104,8 +133,17 @@ enum UpiStatus {
 }
 
 class UpiOutcome {
-  const UpiOutcome(this.status, {this.txnId, this.approvalRef});
+  const UpiOutcome(
+    this.status, {
+    this.txnId,
+    this.approvalRef,
+    this.responseCode,
+  });
   final UpiStatus status;
+
+  /// The UPI app's response code ("U16", "ZM"…), when it sends one: on a
+  /// failure, it says why the bank or the app declined.
+  final String? responseCode;
 
   /// The UPI transaction id, when the app sends one.
   final String? txnId;
@@ -145,5 +183,6 @@ UpiOutcome parseUpiResponse(String? response) {
     status,
     txnId: orNull(f['txnid']),
     approvalRef: orNull(f['approvalrefno']),
+    responseCode: orNull(f['responsecode']),
   );
 }

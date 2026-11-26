@@ -128,9 +128,10 @@ void main() {
   testWidgets('a shop QR: enter the amount, pay, a failure adds nothing', (
     tester,
   ) async {
-    final upi = _FakeUpi([
-      _shop,
-    ], answer: PayAnswered(parseUpiResponse('Status=FAILURE')));
+    final upi = _FakeUpi(
+      [_shop],
+      answer: PayAnswered(parseUpiResponse('Status=FAILURE&responseCode=U16')),
+    );
     await _open(tester, upi);
 
     expect(find.text('Sri Sai Stores'), findsOneWidget);
@@ -148,6 +149,7 @@ void main() {
     expect(upi.paid.single.queryParameters['am'], '250.00');
     expect(upi.paid.single.queryParameters['pa'], 'srisai.stores@okaxis');
     expect(find.textContaining('didn\'t go through'), findsOneWidget);
+    expect(find.textContaining('your UPI app said: U16'), findsOneWidget);
     // Still on the form, to try again.
     expect(find.text('Sri Sai Stores'), findsOneWidget);
   });
