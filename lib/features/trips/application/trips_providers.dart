@@ -54,6 +54,22 @@ class TripsController {
   Future<void> removeExpense(String tripId, String expenseId) =>
       _change(tripId, RemoveTripExpense(expenseId));
 
+  /// Move a trip to [currency]; [rate] null keeps the numbers.
+  Future<void> setCurrency(
+    String tripId,
+    String currency, {
+    double? rate,
+  }) async {
+    final tenantId = _writableTenant();
+    try {
+      await _ref
+          .read(tripsGatewayProvider)
+          .setCurrency(tenantId, tripId, currency, rate: rate);
+    } finally {
+      _ref.invalidate(tripsProvider);
+    }
+  }
+
   Future<void> _change(String tripId, TripExpenseChange change) async {
     final tenantId = _writableTenant();
     try {

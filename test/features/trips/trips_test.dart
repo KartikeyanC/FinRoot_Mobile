@@ -25,6 +25,7 @@ class FakeTripsGateway implements TripsGateway {
   final added = <(String, Map<String, dynamic>)>[];
   final changes = <(String, TripExpenseChange)>[];
   final created = <Map<String, dynamic>>[];
+  final currencyChanges = <(String, String, double?)>[];
 
   @override
   Future<List<Trip>> list(String tenantId) async => [
@@ -58,6 +59,30 @@ class FakeTripsGateway implements TripsGateway {
       for (final e in row['expenses'] as List)
         Map<String, dynamic>.from(e as Map),
     ], change);
+  }
+
+  @override
+  Future<void> setCurrency(
+    String tenantId,
+    String tripId,
+    String currency, {
+    double? rate,
+  }) async {
+    currencyChanges.add((tripId, currency, rate));
+    final row = rows.firstWhere((r) => r['id'] == tripId);
+    row['currency'] = currency;
+    if (rate == null) return;
+    row['allocation'] = {
+      for (final e in (row['allocation'] as Map).entries)
+        e.key: convertTripAmount((e.value as num).toDouble(), rate),
+    };
+    row['expenses'] = [
+      for (final e in row['expenses'] as List)
+        {
+          ...Map<String, dynamic>.from(e as Map),
+          'amount': convertTripAmount((e['amount'] as num).toDouble(), rate),
+        },
+    ];
   }
 }
 
@@ -600,6 +625,117 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Expense'), findsNothing);
       expect(find.text('Mark settled'), findsNothing);
+      // Currency shows, but can't be changed.
+      expect(find.text('Tap to change'), findsNothing);
+      await tester.tap(find.byKey(const Key('trip-currency')));
+      await tester.pumpAndSettle();
+      expect(find.text('Change trip currency'), findsNothing);
+    });
+
+    Future<void> openCurrency(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1200, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(host(const TripDetailScreen(tripId: 'trip1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('trip-currency')));
+      await tester.pumpAndSettle();
+      expect(find.text('Change trip currency'), findsOneWidget);
+    }
+
+    testWidgets('currency: keep the amounts, only the label changes', (
+      tester,
+    ) async {
+      await openCurrency(tester);
+      expect(find.textContaining(r'Budget ₹15,000 → $15,000'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('trip-currency-save')));
+      await tester.pumpAndSettle();
+      expect(trips.currencyChanges.single, ('trip1', 'USD', null));
+      expect(find.text('Trip now in USD'), findsOneWidget);
+      // The trip reloads in its new currency.
+      expect(find.textContaining(r'$1,200'), findsWidgets);
+    });
+
+    testWidgets('currency: convert at the rate typed', (tester) async {
+      await openCurrency(tester);
+      await tester.tap(find.text('Convert'));
+      await tester.pumpAndSettle();
+      final rate = find.byKey(const Key('trip-currency-rate'));
+      expect(tester.widget<TextField>(rate).controller!.text, '0.011976');
+      await tester.enterText(rate, '0.012');
+      await tester.pumpAndSettle();
+      expect(find.textContaining(r'Budget ₹15,000 → $180'), findsOneWidget);
+      expect(find.textContaining(r'Spent ₹1,200 → $14.4'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('trip-currency-save')));
+      await tester.pumpAndSettle();
+      expect(trips.currencyChanges.single, ('trip1', 'USD', 0.012));
+      expect(find.text('Trip converted to USD'), findsOneWidget);
+    });
+
+    testWidgets('currency: a bad rate is refused before sending', (
+      tester,
+    ) async {
+      await openCurrency(tester);
+      await tester.tap(find.text('Convert'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('trip-currency-rate')), '0');
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a rate more than zero'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('trip-currency-save')));
+      await tester.pumpAndSettle();
+      expect(trips.currencyChanges, isEmpty);
+    });
+  });
+
+  group('changing the currency', () {
+    test('converts to two decimals and suggests a rate', () {
+      expect(convertTripAmount(250, 0.011976), 2.99);
+      expect(convertTripAmount(99.5, 83.5), 8308.25);
+      expect(suggestedTripRate('USD', 'INR'), 83.5);
+      expect(suggestedTripRate('INR', 'USD'), 0.011976);
+      expect(suggestedTripRate('EUR', 'GBP'), 0.857143);
+    });
+
+    test('the server rules, checked before sending', () {
+      final trip = Trip.fromRow(_goaRow());
+      expect(tripCurrencyChangeProblem(trip, 'USD', null), isNull);
+      expect(tripCurrencyChangeProblem(trip, 'USD', 0.012), isNull);
+      expect(
+        tripCurrencyChangeProblem(trip, 'INR', null),
+        contains('already in INR'),
+      );
+      expect(tripCurrencyChangeProblem(trip, 'usd', null), 'Pick a currency');
+      expect(
+        tripCurrencyChangeProblem(trip, 'USD', 0),
+        'Enter a rate more than zero',
+      );
+      expect(
+        tripCurrencyChangeProblem(trip, 'USD', double.nan),
+        'Enter a rate more than zero',
+      );
+      expect(
+        tripCurrencyChangeProblem(trip, 'USD', 1e6),
+        contains('too large'),
+      );
+      // 300 × 0.00001 rounds to 0.00.
+      expect(
+        tripCurrencyChangeProblem(trip, 'USD', 0.00001),
+        contains('round to zero'),
+      );
+    });
+
+    test('knows when trip_set_currency is not switched on yet', () {
+      expect(isTripCurrencyRpcMissing(code: 'PGRST202'), isTrue);
+      expect(
+        isTripCurrencyRpcMissing(
+          message: 'function public.trip_set_currency does not exist',
+        ),
+        isTrue,
+      );
+      expect(
+        isTripCurrencyRpcMissing(code: '22023', message: 'Pick a currency'),
+        isFalse,
+      );
     });
   });
 }

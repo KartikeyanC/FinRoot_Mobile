@@ -14,6 +14,7 @@ import '../../split/presentation/split_state_views.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/trips_providers.dart';
 import '../domain/trip.dart';
+import 'trip_currency_sheet.dart';
 import 'trip_expense_sheet.dart';
 import 'trip_settle_up_card.dart';
 
@@ -152,6 +153,21 @@ class _TripBody extends StatelessWidget {
               minHeight: 8,
               backgroundColor: palette.line,
               color: over ? finance.expense : palette.accent,
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        AppCard(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+          child: ListRow(
+            key: const Key('trip-currency'),
+            icon: Icons.currency_exchange,
+            title: 'Currency',
+            subtitle: canEdit ? 'Tap to change' : null,
+            onTap: canEdit ? () => openTripCurrencySheet(context, trip) : null,
+            trailing: Text(
+              trip.currency,
+              style: AppTypography.bodyStrong.copyWith(color: palette.ink),
             ),
           ),
         ),

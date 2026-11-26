@@ -442,6 +442,61 @@ const String kTripCurrencyMissingMessage =
     '(migration 20261126150000_trip_expenses.sql). Ask the workspace owner '
     'to run it, or keep this trip in INR.';
 
+/* ----------------------- changing a trip's currency ---------------------- */
+// Migration 20261126170000_trip_currency_change.sql adds trip_set_currency.
+
+const String kTripCurrencyRpc = 'trip_set_currency';
+
+/// What trip_set_currency stores: [amount] × [rate], to two decimals (web
+/// `convertTripAmount`).
+double convertTripAmount(double amount, double rate) =>
+    (amount * rate * 100).round() / 100;
+
+/// 1 [from] = this many [to], from the app's fixed rates ([kFxToInr]), to six
+/// significant figures (web `suggestedTripRate`). A starting point only.
+double suggestedTripRate(String from, String to) => double.parse(
+  ((kFxToInr[from] ?? 1) / (kFxToInr[to] ?? 1)).toStringAsPrecision(6),
+);
+
+/// Why this change can't be saved, or null; [rate] null keeps the numbers.
+/// The limits trip_set_currency applies (web `tripCurrencyChangeProblem`).
+String? tripCurrencyChangeProblem(Trip trip, String to, double? rate) {
+  if (!RegExp(r'^[A-Z]{3}$').hasMatch(to)) return 'Pick a currency';
+  if (to == trip.currency) return 'The trip is already in $to';
+  if (rate == null) return null;
+  if (!rate.isFinite || rate <= 0) return 'Enter a rate more than zero';
+  if (rate >= 1e6) return 'That rate is too large. Check it';
+  final spends = [
+    for (final e in trip.expenses) convertTripAmount(e.amount, rate),
+  ];
+  final budget = [
+    for (final n in trip.allocation.values) convertTripAmount(n, rate),
+  ];
+  if (spends.any((n) => n <= 0) ||
+      [...spends, ...budget].any((n) => n >= 1e12)) {
+    return 'At that rate an amount would round to zero or get too large. '
+        'Check the rate';
+  }
+  return null;
+}
+
+/// trip_set_currency doesn't exist yet: migration 20261126170000 hasn't run
+/// (web `isTripCurrencyRpcMissing`).
+bool isTripCurrencyRpcMissing({String? code, String? message}) {
+  if (code == 'PGRST202' || code == '42883') return true;
+  final m = message ?? '';
+  return RegExp('trip_set_currency', caseSensitive: false).hasMatch(m) &&
+      RegExp(
+        'does not exist|schema cache|could not find',
+        caseSensitive: false,
+      ).hasMatch(m);
+}
+
+const String kTripCurrencyConvertMissingMessage =
+    "Converting a trip's amounts needs the database update (migration "
+    '20261126170000_trip_currency_change.sql). Ask the workspace owner to '
+    'run it, or keep the amounts as they are.';
+
 /* ------------------------------ a new trip ----------------------------- */
 
 /// What the phone's New trip form collects (web NewTripDialog).

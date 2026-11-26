@@ -22,6 +22,15 @@ abstract interface class TripsGateway {
     String tripId,
     TripExpenseChange change,
   );
+
+  /// Move the trip to [currency]. [rate] null keeps every number; a rate
+  /// converts the budget and every expense (1 old = [rate] new).
+  Future<void> setCurrency(
+    String tenantId,
+    String tripId,
+    String currency, {
+    double? rate,
+  });
 }
 
 class SupabaseTripsGateway implements TripsGateway {
@@ -108,6 +117,48 @@ class SupabaseTripsGateway implements TripsGateway {
           .eq('tenant_id', tenantId);
     } on StateError catch (e) {
       throw ValidationFailure(e.message, cause: e);
+    } catch (error, stack) {
+      throw _map(error, stack);
+    }
+  }
+
+  /// Through trip_set_currency: the label and every amount change under one
+  /// lock. Before migration 20261126170000 runs, a relabel falls back to a
+  /// plain update of `trips.currency`; a conversion asks for the update.
+  @override
+  Future<void> setCurrency(
+    String tenantId,
+    String tripId,
+    String currency, {
+    double? rate,
+  }) async {
+    try {
+      await _client.rpc<dynamic>(
+        kTripCurrencyRpc,
+        params: {'p_trip_id': tripId, 'p_currency': currency, 'p_rate': rate},
+      );
+      return;
+    } on PostgrestException catch (e, stack) {
+      if (!isTripCurrencyRpcMissing(code: e.code, message: e.message)) {
+        throw _map(e, stack);
+      }
+      if (rate != null) {
+        throw ValidationFailure(kTripCurrencyConvertMissingMessage, cause: e);
+      }
+    } catch (error, stack) {
+      throw _map(error, stack);
+    }
+    try {
+      await _client
+          .from('trips')
+          .update({'currency': currency})
+          .eq('id', tripId)
+          .eq('tenant_id', tenantId);
+    } on PostgrestException catch (e, stack) {
+      if (isTripCurrencyMissing(code: e.code, message: e.message)) {
+        throw ValidationFailure(kTripCurrencyMissingMessage, cause: e);
+      }
+      throw _map(e, stack);
     } catch (error, stack) {
       throw _map(error, stack);
     }
