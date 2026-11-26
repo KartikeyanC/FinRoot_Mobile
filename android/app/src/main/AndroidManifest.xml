@@ -142,6 +142,18 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/finroot_widget_info" />
         </receiver>
+        <!-- The small 2×2 widget: Scan & pay only (FinRootPayWidget). -->
+        <receiver
+            android:name=".FinRootPayWidget"
+            android:exported="false"
+            android:label="@string/pay_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/finroot_pay_widget_info" />
+        </receiver>
 
         <!-- Payment detection: reads payment / bank app notifications, only
              after the user turns it on in the app AND grants notification

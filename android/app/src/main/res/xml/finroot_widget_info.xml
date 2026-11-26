@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- FinRoot home-screen widget (FinRootWidget.kt). 4×2 cells by default
-     (minWidth / minHeight = 70n − 30 dp), resizable. updatePeriodMillis is
+<!-- FinRoot home-screen widget (FinRootWidget.kt). 4×3 cells by default
+     (minWidth / minHeight = 70n − 30 dp), resizable down to 2 rows, where the
+     budget and next-bill lines drop out. updatePeriodMillis is
      hourly, so a new day or month shows ₹0 even when FinRoot isn't opened.
      previewLayout is Android 12+; older launchers show the app icon. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description"
     android:initialLayout="@layout/finroot_widget"
     android:minWidth="250dp"
-    android:minHeight="110dp"
+    android:minHeight="180dp"
     android:minResizeWidth="180dp"
     android:minResizeHeight="110dp"
     android:previewLayout="@layout/finroot_widget"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="4"
-    android:targetCellHeight="2"
+    android:targetCellHeight="3"
     android:updatePeriodMillis="3600000"
     android:widgetCategory="home_screen" />

@@ -13,4 +13,9 @@
     <string name="widget_pay">Scan &amp; pay</string>
     <string name="widget_bill">Scan bill</string>
     <string name="widget_add">Add</string>
+    <!-- Small 2×2 widget (FinRootPayWidget). -->
+    <string name="pay_widget_label">FinRoot Scan &amp; pay</string>
+    <string name="pay_widget_description">One tap to scan a shop\'s UPI QR, pay it in your UPI app, and track it.</string>
+    <string name="pay_widget_line1">Scan. Pay.</string>
+    <string name="pay_widget_line2">Track it.</string>
 </resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The small FinRoot widget (FinRootPayWidget): 2×2 cells, Scan & pay only.
+     Shows no money, so it never needs a timed update. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/pay_widget_description"
+    android:initialLayout="@layout/finroot_pay_widget"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:previewLayout="@layout/finroot_pay_widget"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

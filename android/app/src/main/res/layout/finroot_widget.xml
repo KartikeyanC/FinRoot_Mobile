@@ -73,6 +73,63 @@
             android:src="@mipmap/ic_launcher" />
     </LinearLayout>
 
+    <!-- Budget left this month; hidden with no budget or when the widget is
+         two rows tall. -->
+    <LinearLayout
+        android:id="@+id/widget_budget_box"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_budget"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#D9FFFFFF"
+            android:textSize="12sp" />
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="6dp"
+            android:layout_marginTop="4dp">
+
+            <ProgressBar
+                android:id="@+id/widget_budget_bar"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/widget_progress" />
+
+            <ProgressBar
+                android:id="@+id/widget_budget_bar_over"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:max="100"
+                android:progress="100"
+                android:progressDrawable="@drawable/widget_progress_over"
+                android:visibility="gone" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- "Next due: Netflix ₹649 · tomorrow". -->
+    <TextView
+        android:id="@+id/widget_due"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#D9FFFFFF"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
     <!-- Takes whatever height the person gives the widget. -->
     <FrameLayout
         android:layout_width="match_parent"
