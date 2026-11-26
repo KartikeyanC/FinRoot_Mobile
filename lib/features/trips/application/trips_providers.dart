@@ -25,7 +25,7 @@ class TripsController {
   TripsController(this._ref);
   final Ref _ref;
 
-  Future<void> addExpense(String tripId, TripExpense expense) async {
+  String _writableTenant() {
     final tenantId = _ref.read(currentTenantIdProvider);
     if (tenantId == null) throw AuthFailure.sessionExpired();
     final role = _ref.read(currentRoleProvider);
@@ -34,8 +34,37 @@ class TripsController {
         message: 'Your role in this workspace is view-only.',
       );
     }
-    await _ref.read(tripsGatewayProvider).addExpense(tenantId, tripId, expense);
+    return tenantId;
+  }
+
+  /// Create a trip; returns its id.
+  Future<String> create(NewTrip trip) async {
+    final tenantId = _writableTenant();
+    final id = await _ref.read(tripsGatewayProvider).create(tenantId, trip);
     _ref.invalidate(tripsProvider);
+    return id;
+  }
+
+  Future<void> addExpense(String tripId, TripExpense expense) =>
+      _change(tripId, AddTripExpense(expense));
+
+  Future<void> updateExpense(String tripId, TripExpense expense) =>
+      _change(tripId, UpdateTripExpense(expense));
+
+  Future<void> removeExpense(String tripId, String expenseId) =>
+      _change(tripId, RemoveTripExpense(expenseId));
+
+  Future<void> _change(String tripId, TripExpenseChange change) async {
+    final tenantId = _writableTenant();
+    try {
+      await _ref
+          .read(tripsGatewayProvider)
+          .changeExpense(tenantId, tripId, change);
+    } finally {
+      // Refresh even on failure: "removed from the trip" means the list here
+      // is out of date.
+      _ref.invalidate(tripsProvider);
+    }
   }
 }
 

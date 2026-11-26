@@ -8,6 +8,7 @@ import '../../../navigation/pane_selection.dart';
 import '../../../navigation/two_pane.dart';
 import '../../accounts/presentation/accounts_screen.dart';
 import '../../bill_scan/presentation/bill_scan_screen.dart';
+import '../../billing/presentation/billing_screen.dart';
 import '../../budget/presentation/budget_screen.dart';
 import '../../calculator/presentation/calculator_screen.dart';
 import '../../export/presentation/export_screen.dart';
@@ -26,7 +27,6 @@ import '../../split/presentation/split_with_friends_screen.dart';
 import '../../split/presentation/who_owes_what_screen.dart';
 import '../../trips/presentation/trip_list_screen.dart';
 import '../../voice/presentation/voice_screen.dart';
-import '../../web_link/presentation/web_link_screen.dart';
 import '../../workspace/presentation/workspace_screen.dart';
 import 'workspace_row.dart';
 

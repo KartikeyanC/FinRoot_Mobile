@@ -84,3 +84,65 @@ bool isGoalHistoryMissingError(String? code, String? message) {
 
 const String kGoalHistoryMissingMessage =
     'History starts once the workspace owner runs the database update.';
+
+/* ------------------------- editing a history entry ------------------------- */
+
+const String kGoalHistoryEditMissingMessage =
+    'Editing history needs the database update (migration '
+    '20261126160000_goal_contribution_edits.sql). Ask the workspace owner to '
+    'run it; until then, undo a deposit with Take back.';
+
+/// `goal_contribution_update` / `_delete` don't exist yet: migration
+/// 20261126160000 hasn't run (web `isGoalHistoryEditMissing`).
+bool isGoalHistoryEditMissingError(String? code, String? message) {
+  if (code == 'PGRST202' || code == '42883') return true;
+  final m = message ?? '';
+  return RegExp(
+        'goal_contribution_(update|delete)',
+        caseSensitive: false,
+      ).hasMatch(m) &&
+      RegExp(
+        'does not exist|schema cache|could not find',
+        caseSensitive: false,
+      ).hasMatch(m);
+}
+
+/// Why an edit (or, with [deleting], a delete) of a history entry can't be
+/// saved, or null if it can — the server's rules (web
+/// `historyChangeProblem`): an entry is never zero, its date is not in the
+/// future, and the goal's saved amount moves by the difference without going
+/// below zero or past the target. The server re-checks under a lock.
+String? historyChangeProblem({
+  required double original,
+  required double next,
+  required double currentAmount,
+  required double targetAmount,
+  DateTime? date,
+  bool deleting = false,
+  DateTime? today,
+}) {
+  if (!deleting && (!next.isFinite || next == 0)) {
+    return 'Enter an amount. To remove the entry, delete it.';
+  }
+  if (date != null) {
+    final t = today ?? DateTime.now();
+    final day = DateTime(date.year, date.month, date.day);
+    if (day.isAfter(DateTime(t.year, t.month, t.day))) {
+      return "The date can't be in the future";
+    }
+  }
+  final after =
+      ((currentAmount - original + (deleting ? 0 : next)) * 100).round() / 100;
+  if (after < 0) {
+    return 'That would take the goal below zero (it holds '
+        '${_plain(currentAmount)})';
+  }
+  if (after > targetAmount) {
+    return 'That would take the goal past its target of '
+        '${_plain(targetAmount)}';
+  }
+  return null;
+}
+
+String _plain(double n) =>
+    n == n.roundToDouble() ? n.toStringAsFixed(0) : n.toStringAsFixed(2);

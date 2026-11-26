@@ -330,7 +330,7 @@ class SettleExpense {
 
   final double amount;
 
-  /// Defaults to INR — trips are kept in rupees today.
+  /// Defaults to INR (trips made before `trips.currency` existed).
   final String? currency;
 
   /// Who paid. Defaults to [kMe].
@@ -452,10 +452,13 @@ String tripPayerName(String? paidBy) {
 
 /// Trip expense items as settle-up input (web `tripSettleExpenses`). Old items
 /// carry no `paidBy` and read as paid by you. A companion who paid always
-/// shares the bill: added to `splitWith` if the form left them out.
+/// shares the bill: added to `splitWith` if the form left them out. Every
+/// amount is in the trip's [currency] (INR for trips made before
+/// `trips.currency` existed), and so are the transfers and their dues.
 List<SettleExpense> tripSettleExpenses(
-  Iterable<({double amount, String? paidBy, List<String>? splitWith})> items,
-) {
+  Iterable<({double amount, String? paidBy, List<String>? splitWith})> items, {
+  String currency = 'INR',
+}) {
   return [
     for (final e in items)
       () {
@@ -463,6 +466,7 @@ List<SettleExpense> tripSettleExpenses(
         final splitWith = e.splitWith ?? const <String>[];
         return SettleExpense(
           amount: e.amount,
+          currency: currency,
           paidBy: paidBy,
           splitWith: paidBy == kMe || splitWith.contains(paidBy)
               ? splitWith

@@ -102,10 +102,13 @@ class _TripBody extends StatelessWidget {
     final palette = context.palette;
     final finance = context.finance;
     final tot = TripTotals.of(trip);
-    final over = tot.allocated > 0 && tot.spent > tot.allocated;
+    String money(double n) => MoneyFormat.money(n, currency: trip.currency);
+    // Your pool is drawn only by what you paid (web tripTotals).
+    final over = tot.allocated > 0 && tot.paidByYou > tot.allocated;
     final pct = tot.allocated > 0
-        ? (tot.spent / tot.allocated).clamp(0.0, 1.0)
+        ? (tot.paidByYou / tot.allocated).clamp(0.0, 1.0)
         : 0.0;
+    final canEdit = canWrite && online && !trip.isArchived;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -126,15 +129,21 @@ class _TripBody extends StatelessWidget {
             ),
           ),
         MetricCard(
-          eyebrow: '${trip.kindLabel}${trip.isArchived ? ' · Archived' : ''}',
-          figure: MoneyFormat.money(tot.spent),
-          status: tot.allocated > 0
-              ? (over
-                    ? 'Over budget by '
-                          '${MoneyFormat.money(tot.spent - tot.allocated)}'
-                    : '${MoneyFormat.money(tot.remaining)} left of '
-                          '${MoneyFormat.money(tot.allocated)}')
-              : 'No budget allocated',
+          eyebrow: [
+            trip.kindLabel,
+            if (trip.currency != 'INR') trip.currency,
+            if (trip.isArchived) 'Archived',
+          ].join(' · '),
+          figure: money(tot.spent),
+          status: [
+            if (tot.allocated > 0)
+              over
+                  ? 'Over budget by ${money(tot.paidByYou - tot.allocated)}'
+                  : '${money(tot.remaining)} left of ${money(tot.allocated)}'
+            else
+              'No budget allocated',
+            if (tot.paidByYou != tot.spent) 'you paid ${money(tot.paidByYou)}',
+          ].join(' · '),
           statusColor: over ? finance.expense : palette.muted,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(4),
@@ -159,10 +168,10 @@ class _TripBody extends StatelessWidget {
                         : Icons.account_balance_wallet_outlined,
                     title: tripAccountName(e.key, names),
                     subtitle:
-                        'Spent ${MoneyFormat.money(tot.spentByAccount[e.key] ?? 0)}'
-                        ' of ${MoneyFormat.money(e.value)}',
+                        'Spent ${money(tot.spentByAccount[e.key] ?? 0)}'
+                        ' of ${money(e.value)}',
                     trailing: Text(
-                      MoneyFormat.money(tot.remainingByAccount[e.key] ?? 0),
+                      money(tot.remainingByAccount[e.key] ?? 0),
                       style: AppTypography.bodyStrong.copyWith(
                         color: (tot.remainingByAccount[e.key] ?? 0) < 0
                             ? finance.expense
@@ -202,19 +211,36 @@ class _TripBody extends StatelessWidget {
                 ? 'Tap Expense to log what this trip costs.'
                 : 'Spends logged on this trip show here.',
           )
-        else
+        else ...[
+          if (canEdit)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+              child: Text(
+                'Tap an expense to change or delete it.',
+                style: AppTypography.caption.copyWith(color: palette.muted),
+              ),
+            ),
           AppCard(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
             child: Column(
               children: [
                 for (final e in trip.expenses)
                   ListRow(
+                    key: ValueKey('trip-expense-${e.id}'),
                     icon: _categoryIcon(e.category),
                     title: e.note?.isNotEmpty == true ? e.note! : e.category,
                     titleMaxLines: 2,
                     subtitle: _expenseSubtitle(e),
+                    onTap: canEdit
+                        ? () => openTripExpenseSheet(
+                            context,
+                            trip,
+                            names,
+                            editing: e,
+                          )
+                        : null,
                     trailing: Text(
-                      MoneyFormat.money(e.amount),
+                      money(e.amount),
                       style: AppTypography.bodyStrong.copyWith(
                         color: palette.ink,
                       ),
@@ -223,6 +249,7 @@ class _TripBody extends StatelessWidget {
               ],
             ),
           ),
+        ],
         const SizedBox(height: AppSpacing.md),
         const InlineNote(
           "Trip spends stay in the trip — they don't count in your "
@@ -236,7 +263,8 @@ class _TripBody extends StatelessWidget {
   String _expenseSubtitle(TripExpense e) {
     final parts = <String>[
       e.category,
-      tripAccountName(e.accountId, names),
+      // A companion paid: none of your accounts was used.
+      if (e.paidByYou) tripAccountName(e.accountId, names),
       if (e.payer != kMe) 'Paid by ${e.payer}',
       if (e.splitWith?.isNotEmpty == true)
         'Split with ${e.splitWith!.join(', ')}',

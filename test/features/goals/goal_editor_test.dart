@@ -77,6 +77,34 @@ class _FakeGateway implements GoalWriteGateway {
       'capped': false,
     });
   }
+
+  @override
+  Future<GoalContribution> updateContribution(
+    String entryId,
+    double amount, {
+    String? note,
+    DateTime? date,
+  }) async {
+    calls.add('edit:$entryId:$amount:$note');
+    historyReads = 0;
+    return GoalContribution.fromRpc({
+      'applied': -200,
+      'current_amount': 1800,
+      'target_amount': 10000,
+      'status': 'active',
+    });
+  }
+
+  @override
+  Future<GoalContribution> deleteContribution(String entryId) async {
+    calls.add('delete-entry:$entryId');
+    return GoalContribution.fromRpc({
+      'applied': -500,
+      'current_amount': 1500,
+      'target_amount': 10000,
+      'status': 'active',
+    });
+  }
 }
 
 void main() {
@@ -237,6 +265,49 @@ void main() {
       final h = await c.read(goalHistoryProvider(key).future);
       expect(h.missing, isTrue);
       expect(h.entries, isEmpty);
+    });
+
+    test(
+      'editing or deleting an entry moves the goal as the server says',
+      () async {
+        await db
+            .into(db.localGoals)
+            .insert(
+              LocalGoalsCompanion.insert(
+                id: 'g1',
+                tenantId: 't1',
+                title: 'Trip',
+                targetAmount: Decimal.parse('10000'),
+                currentAmount: Decimal.parse('2000'),
+              ),
+            );
+        final c = container();
+        Future<Decimal> saved() async => (await (db.select(
+          db.localGoals,
+        )..where((g) => g.id.equals('g1'))).getSingle()).currentAmount;
+
+        await c
+            .read(goalEditorControllerProvider)
+            .editContribution('g1', 'c1', 300, note: 'fixed');
+        expect(gateway.calls, contains('edit:c1:300.0:fixed'));
+        expect(await saved(), Decimal.parse('1800'));
+
+        await c
+            .read(goalEditorControllerProvider)
+            .deleteContribution('g1', 'c1');
+        expect(gateway.calls, contains('delete-entry:c1'));
+        expect(await saved(), Decimal.parse('1500'));
+      },
+    );
+
+    test('a viewer cannot edit history', () async {
+      await expectLater(
+        container(role: WorkspaceRole.viewer)
+            .read(goalEditorControllerProvider)
+            .deleteContribution('g1', 'c1'),
+        throwsA(isA<PermissionFailure>()),
+      );
+      expect(gateway.calls, isEmpty);
     });
 
     test('offline history is a NetworkFailure', () async {

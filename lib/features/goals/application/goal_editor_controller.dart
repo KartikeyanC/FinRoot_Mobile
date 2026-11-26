@@ -60,6 +60,37 @@ class GoalEditorController {
     return result;
   }
 
+  /// Change a history entry; the goal's saved amount moves by the difference.
+  Future<GoalContribution> editContribution(
+    String goalId,
+    String entryId,
+    double amount, {
+    String? note,
+    DateTime? date,
+  }) async {
+    _guard();
+    final result = await _ref
+        .read(goalWriteGatewayProvider)
+        .updateContribution(entryId, amount, note: note, date: date);
+    await _repo.applyContribution(goalId, result.currentAmount, result.status);
+    _ref.invalidate(goalHistoryProvider);
+    return result;
+  }
+
+  /// Delete a history entry; the goal's saved amount moves back by it.
+  Future<GoalContribution> deleteContribution(
+    String goalId,
+    String entryId,
+  ) async {
+    _guard();
+    final result = await _ref
+        .read(goalWriteGatewayProvider)
+        .deleteContribution(entryId);
+    await _repo.applyContribution(goalId, result.currentAmount, result.status);
+    _ref.invalidate(goalHistoryProvider);
+    return result;
+  }
+
   GoalsRepository get _repo => _ref.read(goalsRepositoryProvider);
 
   String _guard() {

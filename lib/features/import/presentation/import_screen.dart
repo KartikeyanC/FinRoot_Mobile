@@ -152,13 +152,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 'counted once',
         ].join(' · '),
       );
-    } on UnsupportedSpreadsheetProtectionException {
-      setState(
-        () => _error =
-            '${f.name} uses an old kind of password protection FinRoot '
-            'can\'t open. Open it in Excel, remove the password or save it '
-            'as CSV, then try again.',
-      );
+    } on UnsupportedSpreadsheetProtectionException catch (e) {
+      setState(() => _error = e.message(f.name));
     } on Object {
       setState(
         () => _error =

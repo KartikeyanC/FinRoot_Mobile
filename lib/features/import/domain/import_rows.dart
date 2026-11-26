@@ -483,34 +483,63 @@ class ProtectedSpreadsheetException implements Exception {
   final bool wrongPassword;
 }
 
-/// A workbook protected in a way the importer can't open (XOR obfuscation,
-/// a certificate, extensible encryption).
+/// A workbook protected in a way the importer can't open: Information
+/// Rights Management, a certificate, an encryption add-in, or a cipher it
+/// doesn't do ([detail], e.g. "DES encryption").
 class UnsupportedSpreadsheetProtectionException implements Exception {
-  const UnsupportedSpreadsheetProtectionException();
+  const UnsupportedSpreadsheetProtectionException(this.kind, [this.detail]);
+  final OfficeEncryption kind;
+  final String? detail;
+
+  /// What to tell the user about [fileName]: what the protection is, and
+  /// that saving it from Excel without a password fixes it.
+  String message(String fileName) {
+    final what = switch (kind) {
+      OfficeEncryption.irm =>
+        '$fileName is protected with Information Rights Management (a '
+            'sensitivity label or Restrict Access), which FinRoot can\'t open.',
+      OfficeEncryption.certificate =>
+        '$fileName is encrypted with a digital certificate instead of a '
+            'password, which FinRoot can\'t open.',
+      OfficeEncryption.extensible =>
+        '$fileName is encrypted by a third-party encryption add-in, which '
+            'FinRoot can\'t open.',
+      _ when detail != null =>
+        '$fileName is protected with $detail, which FinRoot can\'t open.',
+      _ => '$fileName uses a kind of encryption FinRoot can\'t open.',
+    };
+    return kind == OfficeEncryption.irm
+        ? '$what Open it in Excel and save a copy without the restriction or '
+              'a password, then import that copy.'
+        : '$what Open it in Excel and save it without a password, then '
+              'import it again.';
+  }
+
+  @override
+  String toString() =>
+      'UnsupportedSpreadsheetProtectionException($kind'
+      '${detail == null ? '' : ', $detail'})';
 }
 
-/// [bytes] with any password protection taken off, using [password].
+/// [bytes] with any password protection taken off, using [password]. With
+/// no password, Excel's built-in one is tried first, so a workbook that is
+/// only protected (no password to open) imports without asking, as it opens
+/// in Excel.
 List<int> _unlocked(List<int> bytes, String? password) {
-  switch (officeEncryptionOf(bytes)) {
-    case OfficeEncryption.none:
-      return bytes;
-    case OfficeEncryption.xlsXor:
-    case OfficeEncryption.other:
-      throw const UnsupportedSpreadsheetProtectionException();
-    case OfficeEncryption.xlsxAgile:
-    case OfficeEncryption.xlsxStandard:
-    case OfficeEncryption.xlsRc4:
-    case OfficeEncryption.xlsRc4CryptoApi:
-      if (password == null || password.isEmpty) {
+  if (officeEncryptionOf(bytes) == OfficeEncryption.none) return bytes;
+  try {
+    if (password == null || password.isEmpty) {
+      try {
+        return decryptOfficeFile(bytes, officeDefaultPassword);
+      } on OfficeWrongPasswordException {
         throw const ProtectedSpreadsheetException();
       }
-      try {
-        return decryptOfficeFile(bytes, password);
-      } on OfficeWrongPasswordException {
-        throw const ProtectedSpreadsheetException(wrongPassword: true);
-      } on OfficeUnsupportedEncryptionException {
-        throw const UnsupportedSpreadsheetProtectionException();
-      }
+    }
+    return decryptOfficeFile(bytes, password);
+  } on OfficeWrongPasswordException {
+    throw const ProtectedSpreadsheetException(wrongPassword: true);
+  } on OfficeUnsupportedEncryptionException catch (e) {
+    throw UnsupportedSpreadsheetProtectionException(e.kind, e.detail);
   }
 }
 

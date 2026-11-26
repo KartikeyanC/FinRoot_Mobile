@@ -123,18 +123,3 @@ class TripsScreen extends StatelessWidget {
     menu: FeatureMenu.trips,
   );
 }
-
-class BillingScreen extends StatelessWidget {
-  const BillingScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) => const WebLinkScreen(
-    title: 'Billing',
-    icon: Icons.credit_card_outlined,
-    description:
-        'See your plan, invoices and payment details, or change your plan, '
-        'in the web app.',
-    webPath: 'billing',
-    menu: FeatureMenu.billing,
-  );
-}

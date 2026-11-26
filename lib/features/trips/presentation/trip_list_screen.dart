@@ -10,12 +10,13 @@ import '../../menus/application/menu_providers.dart';
 import '../../menus/presentation/menu_locked_view.dart';
 import '../../split/presentation/split_state_views.dart';
 import '../../web_link/presentation/web_link_screen.dart';
+import '../../workspace/application/workspace_providers.dart';
 import '../application/trips_providers.dart';
 import '../domain/trip.dart';
+import 'new_trip_screen.dart';
 
-/// Trips — the web's trip sandboxes, on the phone: list, open, add an
-/// expense, settle up. Menu-gated. Online-only (not cached). New trips are
-/// planned on the web (allocation across accounts).
+/// Trips — the web's trip sandboxes, on the phone: plan a new one, open it,
+/// log and edit expenses, settle up. Menu-gated. Online-only (not cached).
 class TripListScreen extends ConsumerWidget {
   const TripListScreen({super.key});
 
@@ -32,13 +33,24 @@ class TripListScreen extends ConsumerWidget {
     }
     final online = ref.watch(isOnlineProvider);
     final trips = ref.watch(tripsProvider);
+    final canWrite = ref.watch(currentRoleProvider)?.canWrite ?? true;
+
+    Future<void> newTrip() async {
+      final id = await openNewTripScreen(context);
+      if (id != null && context.mounted) {
+        await context.push(TripListScreen.detailRoute(id));
+      }
+    }
 
     return AppPage(
       title: 'Trips',
       padBody: false,
+      floatingActionButton: canWrite && online
+          ? AddFab(label: 'New trip', onPressed: newTrip)
+          : null,
       actions: [
         IconButton(
-          tooltip: 'Plan a trip on the web',
+          tooltip: 'Open Trips on the web',
           icon: const Icon(Icons.open_in_new_rounded),
           onPressed: () => openWebAppPage(context, ref, 'trips'),
         ),
@@ -56,15 +68,18 @@ class TripListScreen extends ConsumerWidget {
                         child: EmptyView(
                           icon: Icons.luggage_outlined,
                           title: 'No trips yet',
-                          message:
-                              'Plan a trip budget on the web app; it shows up '
-                              'here to log spends and settle up.',
-                          action: PillButton(
-                            label: 'Open in browser',
-                            icon: Icons.open_in_new_rounded,
-                            onPressed: () =>
-                                openWebAppPage(context, ref, 'trips'),
-                          ),
+                          message: canWrite
+                              ? 'Plan a trip budget: fund it from your '
+                                    'accounts, log spends, settle up with '
+                                    'friends.'
+                              : 'Trips planned in this workspace show here.',
+                          action: canWrite && online
+                              ? PillButton(
+                                  label: 'New trip',
+                                  icon: Icons.add_rounded,
+                                  onPressed: newTrip,
+                                )
+                              : null,
                         ),
                       )
                     : _TripList(trips: list),
@@ -132,9 +147,9 @@ class _TripCard extends StatelessWidget {
     final palette = context.palette;
     final tot = TripTotals.of(trip);
     final pct = tot.allocated > 0
-        ? (tot.spent / tot.allocated).clamp(0.0, 1.0)
+        ? (tot.paidByYou / tot.allocated).clamp(0.0, 1.0)
         : 0.0;
-    final over = tot.allocated > 0 && tot.spent > tot.allocated;
+    final over = tot.allocated > 0 && tot.paidByYou > tot.allocated;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
@@ -161,6 +176,7 @@ class _TripCard extends StatelessWidget {
                       Text(
                         [
                           trip.kindLabel,
+                          if (trip.currency != 'INR') trip.currency,
                           if (trip.companions.isNotEmpty)
                             '${trip.companions.length} with you',
                           '${trip.expenses.length} spends',
@@ -187,8 +203,10 @@ class _TripCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              'Spent ${MoneyFormat.money(tot.spent)} of '
-              '${MoneyFormat.money(tot.allocated)}',
+              'Spent ${MoneyFormat.money(tot.spent, currency: trip.currency)}'
+              ' of '
+              '${MoneyFormat.money(tot.allocated, currency: trip.currency)}',
+
               style: AppTypography.caption.copyWith(color: palette.muted),
             ),
           ],

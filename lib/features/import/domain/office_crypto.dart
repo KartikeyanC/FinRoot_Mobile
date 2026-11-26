@@ -10,11 +10,18 @@ import 'package:pointycastle/block/aes.dart';
 /// it is unit-tested on its own (`test/features/import/office_crypto_test.dart`).
 ///
 /// - .xlsx with a password is an OLE2 compound file holding the zip
-///   encrypted: Agile (AES, SHA-512, 100 000 spins; Excel 2010 and later) or
-///   Standard (AES-128, SHA-1; Excel 2007).
+///   encrypted: Agile (AES-CBC with SHA-1/256/384/512 or MD5; Excel 2010 and
+///   later) or Standard (AES-128/192/256, SHA-1; Excel 2007).
+/// - Not opened, each reported as what it is: Information Rights
+///   Management, a certificate instead of a password, extensible
+///   (third-party) encryption, and any other cipher or hash (DES, RC2...).
 /// - .xls with a password keeps its Workbook stream but encrypts the record
-///   data: RC4 CryptoAPI (Excel 2002 and later) or the older RC4. XOR
-///   obfuscation (Excel 95 style) is reported as unsupported.
+///   data: RC4 CryptoAPI (Excel 2002 and later), the older RC4, or XOR
+///   obfuscation (Excel 95 style, last written by Excel 2003).
+///
+/// A workbook that is only protected (its structure or a sheet locked, no
+/// password to open) is still encrypted, with Excel's built-in password
+/// [officeDefaultPassword]; Excel opens those without asking, and so do we.
 ///
 /// The password is only used for the call; nothing keeps it.
 enum OfficeEncryption {
@@ -24,26 +31,49 @@ enum OfficeEncryption {
   xlsxStandard,
   xlsRc4,
   xlsRc4CryptoApi,
-
-  /// .xls XOR obfuscation: not supported.
   xlsXor,
 
-  /// Encrypted some other way (extensible encryption, a certificate, DES):
-  /// not supported.
-  other,
+  /// Information Rights Management (a sensitivity label, "Restrict
+  /// Access"): the key comes from a rights server, not a password.
+  irm,
+
+  /// Opened with a digital certificate, not a password.
+  certificate,
+
+  /// ECMA-376 extensible encryption: a third-party encryption module.
+  extensible,
+
+  /// Some other cipher, hash or version this reader doesn't handle (DES,
+  /// RC2, Excel 95's own format).
+  other;
+
+  /// A password (or [officeDefaultPassword]) opens it here.
+  bool get opensWithPassword => switch (this) {
+    xlsxAgile || xlsxStandard || xlsRc4 || xlsRc4CryptoApi || xlsXor => true,
+    _ => false,
+  };
 }
+
+/// The password Excel encrypts with when a workbook has no password to open
+/// but is protected: its structure or a sheet locked ([MS-XLS] Appendix A,
+/// notes for 2.4.191 Password and 2.4.206 Prot4RevPass). Excel also opens
+/// any .xlsx encrypted with it without asking.
+const officeDefaultPassword = 'VelvetSweatshop';
 
 /// The password didn't open the file.
 class OfficeWrongPasswordException implements Exception {
   const OfficeWrongPasswordException();
 }
 
-/// The file is encrypted in a way this reader doesn't handle.
+/// The file is encrypted in a way this reader doesn't handle; [detail]
+/// names it when [kind] is [OfficeEncryption.other] ("DES encryption").
 class OfficeUnsupportedEncryptionException implements Exception {
-  const OfficeUnsupportedEncryptionException(this.kind);
+  const OfficeUnsupportedEncryptionException(this.kind, [this.detail]);
   final OfficeEncryption kind;
+  final String? detail;
   @override
-  String toString() => 'OfficeUnsupportedEncryptionException($kind)';
+  String toString() =>
+      'OfficeUnsupportedEncryptionException($kind${detail == null ? '' : ', $detail'})';
 }
 
 /// The container or its encryption records are damaged.
@@ -68,51 +98,191 @@ Uint8List _u8(List<int> b) => b is Uint8List ? b : Uint8List.fromList(b);
 
 /// How [bytes] is encrypted; [OfficeEncryption.none] for anything that isn't
 /// an encrypted Office file (a plain .xls, a zip, text).
-OfficeEncryption officeEncryptionOf(List<int> bytes) {
-  if (!isCompoundFile(bytes)) return OfficeEncryption.none;
-  final CompoundFile cfb;
+OfficeEncryption officeEncryptionOf(List<int> bytes) =>
+    _protectionOf(bytes).kind;
+
+/// The kind of protection, and for [OfficeEncryption.other] what it is.
+typedef _Protection = ({OfficeEncryption kind, String? detail});
+
+const _Protection _notEncrypted = (kind: OfficeEncryption.none, detail: null);
+
+/// Encrypted, but the header is damaged or of no kind we know.
+const _Protection _unknown = (kind: OfficeEncryption.other, detail: null);
+
+_Protection _unsupported(String detail) =>
+    (kind: OfficeEncryption.other, detail: detail);
+
+_Protection _protectionOf(List<int> bytes) {
+  if (!isCompoundFile(bytes)) return _notEncrypted;
   try {
-    cfb = CompoundFile(_u8(bytes));
+    return _protectionIn(CompoundFile(_u8(bytes)));
   } on OfficeFormatException {
-    return OfficeEncryption.none;
+    return _notEncrypted;
   }
-  final info = cfb.stream('EncryptionInfo');
-  if (info != null && cfb.has('EncryptedPackage')) return _ooxmlKind(info);
-  final book = cfb.stream('Workbook') ?? cfb.stream('Book');
-  if (book == null) return OfficeEncryption.none;
-  final fp = _filePass(book);
-  return fp == null ? OfficeEncryption.none : _xlsKind(fp.data);
 }
 
-OfficeEncryption _ooxmlKind(Uint8List info) {
-  if (info.length < 8) return OfficeEncryption.other;
+/// Streams and storages only an IRM-protected file has ([MS-OFFCRYPTO]
+/// 2.2.2–2.2.4, 2.2.10): binary documents keep their content in
+/// "\x09DRMContent", ECMA-376 ones in an EncryptedPackage whose data space
+/// is DRMEncryptedDataSpace.
+const _irmEntries = {
+  '\x09DRMContent',
+  '\x09DRMDataSpace',
+  '\x09LZXDRMDataSpace',
+  '\x09DRMTransform',
+  'DRMEncryptedDataSpace',
+  'DRMEncryptedTransform',
+};
+
+_Protection _protectionIn(CompoundFile cfb) {
+  if (_irmEntries.any(cfb.hasEntry)) {
+    return (kind: OfficeEncryption.irm, detail: null);
+  }
+  if (cfb.has('EncryptedPackage')) {
+    final info = cfb.stream('EncryptionInfo');
+    return info == null ? _unknown : _ooxmlProtection(info);
+  }
+  final book = cfb.stream('Workbook') ?? cfb.stream('Book');
+  if (book == null) return _notEncrypted;
+  final fp = _filePass(book);
+  if (fp == null) return _notEncrypted;
+  // FILEPASS is laid out differently before BIFF8 (Excel 97).
+  final bof = _records(book).first;
+  if (bof.data.length < 2 ||
+      ByteData.sublistView(bof.data).getUint16(0, Endian.little) != 0x0600) {
+    return _unsupported('Excel 5.0/95 password protection');
+  }
+  return _xlsProtection(fp.data);
+}
+
+/// CryptoAPI algorithm ids ([MS-OFFCRYPTO] 2.3.2) by name, for messages.
+const _algNames = {
+  0x6601: 'DES',
+  0x6602: 'RC2',
+  0x6603: '3DES',
+  0x6609: '3DES-112',
+  0x660E: 'AES-128',
+  0x660F: 'AES-192',
+  0x6610: 'AES-256',
+  0x6801: 'RC4',
+  0x8001: 'MD2',
+  0x8002: 'MD4',
+  0x8003: 'MD5',
+  0x8004: 'SHA-1',
+  0x800C: 'SHA-256',
+  0x800D: 'SHA-384',
+  0x800E: 'SHA-512',
+};
+
+String _algName(int id) =>
+    _algNames[id] ?? '0x${id.toRadixString(16).toUpperCase()}';
+
+/// An .xlsx's EncryptionInfo stream: the kind of encryption, checked down
+/// to the cipher and hash, so a file this reader can't open is never
+/// mistaken for a wrong password.
+_Protection _ooxmlProtection(Uint8List info) {
+  if (info.length < 8) return _unknown;
   final d = ByteData.sublistView(info);
   final major = d.getUint16(0, Endian.little);
   final minor = d.getUint16(2, Endian.little);
-  if (major == 4 && minor == 4) return OfficeEncryption.xlsxAgile;
-  if ((major == 3 || major == 4) && minor == 2) {
-    final flags = d.getUint32(4, Endian.little);
-    // fCryptoAPI and fAES set, fExternal not.
-    if (flags & 0x04 != 0 && flags & 0x20 != 0 && flags & 0x10 == 0) {
-      return OfficeEncryption.xlsxStandard;
-    }
+  final flags = d.getUint32(4, Endian.little);
+  // Agile (2.3.4.10).
+  if (major == 4 && minor == 4) return _agileProtection(info);
+  // Extensible (2.3.4.6): 3.3 or 4.3, or Standard's header with fExternal.
+  if (((major == 3 || major == 4) && minor == 3) ||
+      (minor == 2 && flags & 0x10 != 0)) {
+    return (kind: OfficeEncryption.extensible, detail: null);
   }
-  return OfficeEncryption.other;
+  // Standard (2.3.4.5): 2.2, 3.2 or 4.2, fCryptoAPI and fAES set.
+  if (major >= 2 && major <= 4 && minor == 2) {
+    if (flags & 0x04 == 0 || flags & 0x20 == 0 || info.length < 12 + 32) {
+      return _unknown;
+    }
+    final algId = d.getUint32(12 + 8, Endian.little);
+    final algIdHash = d.getUint32(12 + 12, Endian.little);
+    if (algId != 0 && (algId < 0x660E || algId > 0x6610)) {
+      return _unsupported('${_algName(algId)} encryption');
+    }
+    if (algIdHash != 0 && algIdHash != 0x8004) {
+      return _unsupported('${_algName(algIdHash)} hashing');
+    }
+    return (kind: OfficeEncryption.xlsxStandard, detail: null);
+  }
+  return _unsupported('an unknown kind of encryption (version $major.$minor)');
 }
 
-OfficeEncryption _xlsKind(Uint8List fp) {
-  if (fp.length < 2) return OfficeEncryption.other;
+const _passwordKeyEncryptor =
+    'http://schemas.microsoft.com/office/2006/keyEncryptor/password';
+const _certificateKeyEncryptor =
+    'http://schemas.microsoft.com/office/2006/keyEncryptor/certificate';
+
+/// The password key encryptor's `<encryptedKey>` tag in Agile XML, or null.
+String? _agilePasswordKeyTag(String xml) =>
+    RegExp(r'<(?:\w+:)?encryptedKey\b[^>]*>')
+        .allMatches(xml)
+        .map((m) => m[0]!)
+        .where((t) => t.contains('spinCount'))
+        .firstOrNull;
+
+/// Hashes [_digestNamed] knows.
+const _agileHashes = {'SHA1', 'SHA256', 'SHA384', 'SHA512', 'MD5'};
+
+_Protection _agileProtection(Uint8List info) {
+  final xml = utf8.decode(info.sublist(8), allowMalformed: true);
+  final keyData = RegExp(r'<(?:\w+:)?keyData\b[^>]*>').firstMatch(xml)?[0];
+  final key = _agilePasswordKeyTag(xml);
+  if (key == null) {
+    return xml.contains(_certificateKeyEncryptor) &&
+            !xml.contains(_passwordKeyEncryptor)
+        ? (kind: OfficeEncryption.certificate, detail: null)
+        : _unknown;
+  }
+  if (keyData == null) return _unknown;
+  for (final a in [_attrs(keyData), _attrs(key)]) {
+    final cipher = a['cipherAlgorithm'] ?? 'AES';
+    if (cipher != 'AES') return _unsupported('$cipher encryption');
+    final chaining = a['cipherChaining'] ?? 'ChainingModeCBC';
+    if (chaining != 'ChainingModeCBC') {
+      return _unsupported(
+        'AES encryption in ${chaining.replaceFirst('ChainingMode', '')} mode',
+      );
+    }
+    final hash = a['hashAlgorithm'] ?? 'SHA512';
+    if (!_agileHashes.contains(hash.toUpperCase().replaceAll('-', ''))) {
+      return _unsupported('$hash hashing');
+    }
+  }
+  return (kind: OfficeEncryption.xlsxAgile, detail: null);
+}
+
+/// An .xls FILEPASS record's data ([MS-XLS] 2.4.117): XOR, RC4 or RC4
+/// CryptoAPI, the last checked down to its cipher and hash.
+_Protection _xlsProtection(Uint8List fp) {
+  if (fp.length < 6) return _unknown;
   final d = ByteData.sublistView(fp);
   final type = d.getUint16(0, Endian.little);
-  if (type == 0) return OfficeEncryption.xlsXor;
-  if (type != 1 || fp.length < 6) return OfficeEncryption.other;
+  if (type == 0) return (kind: OfficeEncryption.xlsXor, detail: null);
+  if (type != 1) return _unknown;
   final major = d.getUint16(2, Endian.little);
   final minor = d.getUint16(4, Endian.little);
-  if (major == 1 && minor == 1) return OfficeEncryption.xlsRc4;
-  if (major >= 2 && major <= 4 && minor == 2) {
-    return OfficeEncryption.xlsRc4CryptoApi;
+  if (major == 1 && minor == 1) {
+    return (kind: OfficeEncryption.xlsRc4, detail: null);
   }
-  return OfficeEncryption.other;
+  if (major >= 2 && major <= 4 && minor == 2) {
+    // 2.3.5.1: AlgID MUST be RC4, AlgIDHash SHA-1 (0 means the default).
+    const h = 14;
+    if (fp.length < h + 20) return _unknown;
+    final algId = d.getUint32(h + 8, Endian.little);
+    final algIdHash = d.getUint32(h + 12, Endian.little);
+    if (algId != 0 && algId != 0x6801) {
+      return _unsupported('${_algName(algId)} encryption');
+    }
+    if (algIdHash != 0 && algIdHash != 0x8004) {
+      return _unsupported('${_algName(algIdHash)} hashing');
+    }
+    return (kind: OfficeEncryption.xlsRc4CryptoApi, detail: null);
+  }
+  return _unsupported('an unknown kind of encryption (version $major.$minor)');
 }
 
 /// Opens an encrypted Office file with [password]: for an .xlsx the plain
@@ -121,11 +291,13 @@ OfficeEncryption _xlsKind(Uint8List fp) {
 /// [OfficeWrongPasswordException], [OfficeUnsupportedEncryptionException] or
 /// [OfficeFormatException].
 Uint8List decryptOfficeFile(List<int> bytes, String password) {
-  final kind = officeEncryptionOf(bytes);
-  final cfb = CompoundFile(_u8(bytes));
-  switch (kind) {
+  final p = _protectionOf(bytes);
+  switch (p.kind) {
+    case OfficeEncryption.none:
+      throw const OfficeFormatException('The file is not encrypted.');
     case OfficeEncryption.xlsxAgile:
     case OfficeEncryption.xlsxStandard:
+      final cfb = CompoundFile(_u8(bytes));
       return decryptOoxmlStreams(
         cfb.stream('EncryptionInfo')!,
         cfb.stream('EncryptedPackage')!,
@@ -133,13 +305,15 @@ Uint8List decryptOfficeFile(List<int> bytes, String password) {
       );
     case OfficeEncryption.xlsRc4:
     case OfficeEncryption.xlsRc4CryptoApi:
+    case OfficeEncryption.xlsXor:
+      final cfb = CompoundFile(_u8(bytes));
       final book = cfb.stream('Workbook') ?? cfb.stream('Book');
       return compoundFileWith('Workbook', decryptXlsWorkbook(book!, password));
-    case OfficeEncryption.none:
-      throw const OfficeFormatException('The file is not encrypted.');
-    case OfficeEncryption.xlsXor:
+    case OfficeEncryption.irm:
+    case OfficeEncryption.certificate:
+    case OfficeEncryption.extensible:
     case OfficeEncryption.other:
-      throw OfficeUnsupportedEncryptionException(kind);
+      throw OfficeUnsupportedEncryptionException(p.kind, p.detail);
   }
 }
 
@@ -149,28 +323,32 @@ Uint8List decryptOoxmlStreams(
   Uint8List info,
   Uint8List package,
   String password,
-) => switch (_ooxmlKind(info)) {
-  OfficeEncryption.xlsxAgile => _decryptAgile(info, package, password),
-  OfficeEncryption.xlsxStandard => _decryptStandard(info, package, password),
-  final k => throw OfficeUnsupportedEncryptionException(k),
-};
+) {
+  final p = _ooxmlProtection(info);
+  return switch (p.kind) {
+    OfficeEncryption.xlsxAgile => _decryptAgile(info, package, password),
+    OfficeEncryption.xlsxStandard => _decryptStandard(info, package, password),
+    final k => throw OfficeUnsupportedEncryptionException(k, p.detail),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Hashing, AES, RC4.
 
 // Hashes come from `crypto` (native 64-bit ints, several times faster than
 // pointycastle's SHA-512 for the 100 000 Agile spins); AES from pointycastle.
-Hash _digestNamed(String name) => switch (name.toUpperCase().replaceAll(
-  '-',
-  '',
-)) {
-  'SHA1' => sha1,
-  'SHA256' => sha256,
-  'SHA384' => sha384,
-  'SHA512' => sha512,
-  'MD5' => md5,
-  _ => throw const OfficeUnsupportedEncryptionException(OfficeEncryption.other),
-};
+Hash _digestNamed(String name) =>
+    switch (name.toUpperCase().replaceAll('-', '')) {
+      'SHA1' => sha1,
+      'SHA256' => sha256,
+      'SHA384' => sha384,
+      'SHA512' => sha512,
+      'MD5' => md5,
+      _ => throw OfficeUnsupportedEncryptionException(
+        OfficeEncryption.other,
+        '$name hashing',
+      ),
+    };
 
 Uint8List _hash(Hash d, List<List<int>> parts) {
   final b = BytesBuilder(copy: false);
@@ -298,24 +476,11 @@ Map<String, String> _attrs(String tag) => {
 
 Uint8List _decryptAgile(Uint8List info, Uint8List package, String password) {
   if (info.length < 8) throw const OfficeFormatException('EncryptionInfo');
+  // Checked by [_agileProtection]: AES-CBC, a known hash, a password key
+  // encryptor (a certificate one has no spinCount).
   final xml = utf8.decode(info.sublist(8), allowMalformed: true);
-  final keyDataTag = RegExp(r'<(?:\w+:)?keyData\b[^>]*>').firstMatch(xml)?[0];
-  // The password key encryptor (a certificate one has no spinCount).
-  final keyTag = RegExp(r'<(?:\w+:)?encryptedKey\b[^>]*>')
-      .allMatches(xml)
-      .map((m) => m[0]!)
-      .where((t) => t.contains('spinCount'));
-  if (keyDataTag == null || keyTag.isEmpty) {
-    throw const OfficeUnsupportedEncryptionException(OfficeEncryption.other);
-  }
-  final kd = _attrs(keyDataTag);
-  final ke = _attrs(keyTag.first);
-  for (final a in [kd, ke]) {
-    if ((a['cipherAlgorithm'] ?? 'AES') != 'AES' ||
-        (a['cipherChaining'] ?? 'ChainingModeCBC') != 'ChainingModeCBC') {
-      throw const OfficeUnsupportedEncryptionException(OfficeEncryption.other);
-    }
-  }
+  final kd = _attrs(RegExp(r'<(?:\w+:)?keyData\b[^>]*>').firstMatch(xml)![0]!);
+  final ke = _attrs(_agilePasswordKeyTag(xml)!);
   Uint8List b64(Map<String, String> a, String k) {
     final v = a[k];
     if (v == null) throw OfficeFormatException('EncryptionInfo has no $k');
@@ -411,12 +576,12 @@ Uint8List _decryptStandard(Uint8List info, Uint8List package, String password) {
   if (info.length < v + 4 + 16 + 16 + 4 + 32) {
     throw const OfficeFormatException('EncryptionInfo');
   }
-  final algId = d.getUint32(h + 8, Endian.little);
+  // AES-128, -192 or -256 ([_ooxmlProtection] checked the AlgID).
   var keyBits = d.getUint32(h + 16, Endian.little);
-  if (algId != 0 && (algId < 0x660E || algId > 0x6610)) {
-    throw const OfficeUnsupportedEncryptionException(OfficeEncryption.other);
-  }
   if (keyBits == 0) keyBits = 128;
+  if (keyBits != 128 && keyBits != 192 && keyBits != 256) {
+    throw OfficeFormatException('AES key size $keyBits');
+  }
   final saltSize = d.getUint32(v, Endian.little);
   final salt = Uint8List.sublistView(info, v + 4, v + 4 + saltSize);
   final encVerifier = Uint8List.sublistView(
@@ -447,11 +612,15 @@ Uint8List _decryptStandard(Uint8List info, Uint8List package, String password) {
 // .xls RC4 and RC4 CryptoAPI ([MS-XLS] 2.2.10, [MS-OFFCRYPTO] 2.3.5–2.3.6).
 
 class _Record {
-  const _Record(this.opcode, this.offset, this.data);
+  const _Record(this.opcode, this.offset, this.size, this.data);
   final int opcode;
 
   /// Where the record header starts in the stream.
   final int offset;
+
+  /// The data size the header gives ([data] is shorter only when the
+  /// stream ends early).
+  final int size;
   final Uint8List data;
 }
 
@@ -462,7 +631,7 @@ Iterable<_Record> _records(Uint8List stream) sync* {
     final op = d.getUint16(pos, Endian.little);
     final len = d.getUint16(pos + 2, Endian.little);
     final end = math.min(pos + 4 + len, stream.length);
-    yield _Record(op, pos, Uint8List.sublistView(stream, pos + 4, end));
+    yield _Record(op, pos, len, Uint8List.sublistView(stream, pos + 4, end));
     pos += 4 + len;
   }
 }
@@ -507,16 +676,15 @@ _BlockKey _xlsKeys(Uint8List fp, String password) {
     }
     return key;
   }
-  // RC4 CryptoAPI: SHA-1 based.
+  // RC4 CryptoAPI: SHA-1 based ([_xlsProtection] checked RC4 and SHA-1).
   const h = 14;
-  if (fp.length < h) throw const OfficeFormatException('FILEPASS');
+  if (fp.length < h + 20) throw const OfficeFormatException('FILEPASS');
   final headerSize = d.getUint32(10, Endian.little);
-  final algIdHash = d.getUint32(h + 12, Endian.little);
   var keyBits = d.getUint32(h + 16, Endian.little);
-  if (algIdHash != 0 && algIdHash != 0x8004) {
-    throw const OfficeUnsupportedEncryptionException(OfficeEncryption.other);
-  }
   if (keyBits == 0) keyBits = 40;
+  if (keyBits < 40 || keyBits > 128 || keyBits % 8 != 0) {
+    throw OfficeFormatException('RC4 key size $keyBits');
+  }
   final v = h + headerSize;
   if (fp.length < v + 4 + 16 + 16 + 4 + 20) {
     throw const OfficeFormatException('FILEPASS');
@@ -558,12 +726,22 @@ const _ignoredOpcode = 0x0160; // USESELFS
 Uint8List decryptXlsWorkbook(Uint8List book, String password) {
   final fp = _filePass(book);
   if (fp == null) throw const OfficeFormatException('No FILEPASS record.');
-  final kind = _xlsKind(fp.data);
-  if (kind != OfficeEncryption.xlsRc4 &&
-      kind != OfficeEncryption.xlsRc4CryptoApi) {
-    throw OfficeUnsupportedEncryptionException(kind);
-  }
-  final key = _xlsKeys(fp.data, password);
+  final p = _xlsProtection(fp.data);
+  final plain = switch (p.kind) {
+    OfficeEncryption.xlsRc4 ||
+    OfficeEncryption.xlsRc4CryptoApi => _rc4Decrypt(book, fp.data, password),
+    OfficeEncryption.xlsXor => _xorDeobfuscate(book, fp.data, password),
+    final k => throw OfficeUnsupportedEncryptionException(k, p.detail),
+  };
+  plain
+    ..[fp.offset] = _ignoredOpcode & 0xFF
+    ..[fp.offset + 1] = _ignoredOpcode >> 8;
+  return plain;
+}
+
+/// [book] with its records' data RC4-decrypted ([MS-XLS] 2.2.10).
+Uint8List _rc4Decrypt(Uint8List book, Uint8List fp, String password) {
+  final key = _xlsKeys(fp, password);
 
   // The key stream runs over the whole stream, re-keyed every 1024 bytes,
   // headers included; headers and some records are then put back as they
@@ -582,9 +760,129 @@ Uint8List decryptXlsWorkbook(Uint8List book, String password) {
       plain.setRange(dataAt, dataAt + 4, r.data);
     }
   }
-  plain
-    ..[fp.offset] = _ignoredOpcode & 0xFF
-    ..[fp.offset + 1] = _ignoredOpcode >> 8;
+  return plain;
+}
+
+// ---------------------------------------------------------------------------
+// .xls XOR obfuscation ([MS-OFFCRYPTO] 2.3.7.1–2.3.7.3, Method 1, the one
+// Excel uses; [MS-XLS] 2.2.9, 2.2.10 and the XORObfuscation structure).
+
+/// The password as XOR obfuscation takes it: at most 15 one-byte
+/// characters. [MS-XLS] 2.2.9 maps each character to the system's ANSI code
+/// page by the ECMA-376 revisionsPassword rule; that is its low byte, or its
+/// high byte when the low one is 0 (ASCII passwords are unchanged).
+Uint8List _xorPasswordBytes(String password) {
+  final units = password.codeUnits.take(15);
+  return Uint8List.fromList([
+    for (final c in units) c & 0xFF != 0 ? c & 0xFF : c >> 8,
+  ]);
+}
+
+/// The 16-bit password verifier, CreatePasswordVerifier_Method1 (2.3.7.1):
+/// what FILEPASS XORObfuscation.verificationBytes holds, and what Excel's
+/// sheet and workbook protection (the Password record) store.
+int xorPasswordVerifier(String password) {
+  final pw = _xorPasswordBytes(password);
+  var v = 0;
+  // The password's bytes in reverse, then its length.
+  for (final b in [...pw.reversed, pw.length]) {
+    v = ((v & 0x4000) == 0 ? 0 : 1) | ((v << 1) & 0x7FFF);
+    v ^= b;
+  }
+  return v ^ 0xCE4B;
+}
+
+const _xorPad = [
+  0xBB, 0xFF, 0xFF, 0xBA, 0xFF, 0xFF, 0xB9, 0x80, //
+  0x00, 0xBE, 0x0F, 0x00, 0xBF, 0x0F, 0x00,
+];
+
+const _xorInitialCode = [
+  0xE1F0, 0x1D0F, 0xCC9C, 0x84C0, 0x110C, 0x0E10, 0xF1CE, 0x313E, //
+  0x1872, 0xE139, 0xD40F, 0x84F9, 0x280C, 0xA96A, 0x4EC3,
+];
+
+/// 15 rows of 7; in each row every value is the one before through the
+/// CRC-16/CCITT shift (a test checks that, against typos).
+const xorMatrix = [
+  0xAEFC, 0x4DD9, 0x9BB2, 0x2745, 0x4E8A, 0x9D14, 0x2A09, //
+  0x7B61, 0xF6C2, 0xFDA5, 0xEB6B, 0xC6F7, 0x9DCF, 0x2BBF,
+  0x4563, 0x8AC6, 0x05AD, 0x0B5A, 0x16B4, 0x2D68, 0x5AD0,
+  0x0375, 0x06EA, 0x0DD4, 0x1BA8, 0x3750, 0x6EA0, 0xDD40,
+  0xD849, 0xA0B3, 0x5147, 0xA28E, 0x553D, 0xAA7A, 0x44D5,
+  0x6F45, 0xDE8A, 0xAD35, 0x4A4B, 0x9496, 0x390D, 0x721A,
+  0xEB23, 0xC667, 0x9CEF, 0x29FF, 0x53FE, 0xA7FC, 0x5FD9,
+  0x47D3, 0x8FA6, 0x0F6D, 0x1EDA, 0x3DB4, 0x7B68, 0xF6D0,
+  0xB861, 0x60E3, 0xC1C6, 0x93AD, 0x377B, 0x6EF6, 0xDDEC,
+  0x45A0, 0x8B40, 0x06A1, 0x0D42, 0x1A84, 0x3508, 0x6A10,
+  0xAA51, 0x4483, 0x8906, 0x022D, 0x045A, 0x08B4, 0x1168,
+  0x76B4, 0xED68, 0xCAF1, 0x85C3, 0x1BA7, 0x374E, 0x6E9C,
+  0x3730, 0x6E60, 0xDCC0, 0xA9A1, 0x4363, 0x86C6, 0x1DAD,
+  0x3331, 0x6662, 0xCCC4, 0x89A9, 0x0373, 0x06E6, 0x0DCC,
+  0x1021, 0x2042, 0x4084, 0x8108, 0x1231, 0x2462, 0x48C4,
+];
+
+/// CreateXorKey_Method1 (2.3.7.2): FILEPASS XORObfuscation.key.
+int xorObfuscationKey(String password) {
+  final pw = _xorPasswordBytes(password);
+  if (pw.isEmpty) return 0;
+  var key = _xorInitialCode[pw.length - 1];
+  var element = 0x68;
+  for (final c in pw.reversed) {
+    var ch = c;
+    for (var bit = 0; bit < 7; bit++) {
+      if (ch & 0x40 != 0) key ^= xorMatrix[element];
+      ch = (ch << 1) & 0xFF;
+      element--;
+    }
+  }
+  return key;
+}
+
+/// CreateXorArray_Method1 (2.3.7.2): the password, then the pad, each byte
+/// XOR the key's high byte (odd places) or low byte (even), rotated right.
+Uint8List _xorArray(Uint8List pw, int key) {
+  int xorRor(int a, int b) {
+    final x = (a ^ b) & 0xFF;
+    return ((x >> 1) | (x << 7)) & 0xFF;
+  }
+
+  final out = Uint8List(16);
+  for (var i = 0; i < 16; i++) {
+    final b = i < pw.length ? pw[i] : _xorPad[i - pw.length];
+    out[i] = xorRor(b, i.isOdd ? key >> 8 : key & 0xFF);
+  }
+  return out;
+}
+
+/// [book] with its records' data un-XORed: verify the password against
+/// FILEPASS's key and verifier, then, for every byte of record data at
+/// stream position p in a record of size n, DecryptData_Method1 (2.3.7.3)
+/// with XorArrayIndex = (p + n) mod 16: XOR, then rotate right 5. Record
+/// headers, the records [_plainRecords] lists and BOUNDSHEET's lbPlyPos are
+/// in the clear, as with RC4.
+Uint8List _xorDeobfuscate(Uint8List book, Uint8List fp, String password) {
+  if (fp.length < 6) throw const OfficeFormatException('FILEPASS');
+  final d = ByteData.sublistView(fp);
+  final pw = _xorPasswordBytes(password);
+  final key = xorObfuscationKey(password);
+  if (pw.isEmpty ||
+      d.getUint16(2, Endian.little) != key ||
+      d.getUint16(4, Endian.little) != xorPasswordVerifier(password)) {
+    throw const OfficeWrongPasswordException();
+  }
+  final xor = _xorArray(pw, key);
+  final plain = Uint8List.fromList(book);
+  for (final r in _records(book)) {
+    if (_plainRecords.contains(r.opcode)) continue;
+    final dataAt = r.offset + 4;
+    final from = r.opcode == 0x85 ? 4 : 0;
+    for (var i = from; i < r.data.length; i++) {
+      final p = dataAt + i;
+      final x = book[p] ^ xor[(p + r.size) & 0x0F];
+      plain[p] = ((x >> 5) | (x << 3)) & 0xFF;
+    }
+  }
   return plain;
 }
 
@@ -705,6 +1003,11 @@ class CompoundFile {
   }
 
   bool has(String name) => _entry(name) != null;
+
+  /// Whether a stream or storage named [name] (exact case) is anywhere in
+  /// the file.
+  bool hasEntry(String name) =>
+      _entries.any((e) => (e.type == 1 || e.type == 2) && e.name == name);
 
   /// The stream named [name] (any case), or null.
   Uint8List? stream(String name) {

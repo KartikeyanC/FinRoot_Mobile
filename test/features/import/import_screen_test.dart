@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:finroot_mobile/core/providers/providers.dart';
 import 'package:finroot_mobile/design/design.dart';
@@ -7,6 +8,7 @@ import 'package:finroot_mobile/domain/constants.dart';
 import 'package:finroot_mobile/features/import/data/import_gateway.dart';
 import 'package:finroot_mobile/features/import/data/pdf_text_reader.dart';
 import 'package:finroot_mobile/features/import/domain/import_rows.dart';
+import 'package:finroot_mobile/features/import/domain/office_crypto.dart';
 import 'package:finroot_mobile/features/import/domain/pdf_statement.dart';
 import 'package:finroot_mobile/features/import/presentation/import_screen.dart';
 import 'package:finroot_mobile/features/menus/application/menu_providers.dart';
@@ -160,6 +162,45 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(find.textContaining('is password-protected'), findsOneWidget);
+  });
+
+  testWidgets('an Excel file that is only protected (Excel\'s built-in '
+      'password) imports with no password asked', (tester) async {
+    final bytes = File('test/fixtures/import/statement_velvet.xls')
+        .readAsBytesSync();
+    await _pumpPdf(
+      tester,
+      (bytes, {password}) async => throw StateError('not a PDF'),
+      file: (name: 'hdfc-nov.xls', bytes: bytes),
+    );
+    expect(find.text('Password-protected Excel file'), findsNothing);
+    expect(find.text('hdfc-nov.xls'), findsOneWidget);
+    expect(find.text('NEFT CR-ACME PAYROLL'), findsOneWidget);
+    expect(find.text('Import 4 transactions'), findsOneWidget);
+  });
+
+  testWidgets('protection FinRoot can\'t open says what it is and the fix', (
+    tester,
+  ) async {
+    await _pumpPdf(
+      tester,
+      (bytes, {password}) async => throw StateError('not a PDF'),
+      file: (
+        name: 'hdfc-nov.xls',
+        bytes: compoundFileWith('\x09DRMContent', Uint8List(4096)),
+      ),
+    );
+    expect(find.text('Password-protected Excel file'), findsNothing);
+    expect(
+      find.textContaining(
+        'hdfc-nov.xls is protected with Information Rights Management',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('save a copy without the restriction or a password'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('cancelling the password, and a scanned PDF, explain why', (

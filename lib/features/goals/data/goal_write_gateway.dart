@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/error/error_mapper.dart';
+import '../../../core/error/failure.dart';
 import '../../../core/providers/providers.dart';
 import '../domain/goal_draft.dart';
 import '../domain/goal_history.dart';
@@ -38,6 +39,20 @@ abstract interface class GoalWriteGateway {
   /// The goal's contribution history, newest first (`goal_contributions`,
   /// shared with the web). [GoalHistory.missing] while the table is absent.
   Future<GoalHistory> history(String tenantId, String goalId, String currency);
+
+  /// Change a history entry (`goal_contribution_update`, migration
+  /// 20261126160000): the goal's saved amount moves by the difference in the
+  /// same locked call. [note] null or blank clears it; [date] null keeps it.
+  Future<GoalContribution> updateContribution(
+    String entryId,
+    double amount, {
+    String? note,
+    DateTime? date,
+  });
+
+  /// Delete a history entry (`goal_contribution_delete`); the goal's saved
+  /// amount moves back by its amount.
+  Future<GoalContribution> deleteContribution(String entryId);
 }
 
 class SupabaseGoalWriteGateway implements GoalWriteGateway {
@@ -170,6 +185,52 @@ class SupabaseGoalWriteGateway implements GoalWriteGateway {
     } on PostgrestException catch (e, stack) {
       if (isGoalHistoryMissingError(e.code, e.message)) {
         return const GoalHistory.missing();
+      }
+      throw mapError(e, stack);
+    } catch (error, stack) {
+      throw mapError(error, stack);
+    }
+  }
+
+  @override
+  Future<GoalContribution> updateContribution(
+    String entryId,
+    double amount, {
+    String? note,
+    DateTime? date,
+  }) => _historyEdit('goal_contribution_update', {
+    'p_id': entryId,
+    'p_amount': amount,
+    'p_note': cleanGoalNote(note),
+    // Noon local time, so the day never shifts across time zones (web).
+    'p_contributed_at': date == null
+        ? null
+        : DateTime(
+            date.year,
+            date.month,
+            date.day,
+            12,
+          ).toUtc().toIso8601String(),
+  });
+
+  @override
+  Future<GoalContribution> deleteContribution(String entryId) =>
+      _historyEdit('goal_contribution_delete', {'p_id': entryId});
+
+  Future<GoalContribution> _historyEdit(
+    String fn,
+    Map<String, dynamic> params,
+  ) async {
+    try {
+      return _result(await _client.rpc<dynamic>(fn, params: params));
+    } on PostgrestException catch (e, stack) {
+      if (isGoalHistoryEditMissingError(e.code, e.message)) {
+        throw ValidationFailure(kGoalHistoryEditMissingMessage, cause: e);
+      }
+      // P0002 (gone / not allowed) and 22023 (bad amount or date) carry a
+      // message written for the person.
+      if (e.code == 'P0002' || e.code == '22023') {
+        throw ValidationFailure(e.message, cause: e);
       }
       throw mapError(e, stack);
     } catch (error, stack) {

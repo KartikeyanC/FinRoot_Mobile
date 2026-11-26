@@ -2,36 +2,48 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure.dart';
+import '../../../core/money/currency.dart';
 import '../../../core/money/money_format.dart';
 import '../../../design/design.dart';
 import '../../split/domain/split_dues.dart';
+import '../../split/presentation/split_state_views.dart';
 import '../application/trips_providers.dart';
 import '../domain/trip.dart';
 import 'trip_detail_screen.dart';
 
+/// Log a new trip expense, or — with [editing] — change or delete one.
 Future<void> openTripExpenseSheet(
   BuildContext context,
   Trip trip,
-  Map<String, String> accountNames,
-) {
+  Map<String, String> accountNames, {
+  TripExpense? editing,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => TripExpenseSheet(trip: trip, accountNames: accountNames),
+    builder: (_) => TripExpenseSheet(
+      trip: trip,
+      accountNames: accountNames,
+      editing: editing,
+    ),
   );
 }
 
-/// Log a spend into the trip's jsonb sandbox (web TripWorkspace's form).
+/// A spend in the trip's jsonb sandbox (web TripWorkspace's form).
 class TripExpenseSheet extends ConsumerStatefulWidget {
   const TripExpenseSheet({
     super.key,
     required this.trip,
     required this.accountNames,
+    this.editing,
   });
 
   final Trip trip;
   final Map<String, String> accountNames;
+
+  /// The expense being edited; null = logging a new one.
+  final TripExpense? editing;
 
   @override
   ConsumerState<TripExpenseSheet> createState() => _TripExpenseSheetState();
@@ -48,15 +60,36 @@ class _TripExpenseSheetState extends ConsumerState<TripExpenseSheet> {
   bool _busy = false;
   String? _error;
 
+  bool get _isEdit => widget.editing != null;
+
   List<String> get _accounts {
     final ids = widget.trip.allocation.keys.toList();
     return ids.isEmpty ? const [kTripCashAccountId] : ids;
   }
 
+  bool get _payerIsFriend => widget.trip.isShared && _paidBy != kTripPayerYou;
+
   @override
   void initState() {
     super.initState();
     _accountId = _accounts.first;
+    final e = widget.editing;
+    if (e != null) {
+      _amount.text = e.amount == e.amount.roundToDouble()
+          ? e.amount.toStringAsFixed(0)
+          : e.amount.toString();
+      _note.text = e.note ?? '';
+      _category = kTripCategories.contains(e.category) ? e.category : 'Other';
+      if (_accounts.contains(e.accountId)) _accountId = e.accountId;
+      final trip = widget.trip;
+      if (trip.isShared && !e.paidByYou && trip.companions.contains(e.paidBy)) {
+        _paidBy = e.paidBy!;
+      }
+      _splitWith.addAll([
+        for (final n in e.splitWith ?? const <String>[])
+          if (trip.companions.contains(n) && n != e.paidBy) n,
+      ]);
+    }
   }
 
   @override
@@ -65,6 +98,9 @@ class _TripExpenseSheetState extends ConsumerState<TripExpenseSheet> {
     _note.dispose();
     super.dispose();
   }
+
+  String _money(double n) =>
+      MoneyFormat.money(n, currency: widget.trip.currency);
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -75,32 +111,105 @@ class _TripExpenseSheetState extends ConsumerState<TripExpenseSheet> {
       _busy = true;
       _error = null;
     });
-    final expense = newTripExpense(
-      trip: widget.trip,
-      amount: amount,
-      accountId: _accountId,
-      category: _category,
-      splitWith: List.of(_splitWith),
-      paidBy: _paidBy,
-      note: _note.text,
-    );
+    final trip = widget.trip;
+    final original = widget.editing;
+    final expense = original == null
+        ? newTripExpense(
+            trip: trip,
+            amount: amount,
+            accountId: _accountId,
+            category: _category,
+            splitWith: List.of(_splitWith),
+            paidBy: _paidBy,
+            note: _note.text,
+          )
+        : editedTripExpense(
+            trip: trip,
+            original: original,
+            amount: amount,
+            accountId: _accountId,
+            category: _category,
+            splitWith: List.of(_splitWith),
+            paidBy: _paidBy,
+            note: _note.text,
+          );
     try {
-      await ref
-          .read(tripsControllerProvider)
-          .addExpense(widget.trip.id, expense);
+      final c = ref.read(tripsControllerProvider);
+      if (original == null) {
+        await c.addExpense(trip.id, expense);
+      } else {
+        await c.updateExpense(trip.id, expense);
+      }
       navigator.pop();
-      final rem = TripTotals.of(widget.trip).remainingByAccount[_accountId];
+      // The pool after this save; an edited expense's old amount comes back.
+      final back =
+          original != null &&
+              original.paidByYou &&
+              original.accountId == _accountId
+          ? original.amount
+          : 0.0;
+      final rem = TripTotals.of(trip).remainingByAccount[_accountId];
+      final negative =
+          !_payerIsFriend && rem != null && rem + back - amount < 0;
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            rem != null && rem - amount < 0
-                ? '${MoneyFormat.money(amount)} logged — '
+            original != null
+                ? 'Expense updated · ${_money(amount)}'
+                : negative
+                ? '${_money(amount)} logged — '
                       '${tripAccountName(_accountId, widget.accountNames)} '
                       'pool is now negative'
-                : '${MoneyFormat.money(amount)} logged',
+                : _payerIsFriend
+                ? '${_money(amount)} logged · paid by $_paidBy'
+                : '${_money(amount)} logged',
           ),
         ),
       );
+    } on Failure catch (f) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = f.message;
+      });
+    }
+  }
+
+  Future<void> _delete() async {
+    final e = widget.editing!;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this expense?'),
+        content: Text(
+          '${_money(e.amount)} · ${e.category} comes off the trip. '
+          'Settle-up changes with it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(tripsControllerProvider)
+          .removeExpense(widget.trip.id, e.id);
+      navigator.pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Expense deleted')));
     } on Failure catch (f) {
       if (!mounted) return;
       setState(() {
@@ -114,6 +223,7 @@ class _TripExpenseSheetState extends ConsumerState<TripExpenseSheet> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final trip = widget.trip;
+    final symbol = currencySymbol(trip.currency);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SingleChildScrollView(
@@ -125,20 +235,20 @@ class _TripExpenseSheetState extends ConsumerState<TripExpenseSheet> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Add trip expense',
+                _isEdit ? 'Edit trip expense' : 'Add trip expense',
                 style: AppTypography.title.copyWith(color: palette.ink),
               ),
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
                 key: const Key('trip-expense-amount'),
                 controller: _amount,
-                autofocus: true,
+                autofocus: !_isEdit,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Amount',
-                  prefixText: '₹ ',
+                  prefixText: symbol.isEmpty ? '${trip.currency} ' : '$symbol ',
                 ),
                 validator: (v) {
                   final n = double.tryParse(
@@ -162,24 +272,6 @@ class _TripExpenseSheetState extends ConsumerState<TripExpenseSheet> {
                     ),
                 ],
               ),
-              const SizedBox(height: AppSpacing.md),
-              DropdownButtonFormField<String>(
-                initialValue: _accountId,
-                decoration: const InputDecoration(labelText: 'Paid from'),
-                items: [
-                  for (final id in _accounts)
-                    DropdownMenuItem(
-                      value: id,
-                      child: Text(tripAccountName(id, widget.accountNames)),
-                    ),
-                ],
-                onChanged: (v) => setState(() => _accountId = v ?? _accountId),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextFormField(
-                controller: _note,
-                decoration: const InputDecoration(labelText: 'Note (optional)'),
-              ),
               if (trip.isShared) ...[
                 const SizedBox(height: AppSpacing.md),
                 DropdownButtonFormField<String>(
@@ -198,6 +290,32 @@ class _TripExpenseSheetState extends ConsumerState<TripExpenseSheet> {
                       setState(() => _paidBy = v ?? kTripPayerYou),
                 ),
               ],
+              const SizedBox(height: AppSpacing.md),
+              if (_payerIsFriend)
+                InlineNote(
+                  '$_paidBy paid — nothing is taken from your trip pool.',
+                  icon: Icons.info_outline,
+                )
+              else
+                DropdownButtonFormField<String>(
+                  initialValue: _accountId,
+                  decoration: const InputDecoration(labelText: 'Paid from'),
+                  items: [
+                    for (final id in _accounts)
+                      DropdownMenuItem(
+                        value: id,
+                        child: Text(tripAccountName(id, widget.accountNames)),
+                      ),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _accountId = v ?? _accountId),
+                ),
+              const SizedBox(height: AppSpacing.md),
+              TextFormField(
+                key: const Key('trip-expense-note'),
+                controller: _note,
+                decoration: const InputDecoration(labelText: 'Note (optional)'),
+              ),
               if (!trip.isSolo && trip.companions.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.md),
                 Text(
@@ -242,11 +360,27 @@ class _TripExpenseSheetState extends ConsumerState<TripExpenseSheet> {
               ],
               const SizedBox(height: AppSpacing.xl),
               PillButton(
-                label: _busy ? 'Saving…' : 'Log expense',
+                label: _busy
+                    ? 'Saving…'
+                    : _isEdit
+                    ? 'Save changes'
+                    : 'Log expense',
                 icon: Icons.check_rounded,
                 expand: true,
                 onPressed: _busy ? null : _submit,
               ),
+              if (_isEdit) ...[
+                const SizedBox(height: AppSpacing.sm),
+                TextButton.icon(
+                  key: const Key('trip-expense-delete'),
+                  onPressed: _busy ? null : _delete,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Delete expense'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
