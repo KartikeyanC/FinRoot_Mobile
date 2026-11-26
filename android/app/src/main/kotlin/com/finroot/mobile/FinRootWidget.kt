@@ -27,7 +27,9 @@ import java.util.concurrent.TimeUnit
  * last month's budget is hidden, so the widget is right on a new morning
  * before the app is opened; the hourly update (finroot_widget_info.xml) is
  * what re-draws it then. Made short (2 rows), it keeps the spend and the
- * buttons and leaves the budget and bill lines out.
+ * buttons and leaves the budget and bill lines out. Made narrow (2 columns,
+ * down to 2×2), it switches to finroot_widget_compact: the two figures
+ * stacked and the buttons as icons without labels.
  */
 class FinRootWidget : AppWidgetProvider() {
 
@@ -59,7 +61,17 @@ class FinRootWidget : AppWidgetProvider() {
 
         private fun views(context: Context, manager: AppWidgetManager, id: Int): RemoteViews {
             val f = HomeWidgetStore.read(context)
-            val v = RemoteViews(context.packageName, R.layout.finroot_widget)
+            val options = manager.getAppWidgetOptions(id)
+
+            // Two columns wide: the spend stacked and the buttons as icons.
+            // MIN_WIDTH is the portrait (narrowest) width; 0 means not known yet.
+            val narrow = options
+                ?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
+                .let { it != null && it in 1 until WIDE_DP }
+            val v = RemoteViews(
+                context.packageName,
+                if (narrow) R.layout.finroot_widget_compact else R.layout.finroot_widget,
+            )
 
             val now = Date()
             val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
@@ -75,7 +87,7 @@ class FinRootWidget : AppWidgetProvider() {
             v.setTextViewText(R.id.widget_month, spent)
 
             // Two rows tall leaves room for the spend and the buttons only.
-            val tall = manager.getAppWidgetOptions(id)
+            val tall = options
                 ?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
                 .let { it == null || it == 0 || it >= TALL_DP }
 
@@ -159,6 +171,13 @@ class FinRootWidget : AppWidgetProvider() {
 
         /** Below this height (dp) the widget is two rows: spend and buttons only. */
         private const val TALL_DP = 170
+
+        /**
+         * Below this width (dp) the widget is two columns and uses
+         * finroot_widget_compact. 180 is the narrowest the full layout was
+         * ever allowed (the old minResizeWidth), so it is known to fit there.
+         */
+        private const val WIDE_DP = 180
         private const val DASH = "—"
         private const val MASK = "₹ ••••"
     }
