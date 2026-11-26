@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/device/device_prefs.dart';
 import '../../../core/providers/providers.dart';
 import '../../../design/design.dart';
+import '../../app_lock/app_lock_settings.dart';
 import '../../auth/application/sign_out.dart';
 import '../../home/presentation/home_layout_screen.dart';
 import '../../more/presentation/workspace_row.dart';
@@ -12,9 +13,8 @@ import '../../profile/profile_providers.dart';
 
 /// Settings — profile, workspace, appearance, sign-out.
 ///
-/// App lock (PIN / biometric) is a later phase, not M3 — it is a device
-/// curtain over the screen, not access control (web ADR-0007), and worth
-/// building on its own.
+/// App lock (`features/app_lock`) is a device curtain over the screen, not
+/// access control (web ADR-0007).
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -96,6 +96,9 @@ class SettingsScreen extends ConsumerWidget {
             chevron: true,
             onTap: () => context.push(HomeLayoutScreen.route),
           ),
+
+          const SectionTitle('App lock'),
+          const AppLockSettingsCard(),
 
           const SectionTitle('Account'),
           ListRow(

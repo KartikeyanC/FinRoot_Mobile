@@ -5,25 +5,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/logging/app_logger.dart';
 import '../../../core/providers/providers.dart';
+import '../../insurance/insurance.dart';
 import '../../recurring/application/recurring_providers.dart';
 import '../../recurring/domain/recurring_item.dart';
 import '../../recurring/domain/reminder_setting.dart';
 import '../../reminders/application/reminders_providers.dart';
 import '../../reminders/domain/reminder.dart';
+import '../../subscriptions/subscriptions.dart';
 import '../data/notification_service.dart';
+import '../domain/due_notifications.dart';
 import '../domain/planned_notification.dart';
 
 /// Keeps the OS's scheduled notifications in step with recurring items, their
-/// bell settings and standalone reminders.
+/// bell settings, standalone reminders, tracked-subscription renewals and
+/// insurance premium due dates.
 ///
 /// Recomputes (debounced) whenever any of those change, and on app resume.
 /// Clears everything on sign-out. Kept alive by `NotificationScope` near the
 /// root, mirroring `SyncScope`.
 final notificationCoordinatorProvider =
     NotifierProvider<NotificationCoordinator, void>(
-  NotificationCoordinator.new,
-  name: 'notificationCoordinator',
-);
+      NotificationCoordinator.new,
+      name: 'notificationCoordinator',
+    );
 
 class NotificationCoordinator extends Notifier<void> {
   final _log = AppLog.of('notifications.coordinator');
@@ -42,6 +46,11 @@ class NotificationCoordinator extends Notifier<void> {
     ref.listen(recurringItemsProvider, (_, _) => _schedule('recurring'));
     ref.listen(recurringRemindersProvider, (_, _) => _schedule('bells'));
     ref.listen(remindersProvider, (_, _) => _schedule('reminders'));
+    ref.listen(
+      trackedSubscriptionsProvider,
+      (_, _) => _schedule('subscriptions'),
+    );
+    ref.listen(insuranceProvider, (_, _) => _schedule('insurance'));
 
     ref.listen(isSignedInProvider, (_, signedIn) {
       if (!signedIn) {
@@ -63,14 +72,24 @@ class NotificationCoordinator extends Notifier<void> {
 
     final items =
         ref.read(recurringItemsProvider).value ?? const <RecurringItem>[];
-    final bells = ref.read(recurringRemindersProvider).value ??
+    final bells =
+        ref.read(recurringRemindersProvider).value ??
         const <String, ReminderSetting>{};
-    final reminders =
-        ref.read(remindersProvider).value ?? const <Reminder>[];
+    final reminders = ref.read(remindersProvider).value ?? const <Reminder>[];
+    final subscriptions =
+        ref.read(trackedSubscriptionsProvider).value ??
+        const <TrackedSubscription>[];
+    final policies =
+        ref.read(insuranceProvider).value ?? const <InsurancePolicy>[];
 
     // Nothing to schedule and nothing pending → skip the platform round-trip.
     final anyBell = bells.values.any((s) => s.enabled);
-    if (items.isEmpty && !anyBell && reminders.isEmpty && !_initialised) {
+    if (items.isEmpty &&
+        !anyBell &&
+        reminders.isEmpty &&
+        subscriptions.isEmpty &&
+        policies.isEmpty &&
+        !_initialised) {
       return;
     }
 
@@ -81,11 +100,14 @@ class NotificationCoordinator extends Notifier<void> {
       _initialised = true;
     }
 
-    final plan = planNotifications(
-      recurringItems: items,
-      reminderSettings: bells,
-      reminders: reminders,
-    );
+    final plan = [
+      ...planNotifications(
+        recurringItems: items,
+        reminderSettings: bells,
+        reminders: reminders,
+      ),
+      ...planDueNotifications(subscriptions: subscriptions, policies: policies),
+    ]..sort((a, b) => a.fireAt.compareTo(b.fireAt));
     _log.info('reconcile ($reason): ${plan.length} scheduled');
     await service.reconcile(plan);
   }

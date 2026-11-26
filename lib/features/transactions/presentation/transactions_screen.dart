@@ -16,13 +16,15 @@ import '../../sync/application/sync_engine.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/transactions_providers.dart';
 import '../domain/day_group.dart';
+import '../domain/ledger_range.dart';
 import '../domain/transaction.dart';
 import 'transaction_detail_sheet.dart';
+import 'widgets/ledger_filters.dart';
 import 'widgets/transaction_tile.dart';
 import 'widgets/txn_words.dart';
 
 /// The transactions ledger (M8) — grouped by day, filterable by type, text
-/// search, and (from an account) by account. Reads the local cache; pull to
+/// search, date range, category and (from an account) by account. Reads the local cache; pull to
 /// refresh forces a sync. Tap a row for detail / edit / delete; long-press to
 /// tick several and delete them together. Flat rows from ledger_kit, the
 /// same layout as Investments.
@@ -106,6 +108,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     onSelected: (type) =>
                         ref.read(ledgerFilterProvider.notifier).setType(type),
                   ),
+                  const SizedBox(height: AppSpacing.sm),
+                  const LedgerFilterBar(),
                 ],
               ),
       ),
@@ -303,6 +307,9 @@ class _LedgerList extends ConsumerWidget {
     }
     final net = (income - expense).toDouble();
     const gutter = EdgeInsets.symmetric(horizontal: AppSpacing.screenGutter);
+    final range = filter.range;
+    final pastCache =
+        range != null && startsBeforeCache(range.from, DateTime.now());
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -312,6 +319,11 @@ class _LedgerList extends ConsumerWidget {
           Padding(
             padding: gutter.copyWith(bottom: AppSpacing.md),
             child: _AccountFilterBanner(accountId: filter.accountId!),
+          ),
+        if (pastCache)
+          Padding(
+            padding: gutter.copyWith(bottom: AppSpacing.md),
+            child: const LedgerCacheNotice(),
           ),
         if (txns.isEmpty)
           Padding(

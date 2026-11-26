@@ -63,6 +63,19 @@ class TransactionsRepository {
     );
   }
 
+  /// Ids deleted on this phone whose delete hasn't reached the server yet —
+  /// an export read from the server must leave them out.
+  Future<Set<String>> pendingDeleteIds(String tenantId) async {
+    final rows = await (_db.select(_db.localTransactions)
+          ..where(
+            (t) =>
+                t.tenantId.equals(tenantId) &
+                t.syncStatus.equalsValue(LocalSyncStatus.pendingDelete),
+          ))
+        .get();
+    return {for (final r in rows) r.id};
+  }
+
   /// One transaction by id, live. Null once it is gone (a confirmed delete).
   Stream<TransactionEntity?> watchById(String id) {
     final query = _db.select(_db.localTransactions)
@@ -75,14 +88,18 @@ class TransactionsRepository {
 
   /// The ledger (M8): all cached transactions for [tenantId], newest first,
   /// optionally narrowed by [type], a text [search] over note + category, and
-  /// an [accountId] (either side of a transfer). Capped at [limit] — the cache
-  /// itself is bounded to ~180 days (M5 `DeltaPuller`).
+  /// an [accountId] (either side of a transfer), an `occurred_at` window
+  /// `[from, toExclusive)` and a set of [categories] (any of them). Capped at
+  /// [limit] — the cache itself is bounded to ~180 days (M5 `DeltaPuller`).
   Stream<List<TransactionEntity>> watchLedger(
     String tenantId, {
     TxnType? type,
     String? search,
     String? accountId,
     String? trackerId,
+    DateTime? from,
+    DateTime? toExclusive,
+    Iterable<String>? categories,
     int limit = 300,
   }) {
     final q = search?.trim().toLowerCase();
@@ -102,6 +119,15 @@ class TransactionsRepository {
         if (trackerId != null) {
           cond = cond & t.trackerId.equals(trackerId);
         }
+        if (from != null) {
+          cond = cond & t.occurredAt.isBiggerOrEqualValue(from);
+        }
+        if (toExclusive != null) {
+          cond = cond & t.occurredAt.isSmallerThanValue(toExclusive);
+        }
+        if (categories != null && categories.isNotEmpty) {
+          cond = cond & t.category.isIn(categories);
+        }
         if (q != null && q.isNotEmpty) {
           final like = '%$q%';
           cond = cond &
@@ -117,6 +143,27 @@ class TransactionsRepository {
       ..limit(limit);
     return query.watch().map(
       (rows) => rows.map(_toEntity).toList(growable: false),
+    );
+  }
+
+  /// The distinct categories the cache holds for [tenantId], A–Z — the
+  /// ledger's category filter offers these. Pending deletes are left out.
+  Stream<List<String>> watchCategories(String tenantId) {
+    final category = _db.localTransactions.category;
+    final query = _db.selectOnly(_db.localTransactions, distinct: true)
+      ..addColumns([category])
+      ..where(
+        _db.localTransactions.tenantId.equals(tenantId) &
+            _db.localTransactions.syncStatus
+                .equalsValue(LocalSyncStatus.pendingDelete)
+                .not(),
+      )
+      ..orderBy([OrderingTerm.asc(category)]);
+    return query.watch().map(
+      (rows) => [
+        for (final r in rows)
+          if (r.read(category) case final c? when c.trim().isNotEmpty) c,
+      ],
     );
   }
 

@@ -22,7 +22,9 @@ import '../../sync/application/sync_engine.dart';
 import '../../transactions/presentation/widgets/category_style.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../data/import_gateway.dart';
+import '../data/pdf_text_reader.dart';
 import '../domain/import_rows.dart';
+import '../domain/pdf_statement.dart';
 
 /// A picked file: its name and bytes. Overridden in tests.
 typedef ImportFile = ({String name, List<int> bytes});
@@ -37,13 +39,19 @@ final importFilePickerProvider = Provider<ImportFilePicker>(
     final android = Platform.isAndroid;
     final f = await FilePicker.pickFile(
       type: android ? FileType.any : FileType.custom,
-      allowedExtensions: android ? null : const ['csv', 'xlsx'],
-      dialogTitle: 'Choose a CSV or Excel file',
+      allowedExtensions: android ? null : const ['csv', 'xlsx', 'xls', 'pdf'],
+      dialogTitle: 'Choose a CSV, Excel or PDF statement',
     );
     if (f == null) return null;
     return (name: f.name, bytes: await f.xFile.readAsBytes());
   },
   name: 'importFilePicker',
+);
+
+/// Reads a PDF's words with positions. Overridden in tests.
+final importPdfReaderProvider = Provider<PdfWordReader>(
+  (ref) => readPdfWords,
+  name: 'importPdfReader',
 );
 
 /// Pulls the imported rows into the local ledger. Overridden in tests.
@@ -104,23 +112,30 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     final f = await ref.read(importFilePickerProvider)();
     if (f == null || !mounted) return;
     final lower = f.name.toLowerCase();
-    final unsupported = lower.endsWith('.xls')
-        ? 'Old Excel (.xls) files can\'t be read. Open it and save it as '
-              '.xlsx or CSV, then try again.'
-        : lower.endsWith('.pdf')
-        ? 'PDF statements can\'t be read on the phone yet. Download the '
-              'statement as Excel or CSV from your bank instead.'
-        : !(lower.endsWith('.csv') || lower.endsWith('.xlsx'))
-        ? 'Choose a .csv or .xlsx file.'
-        : null;
-    if (unsupported != null) {
-      setState(() => _error = unsupported);
+    final kind = const [
+      '.csv',
+      '.xlsx',
+      '.xls',
+      '.pdf',
+    ].where(lower.endsWith).firstOrNull;
+    if (kind == null) {
+      setState(() => _error = 'Choose a .csv, .xlsx, .xls or .pdf file.');
       return;
     }
     try {
-      final table = lower.endsWith('.xlsx')
-          ? xlsxTable(f.bytes)
-          : csvTable(f.bytes);
+      final List<List<Object?>> table;
+      switch (kind) {
+        case '.pdf':
+          final t = await _pdfTable(f);
+          if (t == null || !mounted) return;
+          table = t;
+        case '.xlsx':
+          table = xlsxTable(f.bytes);
+        case '.xls':
+          table = xlsTable(f.bytes);
+        default:
+          table = csvTable(f.bytes);
+      }
       final parsed = parseImportTable(table);
       final d = dedupeInFile(parsed.rows);
       _show(
@@ -136,6 +151,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 'counted once',
         ].join(' · '),
       );
+    } on ProtectedSpreadsheetException {
+      setState(
+        () => _error =
+            '${f.name} is password-protected. Open it in Excel, remove the '
+            'password or save it as CSV, then try again.',
+      );
     } on Object {
       setState(
         () => _error =
@@ -143,6 +164,69 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       );
     }
   }
+
+  /// A PDF statement's table, asking for its password when it has one.
+  /// Null when the PDF can't be read (the reason is shown).
+  Future<List<List<Object?>>?> _pdfTable(ImportFile f) async {
+    final read = ref.read(importPdfReaderProvider);
+    String? password;
+    while (true) {
+      try {
+        final words = await read(f.bytes, password: password);
+        final table = pdfStatementTable(pdfLines(words));
+        if (table.isEmpty && mounted) {
+          setState(
+            () => _error =
+                'Couldn\'t find a transactions table in ${f.name}. Download '
+                'the statement as Excel or CSV from your bank instead.',
+          );
+          return null;
+        }
+        return table;
+      } on PdfReadException catch (e) {
+        if (!mounted) return null;
+        switch (e.problem) {
+          case PdfReadProblem.needsPassword:
+          case PdfReadProblem.wrongPassword:
+            password = await _askPdfPassword(
+              f.name,
+              wrong: e.problem == PdfReadProblem.wrongPassword,
+            );
+            if (password == null) {
+              if (mounted) {
+                setState(
+                  () => _error =
+                      '${f.name} is password-protected. Choose it again and '
+                      'enter its password to import it.',
+                );
+              }
+              return null;
+            }
+          case PdfReadProblem.noText:
+            setState(
+              () => _error =
+                  '${f.name} is a scanned image, so there is no text to '
+                  'read. Download the statement as Excel or CSV from your '
+                  'bank instead.',
+            );
+            return null;
+          case PdfReadProblem.unreadable:
+            setState(
+              () => _error =
+                  'Couldn\'t open ${f.name} as a PDF. Download the statement '
+                  'as Excel or CSV from your bank instead.',
+            );
+            return null;
+        }
+      }
+    }
+  }
+
+  Future<String?> _askPdfPassword(String name, {required bool wrong}) =>
+      showDialog<String>(
+        context: context,
+        builder: (_) => _PdfPasswordDialog(name: name, wrong: wrong),
+      );
 
   void _readSms() {
     FocusScope.of(context).unfocus();
@@ -347,9 +431,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                     icon: Icons.table_chart_outlined,
                     title: 'From a file',
                     body:
-                        'A CSV or Excel (.xlsx) file: the FinRoot template, or '
-                        'a bank statement with Date, Narration and Debit / '
-                        'Credit columns.',
+                        'A CSV, Excel (.xlsx or .xls) or PDF file: the FinRoot '
+                        'template, or a bank statement with Date, Narration '
+                        'and Debit / Credit columns. Scanned PDFs can\'t be '
+                        'read.',
                     actions: [
                       PillButton(
                         key: const ValueKey('import-pick-file'),
@@ -661,4 +746,82 @@ class _Banner extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Asks for a protected PDF's password; pops it, or null on Cancel.
+class _PdfPasswordDialog extends StatefulWidget {
+  const _PdfPasswordDialog({required this.name, required this.wrong});
+  final String name;
+  final bool wrong;
+
+  @override
+  State<_PdfPasswordDialog> createState() => _PdfPasswordDialogState();
+}
+
+class _PdfPasswordDialogState extends State<_PdfPasswordDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final p = _controller.text;
+    if (p.isNotEmpty) Navigator.of(context).pop(p);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.name;
+    final wrong = widget.wrong;
+    return AlertDialog(
+      title: const Text('Password-protected PDF'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            wrong
+                ? 'That password didn\'t open $name. Check it and try again.'
+                : '$name needs a password. Banks usually build it from your '
+                      'details, such as your date of birth, PAN, customer ID '
+                      'or the first letters of your name. The email with the '
+                      'statement says which.',
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            key: const ValueKey('import-pdf-password'),
+            controller: _controller,
+            autofocus: true,
+            obscureText: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: 'PDF password',
+              errorText: wrong ? 'Wrong password' : null,
+            ),
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Used only to open the file on this phone. It isn\'t saved.',
+            style: AppTypography.label.copyWith(color: context.palette.muted),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          key: const ValueKey('import-pdf-password-open'),
+          onPressed: _submit,
+          child: const Text('Open'),
+        ),
+      ],
+    );
+  }
 }

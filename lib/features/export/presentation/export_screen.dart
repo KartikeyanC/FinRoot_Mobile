@@ -5,14 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/error/failure.dart';
 import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../accounts/application/accounts_providers.dart';
 import '../../accounts/presentation/wealth_kit.dart' show FieldLabel;
 import '../../menus/application/menu_providers.dart';
 import '../../menus/presentation/menu_locked_view.dart';
-import '../../transactions/data/transactions_repository.dart';
+import '../../transactions/domain/ledger_range.dart';
 import '../../workspace/application/workspace_providers.dart';
+import '../application/export_loader.dart';
 import '../domain/csv_export.dart';
 
 /// Hands a finished CSV to the system share sheet. A provider so tests can swap
@@ -71,26 +73,35 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   bool _busy = false;
   String? _error;
 
+  /// Set after an offline export of a range the phone only partly holds.
+  String? _notice;
+
+  static const phoneOnlyNotice =
+      "You're offline, so this file covers only what's on the phone "
+      "(about the last 180 days). Export again when you're online for the "
+      'full history.';
+
   Future<void> _export() async {
     final tenantId = ref.read(currentTenantIdProvider);
     if (tenantId == null) return;
     setState(() {
       _busy = true;
       _error = null;
+      _notice = null;
     });
     try {
       final (from, to) = _range.window(DateTime.now());
-      final rows = await ref
-          .read(transactionsRepositoryProvider)
-          .watchBetween(tenantId, from: from, toExclusive: to)
-          .first;
-      final filtered = filterByType(rows, _type);
+      final loaded = await ref
+          .read(exportLoaderProvider)
+          .load(tenantId, from: from, toExclusive: to);
+      if (!mounted) return;
+      if (loaded.phoneOnly) setState(() => _notice = phoneOnlyNotice);
+      final filtered = filterByType(loaded.rows, _type);
       if (filtered.isEmpty) {
         setState(() => _error = 'No transactions match this choice.');
         return;
       }
-      final accounts =
-          ref.read(workspaceAccountsProvider).value ?? const [];
+      final accounts = ref.read(workspaceAccountsProvider).value ?? const [];
       final csv = transactionsToCsv(
         filtered,
         accountNames: {for (final a in accounts) a.id: a.name},
@@ -101,6 +112,8 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
           '${stamp.month.toString().padLeft(2, '0')}'
           '${stamp.day.toString().padLeft(2, '0')}.csv';
       await ref.read(csvSharerProvider)(name, csv);
+    } on Failure catch (f) {
+      if (mounted) setState(() => _error = f.message);
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Couldn\'t create the file. Try again.');
@@ -123,6 +136,10 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       );
     }
     final palette = context.palette;
+    final fromServer = startsBeforeCache(
+      _range.window(DateTime.now()).$1,
+      DateTime.now(),
+    );
     return AppPage(
       title: 'Export',
       subtitle: 'Download your transactions as a CSV file',
@@ -145,8 +162,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   selected: _range,
                   onSelected: (r) => setState(() => _range = r),
                   options: [
-                    for (final r in ExportRange.values)
-                      FilterPill(r, r.label),
+                    for (final r in ExportRange.values) FilterPill(r, r.label),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -167,6 +183,24 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   'and account for every matching transaction.',
                   style: AppTypography.body.copyWith(color: palette.muted),
                 ),
+                if (fromServer) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    "This period is older than the phone keeps, so it's read "
+                    'from your FinRoot account — needs a connection.',
+                    style: AppTypography.body.copyWith(color: palette.muted),
+                  ),
+                ],
+                if (_notice != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    _notice!,
+                    key: const ValueKey('export-phone-only'),
+                    style: AppTypography.bodyStrong.copyWith(
+                      color: palette.ink,
+                    ),
+                  ),
+                ],
                 if (_error != null) ...[
                   const SizedBox(height: AppSpacing.md),
                   Text(

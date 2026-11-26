@@ -104,7 +104,17 @@ dependencies:
   http: ^1.6.0
   file_picker: ^13.4.1
   csv: ^8.0.0
-  excel: ^4.0.6
+  # Import: .xlsx and legacy .xls (BIFF8) statements. MIT, pure Dart; the
+  # maintained successor of `excel` (unmaintained since 2024, .xlsx only,
+  # and stuck on archive 3, which pdfrx can't share).
+  excel_plus: ^2.29.3
+  # Import: PDF bank statements (text with positions, password-protected
+  # files). PDFium (BSD-3) via pdfrx (MIT); its build hook fetches the PDFium
+  # binary for each ABI from bblanchon/pdfium-binaries at build time.
+  # Held below 2.6: from 2.6 its pdfium_dart compiles a C shim with the host
+  # toolchain, which breaks `flutter test` on Windows in a folder with a space
+  # in its path ("Finroot new"); 2.4.5 and older don't compile on Dart 3.13.
+  pdfrx: ">=2.5.0 <2.6.0"
 
   # --- Added in later phases (kept here as the intended dependency map) ---
   # M15 AI insights:   (shared Edge Function, likely)

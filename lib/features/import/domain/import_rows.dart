@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:csv/csv.dart';
 import 'package:decimal/decimal.dart';
-import 'package:excel/excel.dart';
+import 'package:excel_plus/excel_plus.dart';
 
 import '../../../domain/constants.dart';
+import 'sheet_text.dart';
 
 /// Import, the phone half of the web's `TransactionImporter` (expenses /
 /// income from a CSV or Excel file). Pure Dart so it is unit-tested on its
@@ -124,6 +125,71 @@ String normaliseHeader(String raw) => raw
 
 bool _headerIs(String header, String name) =>
     header == name || header == '${name}s' || header.startsWith('$name ');
+
+/// What a header cell means to the importer, or null for a column it
+/// ignores (balance, cheque number).
+enum ImportColumn {
+  date,
+  amount,
+  debit,
+  credit,
+  type,
+  category,
+  desc,
+  currency,
+}
+
+ImportColumn? importColumnOf(String rawHeader) {
+  final h = normaliseHeader(rawHeader);
+  bool any(List<String> names) => names.any((n) => _headerIs(h, n));
+  if (any(_dateCols)) return ImportColumn.date;
+  if (any(_amountCols)) return ImportColumn.amount;
+  if (any(_debitCols)) return ImportColumn.debit;
+  if (any(_creditCols)) return ImportColumn.credit;
+  if (any(_typeCols)) return ImportColumn.type;
+  if (any(_categoryCols)) return ImportColumn.category;
+  if (any(_descCols)) return ImportColumn.desc;
+  if (any(_currencyCols)) return ImportColumn.currency;
+  return null;
+}
+
+/// Whether a header cell is one known column name, maybe with a unit word
+/// after it ("Withdrawal Amt.", "Debit Amount"), and not a name followed by
+/// another column's ("Date Narration") — used to tell apart header words
+/// printed close together in a PDF.
+bool isExactImportHeader(String raw) {
+  const units = {'amt', 'amount', 'amounts', 'dt', 'date', 'no', 'details'};
+  final h = normaliseHeader(raw);
+  if (h.isEmpty) return false;
+  for (final names in const [
+    _dateCols,
+    _amountCols,
+    _debitCols,
+    _creditCols,
+    _typeCols,
+    _categoryCols,
+    _descCols,
+    _currencyCols,
+  ]) {
+    for (final n in names) {
+      if (h == n || h == '${n}s') return true;
+      if (h.startsWith('$n ') && units.contains(h.substring(n.length + 1))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Whether a row of header cells names a date and an amount, debit or
+/// credit column — what [parseImportTable] needs to call it the header.
+bool isImportHeader(Iterable<String> cells) {
+  final kinds = {for (final c in cells) importColumnOf(c)};
+  return kinds.contains(ImportColumn.date) &&
+      (kinds.contains(ImportColumn.amount) ||
+          kinds.contains(ImportColumn.debit) ||
+          kinds.contains(ImportColumn.credit));
+}
 
 /// Web `EXPENSE_CATEGORY_ALIASES` (`src/lib/importParsers.ts`).
 const _expenseAliases = {
@@ -409,16 +475,60 @@ List<List<Object?>> csvTable(List<int> bytes) {
   return [for (final List<dynamic> r in Csv().decode(text)) r.cast<Object?>()];
 }
 
-/// The first non-empty sheet of an .xlsx file.
+/// A workbook that is password-protected, so its cells can't be read.
+class ProtectedSpreadsheetException implements Exception {
+  const ProtectedSpreadsheetException();
+}
+
+/// A spreadsheet cell as a plain value; a formula gives the result Excel
+/// saved with it.
+Object? _plainCell(CellValue? v) => switch (v) {
+  null => null,
+  TextCellValue() => v.value.toString(),
+  IntCellValue() => v.value,
+  DoubleCellValue() => v.value,
+  DateCellValue() => DateTime(v.year, v.month, v.day),
+  DateTimeCellValue() => DateTime(v.year, v.month, v.day),
+  BoolCellValue() => v.value,
+  FormulaCellValue(:final cachedValue) =>
+    cachedValue == null ? null : (num.tryParse(cachedValue) ?? cachedValue),
+  CellErrorValue() => null,
+  _ => v.toString(),
+};
+
+/// The first non-empty sheet of an Excel file: .xlsx, or a legacy
+/// Excel 97–2003 .xls (BIFF8).
 List<List<Object?>> xlsxTable(List<int> bytes) {
-  final book = Excel.decodeBytes(bytes);
+  final Excel book;
+  try {
+    book = Excel.decodeBytes(bytes);
+  } on ExcelException catch (e) {
+    if ('$e'.toLowerCase().contains('password')) {
+      throw const ProtectedSpreadsheetException();
+    }
+    rethrow;
+  }
   for (final sheet in book.tables.values) {
     final rows = [
-      for (final r in sheet.rows) [for (final c in r) c?.value],
+      for (final r in sheet.rows) [for (final c in r) _plainCell(c?.value)],
     ];
     if (rows.any((r) => r.any((c) => c != null))) return rows;
   }
   return const [];
+}
+
+/// An `.xls` file: a real Excel 97–2003 workbook, or what banks often send
+/// under that name instead — an .xlsx, an HTML table or tab-separated text.
+List<List<Object?>> xlsTable(List<int> bytes) {
+  const ole2 = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+  bool startsWith(List<int> sig) =>
+      bytes.length >= sig.length &&
+      [for (var i = 0; i < sig.length; i++) bytes[i] == sig[i]].every((b) => b);
+  // A compound file (real .xls) or a zip ("PK", really .xlsx).
+  if (startsWith(ole2) || startsWith(const [0x50, 0x4B])) {
+    return xlsxTable(bytes);
+  }
+  return textTableFromXlsName(bytes) ?? csvTable(bytes);
 }
 
 /// Drops rows that repeat inside one import (the web's `withImportHashes`).

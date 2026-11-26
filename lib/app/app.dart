@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/device/device_prefs.dart';
 import '../design/theme/app_theme.dart';
+import '../features/app_lock/app_lock_screen.dart';
 import '../features/notifications/application/notification_coordinator.dart';
 import '../features/sync/application/sync_coordinator.dart';
 import 'display_scale.dart';
@@ -32,8 +33,12 @@ class FinRootApp extends ConsumerWidget {
       // and draws everything, overlays included, at the chosen display size.
       builder: (context, child) => DisplayScale(
         scale: displaySize / 100,
-        child: SyncScope(
-          child: NotificationScope(child: child ?? const SizedBox.shrink()),
+        // The app lock covers everything when on (never the floating Quick
+        // Add engine — see AppLockGate).
+        child: AppLockGate(
+          child: SyncScope(
+            child: NotificationScope(child: child ?? const SizedBox.shrink()),
+          ),
         ),
       ),
     );
