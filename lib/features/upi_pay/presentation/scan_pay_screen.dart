@@ -6,21 +6,29 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
 import '../../../core/money/money_format.dart';
 import '../../../design/design.dart';
+import '../../../domain/constants.dart';
 import '../../../navigation/quick_add_entry.dart';
+import '../../quick_add/application/quick_add_controller.dart';
+import '../../quick_add/data/custom_categories.dart';
+import '../../quick_add/domain/quick_add_draft.dart';
 import '../../quick_add/presentation/quick_add_sheet.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/upi_providers.dart';
+import '../data/shop_memory.dart';
 import '../data/upi_gateway.dart';
 import '../domain/upi_qr.dart';
 
 /// Scan & pay: scan a shop's UPI QR, type the amount, and FinRoot hands the
-/// payment to the person's own UPI app (Google Pay, PhonePe, Paytm, BHIM…) —
-/// then, once it went through, Quick Add opens filled in, so the expense is
-/// recorded the moment it is paid. FinRoot never moves money and never sees a
-/// UPI PIN. Opened from the home-screen widget, or More → Scan & pay.
+/// payment to the person's own UPI app (Google Pay, PhonePe, Paytm, BHIM…).
+/// Once it went through, the expense is saved straight away under the
+/// category picked here (remembered per shop, so a regular shop is one tap);
+/// with no category picked, Quick Add opens filled in instead. FinRoot never
+/// moves money and never sees a UPI PIN. Opened from the home-screen widgets,
+/// the quick-settings tile, or More → Scan & pay.
 class ScanPayScreen extends ConsumerStatefulWidget {
   const ScanPayScreen({super.key});
 
@@ -38,6 +46,7 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
   var _phase = _Phase.scanning;
   var _downloading = false;
   UpiPayee? _payee;
+  String? _category;
 
   @override
   void initState() {
@@ -81,8 +90,16 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
           _phase = _Phase.form;
           _amount.text = payee.amount == null ? '' : _plain(payee.amount!);
           _note.text = '';
+          _category = _remembered(payee);
         });
     }
+  }
+
+  /// The category this shop was last paid under, in this workspace.
+  String? _remembered(UpiPayee payee) {
+    final tenantId = ref.read(currentTenantIdProvider);
+    if (tenantId == null) return null;
+    return ref.read(shopMemoryProvider).categoryFor(tenantId, payee.vpa);
   }
 
   void _leave() {
@@ -160,8 +177,8 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
     return yes ?? false;
   }
 
-  /// Quick Add, filled in with what was paid; the person picks the category
-  /// and saves. Then this screen closes either way.
+  /// Saves the expense: straight away under the picked category, or through
+  /// Quick Add, filled in, when none was picked. Then this screen closes.
   Future<void> _record(
     UpiPayee payee,
     Decimal amount,
@@ -176,16 +193,47 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
       _leave();
       return;
     }
-    final note = _note.text.trim();
+    final typed = _note.text.trim();
+    final note = [
+      'Paid ${payee.displayName}',
+      if (typed.isNotEmpty) typed,
+      if (outcome.reference != null) 'Ref ${outcome.reference}',
+    ].join(' · ');
+    final category = _category;
+    if (category != null) {
+      try {
+        await ref
+            .read(quickAddControllerProvider)
+            .submit(
+              kind: QuickAddKind.expense,
+              amount: Money(amount),
+              occurredAt: DateTime.now(),
+              category: category,
+              note: note,
+              paymentMode: 'UPI',
+            );
+        final tenantId = ref.read(currentTenantIdProvider);
+        if (tenantId != null) {
+          await ref
+              .read(shopMemoryProvider)
+              .remember(tenantId, payee.vpa, category);
+        }
+        if (!mounted) return;
+        _say('Paid and saved: ${_money(amount)} under $category.');
+        _leave();
+        return;
+      } on Failure catch (f) {
+        if (!mounted) return;
+        // Fall through to Quick Add, so the payment is not lost.
+        _say('Couldn\'t save it straight away (${f.message}). Check it here.');
+      }
+    }
+    if (!mounted) return;
     final saved = await openQuickAdd(
       context,
       prefill: QuickAddPrefill(
         amount: Money(amount),
-        note: [
-          'Paid ${payee.displayName}',
-          if (note.isNotEmpty) note,
-          if (outcome.reference != null) 'Ref ${outcome.reference}',
-        ].join(' · '),
+        note: note,
         paymentMode: 'UPI',
         occurredAt: DateTime.now(),
       ),
@@ -308,6 +356,28 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
             hintText: payee.note ?? 'What is it for?',
           ),
         ),
+        const SizedBox(height: AppSpacing.sm),
+        Text('Category', style: tt.labelLarge?.copyWith(color: palette.muted)),
+        const SizedBox(height: AppSpacing.xs),
+        Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
+          children: [
+            for (final c in {
+              // A remembered custom category still shows before they load.
+              ?_category,
+              ...kExpenseCategories,
+              ...ref.watch(customExpenseCategoriesProvider).value ??
+                  const <String>[],
+            })
+              ChoiceChip(
+                key: ValueKey('scan-pay-category-$c'),
+                label: Text(c),
+                selected: _category == c,
+                onSelected: (on) => setState(() => _category = on ? c : null),
+              ),
+          ],
+        ),
         const SizedBox(height: AppSpacing.md),
         PillButton(
           label: amount == null
@@ -319,9 +389,15 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
         ),
         const SizedBox(height: AppSpacing.md),
         Text(
-          'Your UPI app opens to finish the payment with your UPI PIN. '
-          'FinRoot never sees the PIN and moves no money itself; once it '
-          'goes through, Quick Add opens with the expense filled in.',
+          _category == null
+              ? 'Your UPI app opens to finish the payment with your UPI PIN. '
+                    'FinRoot never sees the PIN and moves no money itself. '
+                    'Pick a category to save the expense the moment it is '
+                    'paid; without one, Quick Add opens filled in.'
+              : 'Your UPI app opens to finish the payment with your UPI PIN. '
+                    'FinRoot never sees the PIN and moves no money itself. '
+                    'Once it goes through, it is saved under $_category, and '
+                    'this shop keeps that category next time.',
           style: tt.bodySmall?.copyWith(color: palette.muted),
         ),
         const SizedBox(height: AppSpacing.sm),

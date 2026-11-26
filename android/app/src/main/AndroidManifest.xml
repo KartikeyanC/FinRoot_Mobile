@@ -155,6 +155,20 @@
                 android:resource="@xml/finroot_pay_widget_info" />
         </receiver>
 
+        <!-- Quick-settings tile "Scan & pay" opens Scan & pay
+             (ScanPayTileService.kt). BIND_QUICK_SETTINGS_TILE only lets the
+             system bind it. -->
+        <service
+            android:name=".ScanPayTileService"
+            android:exported="true"
+            android:label="@string/widget_pay"
+            android:icon="@drawable/ic_widget_scan_pay"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Payment detection: reads payment / bank app notifications, only
              after the user turns it on in the app AND grants notification
              access in system settings. Bound by the system only (permission). -->

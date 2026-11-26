@@ -1,5 +1,10 @@
+import 'package:finroot_mobile/core/money/money.dart';
 import 'package:finroot_mobile/design/design.dart';
+import 'package:finroot_mobile/features/quick_add/application/quick_add_controller.dart';
+import 'package:finroot_mobile/features/quick_add/data/custom_categories.dart';
+import 'package:finroot_mobile/features/quick_add/domain/quick_add_draft.dart';
 import 'package:finroot_mobile/features/upi_pay/application/upi_providers.dart';
+import 'package:finroot_mobile/features/upi_pay/data/shop_memory.dart';
 import 'package:finroot_mobile/features/upi_pay/data/upi_gateway.dart';
 import 'package:finroot_mobile/features/upi_pay/domain/upi_qr.dart';
 import 'package:finroot_mobile/features/upi_pay/presentation/scan_pay_screen.dart';
@@ -28,11 +33,45 @@ class _FakeUpi implements UpiGateway {
   }
 }
 
+class _NoCustom extends CustomExpenseCategories {
+  @override
+  Future<List<String>> build() async => const [];
+}
+
+class _FakeQuickAdd implements QuickAddController {
+  final saved = <({String category, Money amount, String? note})>[];
+
+  @override
+  Future<String> submit({
+    required QuickAddKind kind,
+    required Money amount,
+    required DateTime occurredAt,
+    String? category,
+    String? note,
+    String? paymentMode,
+    String? accountId,
+    String? fromAccountId,
+    String? toAccountId,
+    String? editingId,
+  }) async {
+    saved.add((category: category!, amount: amount, note: note));
+    return 'txn-1';
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 const _shop = QrScanned(
   'upi://pay?pa=srisai.stores@okaxis&pn=Sri%20Sai%20Stores&mc=5411',
 );
 
-Widget _host(_FakeUpi upi, {WorkspaceRole role = WorkspaceRole.owner}) {
+Widget _host(
+  _FakeUpi upi, {
+  WorkspaceRole role = WorkspaceRole.owner,
+  ShopMemory? memory,
+  _FakeQuickAdd? quickAdd,
+}) {
   final router = GoRouter(
     initialLocation: '/',
     routes: [
@@ -57,6 +96,10 @@ Widget _host(_FakeUpi upi, {WorkspaceRole role = WorkspaceRole.owner}) {
     overrides: [
       upiGatewayProvider.overrideWithValue(upi),
       currentRoleProvider.overrideWithValue(role),
+      currentTenantIdProvider.overrideWithValue('t1'),
+      customExpenseCategoriesProvider.overrideWith(_NoCustom.new),
+      shopMemoryProvider.overrideWithValue(memory ?? ShopMemory()),
+      quickAddControllerProvider.overrideWithValue(quickAdd ?? _FakeQuickAdd()),
     ],
     child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
   );
@@ -66,8 +109,17 @@ Future<void> _open(
   WidgetTester tester,
   _FakeUpi upi, {
   WorkspaceRole? role,
+  ShopMemory? memory,
+  _FakeQuickAdd? quickAdd,
 }) async {
-  await tester.pumpWidget(_host(upi, role: role ?? WorkspaceRole.owner));
+  await tester.pumpWidget(
+    _host(
+      upi,
+      role: role ?? WorkspaceRole.owner,
+      memory: memory,
+      quickAdd: quickAdd,
+    ),
+  );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
 }
@@ -176,5 +228,54 @@ void main() {
 
     expect(find.textContaining('can\'t add expenses'), findsOneWidget);
     expect(find.byType(ScanPayScreen), findsNothing);
+  });
+
+  testWidgets('pick a category: paid and saved at once, shop remembered', (
+    tester,
+  ) async {
+    final memory = ShopMemory();
+    final quickAdd = _FakeQuickAdd();
+    final upi = _FakeUpi(
+      [_shop],
+      answer: PayAnswered(
+        parseUpiResponse('Status=SUCCESS&ApprovalRefNo=4321'),
+      ),
+    );
+    await _open(tester, upi, memory: memory, quickAdd: quickAdd);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('scan-pay-amount')),
+      '250',
+    );
+    await tester.pump();
+    final chip = find.byKey(const ValueKey('scan-pay-category-Shopping'));
+    await tester.ensureVisible(chip);
+    await tester.tap(chip);
+    await tester.pump();
+    await tester.ensureVisible(find.textContaining('Pay ₹250'));
+    await tester.tap(find.textContaining('Pay ₹250'));
+    await tester.pumpAndSettle();
+
+    final s = quickAdd.saved.single;
+    expect(s.category, 'Shopping');
+    expect(s.amount.amount.toString(), '250');
+    expect(s.note, 'Paid Sri Sai Stores · Ref 4321');
+    expect(memory.categoryFor('t1', 'srisai.stores@okaxis'), 'Shopping');
+    expect(find.textContaining('Paid and saved'), findsOneWidget);
+    expect(find.byType(ScanPayScreen), findsNothing);
+  });
+
+  testWidgets('a shop paid before comes back with its category picked', (
+    tester,
+  ) async {
+    final memory = ShopMemory();
+    await memory.remember('t1', 'SriSai.Stores@okaxis', 'Food & Dining');
+    await _open(tester, _FakeUpi([_shop]), memory: memory);
+
+    final chip = tester.widget<ChoiceChip>(
+      find.byKey(const ValueKey('scan-pay-category-Food & Dining')),
+    );
+    expect(chip.selected, isTrue);
+    expect(find.textContaining('saved under Food & Dining'), findsOneWidget);
   });
 }
