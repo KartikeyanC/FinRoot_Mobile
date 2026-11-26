@@ -25,7 +25,21 @@ class GoalContribution {
     required this.targetAmount,
     required this.status,
     required this.capped,
+    this.noteDropped = false,
   });
+
+  /// A note was given but the server has no note overload yet (migration not
+  /// applied); the amount still landed, the note did not.
+  final bool noteDropped;
+
+  GoalContribution withNoteDropped() => GoalContribution(
+    applied: applied,
+    currentAmount: currentAmount,
+    targetAmount: targetAmount,
+    status: status,
+    capped: capped,
+    noteDropped: true,
+  );
 
   final Money applied;
   final Money currentAmount;

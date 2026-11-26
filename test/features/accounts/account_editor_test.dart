@@ -49,6 +49,15 @@ class _FakeGateway implements AccountWriteGateway {
 
   @override
   Future<void> delete(String tenantId, String id) async => deleted.add(id);
+
+  DateTime? storedOpeningDate;
+  int openingDateReads = 0;
+
+  @override
+  Future<DateTime?> fetchOpeningDate(String tenantId, String id) async {
+    openingDateReads++;
+    return storedOpeningDate;
+  }
 }
 
 void main() {
@@ -79,18 +88,21 @@ void main() {
     return c;
   }
 
-  test('create writes to the server and folds the row into the cache', () async {
-    final c = container();
-    await c.read(accountEditorControllerProvider).create(
-      const AccountDraft(name: '  SBI  ', type: 'bank'),
-    );
+  test(
+    'create writes to the server and folds the row into the cache',
+    () async {
+      final c = container();
+      await c
+          .read(accountEditorControllerProvider)
+          .create(const AccountDraft(name: '  SBI  ', type: 'bank'));
 
-    expect(gateway.lastCreate, isNotNull);
-    final rows = await db.select(db.localAccounts).get();
-    expect(rows, hasLength(1));
-    expect(rows.single.name, 'SBI');
-    expect(rows.single.type, 'bank');
-  });
+      expect(gateway.lastCreate, isNotNull);
+      final rows = await db.select(db.localAccounts).get();
+      expect(rows, hasLength(1));
+      expect(rows.single.name, 'SBI');
+      expect(rows.single.type, 'bank');
+    },
+  );
 
   test('update PATCHes and refreshes the cached row', () async {
     // seed a cached account
@@ -106,14 +118,16 @@ void main() {
         );
     final c = container();
 
-    await c.read(accountEditorControllerProvider).update(
-      'acc-1',
-      AccountDraft(
-        name: 'New name',
-        type: 'wallet',
-        openingBalance: Money.parse('500.00'),
-      ),
-    );
+    await c
+        .read(accountEditorControllerProvider)
+        .update(
+          'acc-1',
+          AccountDraft(
+            name: 'New name',
+            type: 'wallet',
+            openingBalance: Money.parse('500.00'),
+          ),
+        );
 
     final row = await (db.select(
       db.localAccounts,
@@ -145,9 +159,9 @@ void main() {
   test('a viewer is refused', () async {
     final c = container(role: WorkspaceRole.viewer);
     await expectLater(
-      c.read(accountEditorControllerProvider).create(
-        const AccountDraft(name: 'X', type: 'bank'),
-      ),
+      c
+          .read(accountEditorControllerProvider)
+          .create(const AccountDraft(name: 'X', type: 'bank')),
       throwsA(isA<PermissionFailure>()),
     );
     expect(gateway.lastCreate, isNull);
@@ -156,10 +170,29 @@ void main() {
   test('offline is refused (no offline queue for accounts in V1)', () async {
     final c = container(online: false);
     await expectLater(
-      c.read(accountEditorControllerProvider).create(
-        const AccountDraft(name: 'X', type: 'bank'),
-      ),
+      c
+          .read(accountEditorControllerProvider)
+          .create(const AccountDraft(name: 'X', type: 'bank')),
       throwsA(isA<NetworkFailure>()),
     );
+  });
+
+  test('openingDate reads the stored date for the edit form', () async {
+    gateway.storedOpeningDate = DateTime(2025, 4, 3);
+    final c = container();
+    final d = await c
+        .read(accountEditorControllerProvider)
+        .openingDate('acc-1');
+    expect(d, DateTime(2025, 4, 3));
+  });
+
+  test('openingDate offline returns null without a server read', () async {
+    gateway.storedOpeningDate = DateTime(2025, 4, 3);
+    final c = container(online: false);
+    final d = await c
+        .read(accountEditorControllerProvider)
+        .openingDate('acc-1');
+    expect(d, isNull);
+    expect(gateway.openingDateReads, 0);
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/money/money.dart';
@@ -8,6 +9,7 @@ import '../../../design/design.dart';
 import '../../../domain/constants.dart';
 import '../../accounts/application/accounts_providers.dart';
 import '../../accounts/domain/account.dart';
+import '../../split/presentation/split_with_friends_screen.dart';
 import '../../transactions/domain/transaction.dart';
 import '../../workspace/application/workspace_providers.dart';
 import '../application/quick_add_controller.dart';
@@ -184,19 +186,22 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
 
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.maybeOf(context);
 
     setState(() => _busy = true);
     try {
-      await ref
+      final amount = Money.tryParse(_amount.text)!;
+      final note = _kind == QuickAddKind.expense
+          ? composeDescription(_sub, _note.text)
+          : _note.text;
+      final id = await ref
           .read(quickAddControllerProvider)
           .submit(
             kind: _kind,
-            amount: Money.tryParse(_amount.text)!,
+            amount: amount,
             occurredAt: _occurredAt,
             category: _category,
-            note: _kind == QuickAddKind.expense
-                ? composeDescription(_sub, _note.text)
-                : _note.text,
+            note: note,
             paymentMode: _paymentMode,
             accountId: _accountId,
             fromAccountId: _fromAccountId,
@@ -209,6 +214,27 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
           content: Text(
             widget.isEditing ? 'Changes saved' : '${_kind.label} saved',
           ),
+          // A new expense can be split with friends: your share replaces it.
+          action:
+              router != null &&
+                  !widget.isEditing &&
+                  _kind == QuickAddKind.expense
+              ? SnackBarAction(
+                  label: 'Split',
+                  onPressed: () => router.push(
+                    SplitWithFriendsScreen.route,
+                    extra: SplitPrefill(
+                      amount: amount,
+                      category: _category,
+                      note: note,
+                      occurredAt: _occurredAt,
+                      accountId: _accountId,
+                      paymentMode: _paymentMode,
+                      editingId: id,
+                    ),
+                  ),
+                )
+              : null,
         ),
       );
     } on Failure catch (failure) {

@@ -99,6 +99,7 @@ const kMoreEntries = <MoreEntry>[
     menu: FeatureMenu.netWorth,
   ),
   MoreEntry('Trips', Icons.luggage_outlined, '/trips', menu: FeatureMenu.trips),
+  MoreEntry('Who owes what', Icons.handshake_outlined, '/who-owes-what'),
   MoreEntry('Debts', Icons.account_balance_outlined, '/debts'),
   MoreEntry('Subscriptions', Icons.subscriptions_outlined, '/subscriptions'),
   MoreEntry(

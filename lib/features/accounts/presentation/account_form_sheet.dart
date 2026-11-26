@@ -32,6 +32,8 @@ class _AccountFormSheetState extends ConsumerState<_AccountFormSheet> {
   final _opening = TextEditingController();
 
   late String _type;
+  DateTime? _openingDate;
+  bool _dateTouched = false;
   bool _busy = false;
   Failure? _error;
 
@@ -47,6 +49,20 @@ class _AccountFormSheetState extends ConsumerState<_AccountFormSheet> {
       if (e.openingBalance != null) {
         _opening.text = e.openingBalance!.amount.toString();
       }
+      _loadOpeningDate(e.id);
+    } else {
+      final now = DateTime.now();
+      _openingDate = DateTime(now.year, now.month, now.day);
+    }
+  }
+
+  Future<void> _loadOpeningDate(String id) async {
+    try {
+      final d = await ref.read(accountEditorControllerProvider).openingDate(id);
+      if (!mounted || _dateTouched || d == null) return;
+      setState(() => _openingDate = d);
+    } on Object {
+      // Best effort: the picker stays empty and an edit leaves the date alone.
     }
   }
 
@@ -68,6 +84,7 @@ class _AccountFormSheetState extends ConsumerState<_AccountFormSheet> {
       name: _name.text,
       type: _type,
       openingBalance: Money.tryParse(_opening.text),
+      openingDate: _openingDate,
     );
 
     setState(() => _busy = true);
@@ -145,11 +162,22 @@ class _AccountFormSheetState extends ConsumerState<_AccountFormSheet> {
             decoration: const InputDecoration(
               hintText: '0',
               prefixIcon: Icon(Icons.currency_rupee),
-              helperText: 'As of today. Change the date on the web app.',
-              helperMaxLines: 2,
             ),
             validator: AccountValidators.openingBalance,
           ),
+        ),
+        DatePickField(
+          key: const ValueKey('account-opening-date'),
+          label: 'Opening date',
+          value: _openingDate,
+          firstDate: DateTime(1970),
+          lastDate: DateTime.now(),
+          helper: 'The day the opening balance is as of.',
+          enabled: !_busy,
+          onChanged: (d) => setState(() {
+            _dateTouched = true;
+            _openingDate = d;
+          }),
         ),
       ],
     );

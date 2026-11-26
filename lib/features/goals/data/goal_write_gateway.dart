@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/error/error_mapper.dart';
 import '../../../core/providers/providers.dart';
 import '../domain/goal_draft.dart';
+import '../domain/goal_history.dart';
 
 const _uuid = Uuid();
 
@@ -24,7 +25,19 @@ abstract interface class GoalWriteGateway {
     GoalDraft draft,
   );
   Future<void> delete(String tenantId, String id);
-  Future<GoalContribution> contribute(String goalId, double amount);
+
+  /// [note] goes through the `goal_contribute(uuid, numeric, text)` overload;
+  /// until that migration is applied the amount still lands via the
+  /// two-argument call and the result carries `noteDropped`.
+  Future<GoalContribution> contribute(
+    String goalId,
+    double amount, {
+    String? note,
+  });
+
+  /// The goal's contribution history, newest first (`goal_contributions`,
+  /// shared with the web). [GoalHistory.missing] while the table is absent.
+  Future<GoalHistory> history(String tenantId, String goalId, String currency);
 }
 
 class SupabaseGoalWriteGateway implements GoalWriteGateway {
@@ -95,15 +108,70 @@ class SupabaseGoalWriteGateway implements GoalWriteGateway {
   }
 
   @override
-  Future<GoalContribution> contribute(String goalId, double amount) async {
+  Future<GoalContribution> contribute(
+    String goalId,
+    double amount, {
+    String? note,
+  }) async {
+    final cleaned = cleanGoalNote(note);
+    var noteDropped = false;
     try {
-      final res = await _client.rpc<dynamic>(
-        'goal_contribute',
-        params: {'p_goal_id': goalId, 'p_amount': amount},
+      if (cleaned != null) {
+        try {
+          return _result(
+            await _client.rpc<dynamic>(
+              'goal_contribute',
+              params: {
+                'p_goal_id': goalId,
+                'p_amount': amount,
+                'p_note': cleaned,
+              },
+            ),
+          );
+        } on PostgrestException catch (e) {
+          if (!isGoalHistoryMissingError(e.code, e.message)) rethrow;
+          noteDropped = true; // fall through to the original call
+        }
+      }
+      final result = _result(
+        await _client.rpc<dynamic>(
+          'goal_contribute',
+          params: {'p_goal_id': goalId, 'p_amount': amount},
+        ),
       );
-      return GoalContribution.fromRpc(
-        res is Map ? Map<String, dynamic>.from(res) : <String, dynamic>{},
-      );
+      return noteDropped ? result.withNoteDropped() : result;
+    } catch (error, stack) {
+      throw mapError(error, stack);
+    }
+  }
+
+  static GoalContribution _result(Object? res) => GoalContribution.fromRpc(
+    res is Map ? Map<String, dynamic>.from(res) : <String, dynamic>{},
+  );
+
+  @override
+  Future<GoalHistory> history(
+    String tenantId,
+    String goalId,
+    String currency,
+  ) async {
+    try {
+      final rows = await _client
+          .from('goal_contributions')
+          .select('id, goal_id, amount, note, contributed_at')
+          .eq('tenant_id', tenantId)
+          .eq('goal_id', goalId)
+          .order('contributed_at', ascending: false)
+          .limit(200);
+      return GoalHistory([
+        for (final r in rows)
+          GoalContributionEntry.fromRow(r, currency: currency),
+      ]);
+    } on PostgrestException catch (e, stack) {
+      if (isGoalHistoryMissingError(e.code, e.message)) {
+        return const GoalHistory.missing();
+      }
+      throw mapError(e, stack);
     } catch (error, stack) {
       throw mapError(error, stack);
     }

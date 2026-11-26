@@ -11,6 +11,7 @@ import '../../data/local/cached_rows.dart';
 import '../../domain/constants.dart';
 import '../menus/application/menu_providers.dart';
 import '../workspace/application/workspace_providers.dart';
+import 'premium_due.dart';
 
 /// Insurance policies (`insurance` table) — the phone half of the web's
 /// Insurance page (`src/pages/Insurance.tsx`, `src/lib/insuranceStore.ts`):
@@ -102,6 +103,45 @@ class InsurancePolicy {
 
   /// What this policy costs a year (web: premium × FREQUENCY_MULTIPLIER).
   double get yearlyPremium => premium * (kPaymentFrequencies[frequency] ?? 1);
+}
+
+/// What the policy card shows for a premium, on [today]. Display only: the
+/// stored `due_date` is the anchor and is never rewritten.
+///
+/// * recurring policy → the next premium on or after today, stepped forward
+///   from `due_date` by whole cycles (the same roll the reminders use), so a
+///   past anchor is never shown as overdue;
+/// * one-time premium already past → [ended] (paid), no date;
+/// * no `due_date` → nothing.
+class PremiumDisplay {
+  const PremiumDisplay._({this.next, this.ended = false, this.daysAway});
+
+  factory PremiumDisplay.of(InsurancePolicy p, DateTime today) {
+    final day = DateTime(today.year, today.month, today.day);
+    if (p.due == null) return const PremiumDisplay._();
+    final next = nextPremiumDue(p.due, p.frequency, day);
+    if (next == null) return const PremiumDisplay._(ended: true);
+    return PremiumDisplay._(
+      next: next,
+      daysAway: DateTime.utc(
+        next.year,
+        next.month,
+        next.day,
+      ).difference(DateTime.utc(day.year, day.month, day.day)).inDays,
+    );
+  }
+
+  /// The next premium date, or null (no date, or a one-time premium paid).
+  final DateTime? next;
+
+  /// A one-time premium whose date has passed.
+  final bool ended;
+
+  /// Whole days from today to [next] (0 = today).
+  final int? daysAway;
+
+  /// Within the 15-day "due soon" window the card and header use.
+  bool get dueSoon => daysAway != null && daysAway! <= 15;
 }
 
 /// What the person typed for a policy.

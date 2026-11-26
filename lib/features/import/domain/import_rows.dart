@@ -6,6 +6,7 @@ import 'package:decimal/decimal.dart';
 import 'package:excel_plus/excel_plus.dart';
 
 import '../../../domain/constants.dart';
+import 'office_crypto.dart';
 import 'sheet_text.dart';
 
 /// Import, the phone half of the web's `TransactionImporter` (expenses /
@@ -475,9 +476,42 @@ List<List<Object?>> csvTable(List<int> bytes) {
   return [for (final List<dynamic> r in Csv().decode(text)) r.cast<Object?>()];
 }
 
-/// A workbook that is password-protected, so its cells can't be read.
+/// A workbook that is password-protected: no password was given, or
+/// [wrongPassword] when the one given didn't open it.
 class ProtectedSpreadsheetException implements Exception {
-  const ProtectedSpreadsheetException();
+  const ProtectedSpreadsheetException({this.wrongPassword = false});
+  final bool wrongPassword;
+}
+
+/// A workbook protected in a way the importer can't open (XOR obfuscation,
+/// a certificate, extensible encryption).
+class UnsupportedSpreadsheetProtectionException implements Exception {
+  const UnsupportedSpreadsheetProtectionException();
+}
+
+/// [bytes] with any password protection taken off, using [password].
+List<int> _unlocked(List<int> bytes, String? password) {
+  switch (officeEncryptionOf(bytes)) {
+    case OfficeEncryption.none:
+      return bytes;
+    case OfficeEncryption.xlsXor:
+    case OfficeEncryption.other:
+      throw const UnsupportedSpreadsheetProtectionException();
+    case OfficeEncryption.xlsxAgile:
+    case OfficeEncryption.xlsxStandard:
+    case OfficeEncryption.xlsRc4:
+    case OfficeEncryption.xlsRc4CryptoApi:
+      if (password == null || password.isEmpty) {
+        throw const ProtectedSpreadsheetException();
+      }
+      try {
+        return decryptOfficeFile(bytes, password);
+      } on OfficeWrongPasswordException {
+        throw const ProtectedSpreadsheetException(wrongPassword: true);
+      } on OfficeUnsupportedEncryptionException {
+        throw const UnsupportedSpreadsheetProtectionException();
+      }
+  }
 }
 
 /// A spreadsheet cell as a plain value; a formula gives the result Excel
@@ -497,11 +531,13 @@ Object? _plainCell(CellValue? v) => switch (v) {
 };
 
 /// The first non-empty sheet of an Excel file: .xlsx, or a legacy
-/// Excel 97–2003 .xls (BIFF8).
-List<List<Object?>> xlsxTable(List<int> bytes) {
+/// Excel 97–2003 .xls (BIFF8). A password-protected file is opened with
+/// [password] (only for this call; it isn't kept); without one, or with the
+/// wrong one, it throws [ProtectedSpreadsheetException].
+List<List<Object?>> xlsxTable(List<int> bytes, {String? password}) {
   final Excel book;
   try {
-    book = Excel.decodeBytes(bytes);
+    book = Excel.decodeBytes(_unlocked(bytes, password));
   } on ExcelException catch (e) {
     if ('$e'.toLowerCase().contains('password')) {
       throw const ProtectedSpreadsheetException();
@@ -519,14 +555,15 @@ List<List<Object?>> xlsxTable(List<int> bytes) {
 
 /// An `.xls` file: a real Excel 97–2003 workbook, or what banks often send
 /// under that name instead — an .xlsx, an HTML table or tab-separated text.
-List<List<Object?>> xlsTable(List<int> bytes) {
+List<List<Object?>> xlsTable(List<int> bytes, {String? password}) {
   const ole2 = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
   bool startsWith(List<int> sig) =>
       bytes.length >= sig.length &&
       [for (var i = 0; i < sig.length; i++) bytes[i] == sig[i]].every((b) => b);
-  // A compound file (real .xls) or a zip ("PK", really .xlsx).
+  // A compound file (real .xls, or a protected .xlsx) or a zip ("PK",
+  // really .xlsx).
   if (startsWith(ole2) || startsWith(const [0x50, 0x4B])) {
-    return xlsxTable(bytes);
+    return xlsxTable(bytes, password: password);
   }
   return textTableFromXlsName(bytes) ?? csvTable(bytes);
 }

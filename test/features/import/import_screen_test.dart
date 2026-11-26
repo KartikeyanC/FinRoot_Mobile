@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:finroot_mobile/core/providers/providers.dart';
 import 'package:finroot_mobile/design/design.dart';
@@ -49,7 +50,11 @@ List<PdfWord> _pdfWords() {
   ];
 }
 
-Future<void> _pumpPdf(WidgetTester tester, PdfWordReader reader) async {
+Future<void> _pumpPdf(
+  WidgetTester tester,
+  PdfWordReader reader, {
+  ImportFile file = (name: 'sbi-nov.pdf', bytes: const [1, 2, 3]),
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -61,9 +66,7 @@ Future<void> _pumpPdf(WidgetTester tester, PdfWordReader reader) async {
           (ref) async => {for (final m in FeatureMenu.values) m.id},
         ),
         importGatewayProvider.overrideWithValue(_Gateway()),
-        importFilePickerProvider.overrideWithValue(
-          () async => (name: 'sbi-nov.pdf', bytes: const [1, 2, 3]),
-        ),
+        importFilePickerProvider.overrideWithValue(() async => file),
         importPdfReaderProvider.overrideWithValue(reader),
       ],
       child: MaterialApp(theme: AppTheme.light, home: const ImportScreen()),
@@ -111,6 +114,52 @@ void main() {
     expect(find.text('sbi-nov.pdf'), findsOneWidget);
     expect(find.text('UPI-ZOMATO'), findsOneWidget);
     expect(find.text('Import 1 transaction'), findsOneWidget);
+  });
+
+  testWidgets('a protected Excel file asks for its password, says when it is '
+      'wrong, and is never read without it', (tester) async {
+    final bytes = File('test/fixtures/import/statement_protected.xls')
+        .readAsBytesSync();
+    await _pumpPdf(
+      tester,
+      (bytes, {password}) async => throw StateError('not a PDF'),
+      file: (name: 'hdfc-nov.xls', bytes: bytes),
+    );
+    expect(find.text('Password-protected Excel file'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('import-pdf-password')),
+      'nope',
+    );
+    await tester.tap(find.byKey(const ValueKey('import-pdf-password-open')));
+    await tester.pumpAndSettle();
+    expect(find.text('Wrong password'), findsOneWidget);
+    expect(find.textContaining("didn't open hdfc-nov.xls"), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('import-pdf-password')),
+      'Fin@2026',
+    );
+    await tester.tap(find.byKey(const ValueKey('import-pdf-password-open')));
+    await tester.pumpAndSettle();
+    expect(find.text('hdfc-nov.xls'), findsOneWidget);
+    expect(find.text('NEFT CR-ACME PAYROLL'), findsOneWidget);
+    expect(find.text('Import 4 transactions'), findsOneWidget);
+  });
+
+  testWidgets('cancelling an Excel password explains how to try again', (
+    tester,
+  ) async {
+    final bytes = File('test/fixtures/import/statement_protected.xls')
+        .readAsBytesSync();
+    await _pumpPdf(
+      tester,
+      (bytes, {password}) async => throw StateError('not a PDF'),
+      file: (name: 'hdfc-nov.xls', bytes: bytes),
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('is password-protected'), findsOneWidget);
   });
 
   testWidgets('cancelling the password, and a scanned PDF, explain why', (

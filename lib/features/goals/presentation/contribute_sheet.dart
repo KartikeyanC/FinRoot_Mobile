@@ -8,6 +8,7 @@ import '../../accounts/presentation/wealth_kit.dart';
 import '../application/goal_editor_controller.dart';
 import '../domain/goal.dart';
 import '../domain/goal_draft.dart';
+import '../domain/goal_history.dart';
 
 /// Add funds to a goal, or take some back. The `goal_contribute` RPC owns the
 /// limits (never below zero, never past target).
@@ -31,6 +32,7 @@ class _ContributeSheet extends ConsumerStatefulWidget {
 class _ContributeSheetState extends ConsumerState<_ContributeSheet> {
   final _formKey = GlobalKey<FormState>();
   final _amount = TextEditingController();
+  final _note = TextEditingController();
   bool _withdraw = false;
   bool _busy = false;
   Failure? _error;
@@ -38,6 +40,7 @@ class _ContributeSheetState extends ConsumerState<_ContributeSheet> {
   @override
   void dispose() {
     _amount.dispose();
+    _note.dispose();
     super.dispose();
   }
 
@@ -55,10 +58,18 @@ class _ContributeSheetState extends ConsumerState<_ContributeSheet> {
     try {
       final result = await ref
           .read(goalEditorControllerProvider)
-          .contribute(widget.goal.id, amount);
+          .contribute(widget.goal.id, amount, note: _note.text);
       navigator.pop();
+      final message = _message(result);
       messenger.showSnackBar(
-        SnackBar(content: Text(_message(result))),
+        SnackBar(
+          content: Text(
+            result.noteDropped
+                ? '$message (note not saved: goal history isn\'t switched '
+                      'on yet)'
+                : message,
+          ),
+        ),
       );
     } on Failure catch (f) {
       if (!mounted) return;
@@ -115,6 +126,20 @@ class _ContributeSheetState extends ConsumerState<_ContributeSheet> {
               prefixIcon: Icon(Icons.currency_rupee),
             ),
             validator: GoalValidators.contribution,
+          ),
+        ),
+        LabeledField(
+          label: 'Note (optional)',
+          child: TextFormField(
+            key: const ValueKey('goal-contribution-note'),
+            controller: _note,
+            maxLength: kGoalNoteMax,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'e.g. Diwali bonus',
+              prefixIcon: Icon(Icons.notes_outlined),
+              counterText: '',
+            ),
           ),
         ),
       ],

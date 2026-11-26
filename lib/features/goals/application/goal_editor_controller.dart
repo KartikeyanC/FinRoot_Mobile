@@ -8,6 +8,7 @@ import '../../workspace/application/workspace_providers.dart';
 import '../data/goal_write_gateway.dart';
 import '../data/goals_repository.dart';
 import '../domain/goal_draft.dart';
+import 'goals_providers.dart';
 
 /// Create / edit / delete a goal, and contribute funds. Online-only (V1).
 /// `goals` is menu-gated (ADR-0002). Contributions go through the
@@ -42,16 +43,20 @@ class GoalEditorController {
 
   /// Add ([amount] > 0) or take back ([amount] < 0) funds. Returns the RPC
   /// outcome (whether the goal was reached, whether the amount was capped).
-  Future<GoalContribution> contribute(String goalId, double amount) async {
+  /// [note] is kept in the shared history (`goal_contributions`) when the
+  /// server has the note overload; otherwise `noteDropped` is set.
+  Future<GoalContribution> contribute(
+    String goalId,
+    double amount, {
+    String? note,
+  }) async {
     _guard();
     final result = await _ref
         .read(goalWriteGatewayProvider)
-        .contribute(goalId, amount);
-    await _repo.applyContribution(
-      goalId,
-      result.currentAmount,
-      result.status,
-    );
+        .contribute(goalId, amount, note: note);
+    await _repo.applyContribution(goalId, result.currentAmount, result.status);
+    // The RPC wrote a history row; show it next time the history is open.
+    _ref.invalidate(goalHistoryProvider);
     return result;
   }
 

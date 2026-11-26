@@ -130,9 +130,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           if (t == null || !mounted) return;
           table = t;
         case '.xlsx':
-          table = xlsxTable(f.bytes);
         case '.xls':
-          table = xlsTable(f.bytes);
+          final t = await _sheetTable(f, xls: kind == '.xls');
+          if (t == null || !mounted) return;
+          table = t;
         default:
           table = csvTable(f.bytes);
       }
@@ -151,11 +152,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 'counted once',
         ].join(' · '),
       );
-    } on ProtectedSpreadsheetException {
+    } on UnsupportedSpreadsheetProtectionException {
       setState(
         () => _error =
-            '${f.name} is password-protected. Open it in Excel, remove the '
-            'password or save it as CSV, then try again.',
+            '${f.name} uses an old kind of password protection FinRoot '
+            'can\'t open. Open it in Excel, remove the password or save it '
+            'as CSV, then try again.',
       );
     } on Object {
       setState(
@@ -222,11 +224,48 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     }
   }
 
-  Future<String?> _askPdfPassword(String name, {required bool wrong}) =>
-      showDialog<String>(
-        context: context,
-        builder: (_) => _PdfPasswordDialog(name: name, wrong: wrong),
-      );
+  /// An Excel file's first sheet, asking for its password when it has one.
+  /// Null when the user cancels the password (the reason is shown).
+  Future<List<List<Object?>>?> _sheetTable(
+    ImportFile f, {
+    required bool xls,
+  }) async {
+    String? password;
+    while (true) {
+      try {
+        return xls
+            ? xlsTable(f.bytes, password: password)
+            : xlsxTable(f.bytes, password: password);
+      } on ProtectedSpreadsheetException catch (e) {
+        if (!mounted) return null;
+        password = await _askPdfPassword(
+          f.name,
+          wrong: e.wrongPassword,
+          spreadsheet: true,
+        );
+        if (password == null) {
+          if (mounted) {
+            setState(
+              () => _error =
+                  '${f.name} is password-protected. Choose it again and '
+                  'enter its password to import it.',
+            );
+          }
+          return null;
+        }
+      }
+    }
+  }
+
+  Future<String?> _askPdfPassword(
+    String name, {
+    required bool wrong,
+    bool spreadsheet = false,
+  }) => showDialog<String>(
+    context: context,
+    builder: (_) =>
+        _PdfPasswordDialog(name: name, wrong: wrong, spreadsheet: spreadsheet),
+  );
 
   void _readSms() {
     FocusScope.of(context).unfocus();
@@ -748,11 +787,17 @@ class _Banner extends StatelessWidget {
   );
 }
 
-/// Asks for a protected PDF's password; pops it, or null on Cancel.
+/// Asks for a protected PDF's (or Excel file's) password; pops it, or null
+/// on Cancel.
 class _PdfPasswordDialog extends StatefulWidget {
-  const _PdfPasswordDialog({required this.name, required this.wrong});
+  const _PdfPasswordDialog({
+    required this.name,
+    required this.wrong,
+    this.spreadsheet = false,
+  });
   final String name;
   final bool wrong;
+  final bool spreadsheet;
 
   @override
   State<_PdfPasswordDialog> createState() => _PdfPasswordDialogState();
@@ -776,8 +821,9 @@ class _PdfPasswordDialogState extends State<_PdfPasswordDialog> {
   Widget build(BuildContext context) {
     final name = widget.name;
     final wrong = widget.wrong;
+    final what = widget.spreadsheet ? 'Excel file' : 'PDF';
     return AlertDialog(
-      title: const Text('Password-protected PDF'),
+      title: Text('Password-protected $what'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -799,7 +845,7 @@ class _PdfPasswordDialogState extends State<_PdfPasswordDialog> {
             autocorrect: false,
             enableSuggestions: false,
             decoration: InputDecoration(
-              labelText: 'PDF password',
+              labelText: '$what password',
               errorText: wrong ? 'Wrong password' : null,
             ),
             onSubmitted: (_) => _submit(),

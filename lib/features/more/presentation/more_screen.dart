@@ -22,6 +22,9 @@ import '../../net_worth/presentation/net_worth_screen.dart';
 import '../../recurring/presentation/recurring_screen.dart';
 import '../../reminders/presentation/reminders_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
+import '../../split/presentation/split_with_friends_screen.dart';
+import '../../split/presentation/who_owes_what_screen.dart';
+import '../../trips/presentation/trip_list_screen.dart';
 import '../../voice/presentation/voice_screen.dart';
 import '../../web_link/presentation/web_link_screen.dart';
 import '../../workspace/presentation/workspace_screen.dart';
@@ -102,6 +105,8 @@ const _kMoreGroups = <(String, List<String>)>[
       '/net-worth',
       '/debts',
       '/trips',
+      '/who-owes-what',
+      '/split',
     ],
   ),
   (
@@ -262,7 +267,11 @@ class _MorePaneDetail extends StatelessWidget {
       case '/insights':
         return const InsightsScreen();
       case '/trips':
-        return const TripsScreen();
+        return const TripListScreen();
+      case '/who-owes-what':
+        return const WhoOwesWhatScreen();
+      case '/split':
+        return const SplitWithFriendsScreen();
       case '/calculator':
         return const CalculatorScreen();
       case '/import':

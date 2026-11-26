@@ -58,14 +58,20 @@ const int kNotifyHour = 9;
 ///   ahead of `nextDueDate` at [kNotifyHour], only if that instant is future;
 /// - a non-completed standalone reminder → one notification on its due date at
 ///   [kNotifyHour], only if future.
+///
+/// [hour] / [minute] move the firing time (Settings → Notifications); they
+/// default to [kNotifyHour]:00.
 List<PlannedNotification> planNotifications({
   required List<RecurringItem> recurringItems,
   required Map<String, ReminderSetting> reminderSettings,
   required List<Reminder> reminders,
   DateTime? now,
+  int hour = kNotifyHour,
+  int minute = 0,
 }) {
   final ref = now ?? DateTime.now();
   final out = <PlannedNotification>[];
+  final timeOfDay = Duration(hours: hour, minutes: minute);
 
   for (final item in recurringItems) {
     if (!item.isActive) continue;
@@ -79,7 +85,7 @@ List<PlannedNotification> planNotifications({
     );
     final fireAt = due
         .subtract(Duration(days: setting.daysBefore))
-        .add(const Duration(hours: kNotifyHour));
+        .add(timeOfDay);
     if (!fireAt.isAfter(ref)) continue;
 
     final verb = item.isIncome ? 'expected' : 'due';
@@ -98,7 +104,7 @@ List<PlannedNotification> planNotifications({
   for (final r in reminders) {
     if (r.isCompleted) continue;
     final due = DateTime(r.dueDate.year, r.dueDate.month, r.dueDate.day)
-        .add(const Duration(hours: kNotifyHour));
+        .add(timeOfDay);
     if (!due.isAfter(ref)) continue;
     out.add(PlannedNotification(
       id: notificationId('reminder:${r.id}:${_ymd(r.dueDate)}'),

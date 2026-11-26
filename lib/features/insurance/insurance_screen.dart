@@ -83,12 +83,9 @@ class InsuranceScreen extends ConsumerWidget {
               0,
               (s, p) => s + p.yearlyPremium,
             );
+            final today = DateTime.now();
             final dueSoon = list
-                .where(
-                  (p) =>
-                      p.due != null &&
-                      p.due!.difference(DateTime.now()).inDays <= 15,
-                )
+                .where((p) => PremiumDisplay.of(p, today).dueSoon)
                 .length;
             return ListView(
               padding: const EdgeInsets.fromLTRB(
@@ -133,14 +130,17 @@ class _PolicyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final days = p.due?.difference(DateTime.now()).inDays;
-    final soon = days != null && days <= 15;
-    final Widget? duePill = p.due == null
-        ? null
-        : TonePill(
-            'Due ${_date.format(p.due!)}',
-            soon ? Tones.coral(context) : Tones.mint(context),
-          );
+    final premium = PremiumDisplay.of(p, DateTime.now());
+    final Widget? duePill = premium.next != null
+        ? TonePill(
+            premium.daysAway == 0
+                ? 'Due today'
+                : 'Next premium ${_date.format(premium.next!)}',
+            premium.dueSoon ? Tones.coral(context) : Tones.mint(context),
+          )
+        : premium.ended
+        ? TonePill('Paid · one-time', Tones.mint(context))
+        : null;
     Widget fact(String label, String value) => Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

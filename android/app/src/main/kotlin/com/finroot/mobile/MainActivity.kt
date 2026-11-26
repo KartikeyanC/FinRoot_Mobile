@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -26,6 +27,9 @@ class MainActivity : FlutterFragmentActivity() {
     private var launchWidgetAction: String? = null
     private var widgetChannel: MethodChannel? = null
     private val upi = UpiBridge(this)
+
+    // App lock on: keep FinRoot's content out of the recent-apps thumbnail.
+    private var hideInRecents = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -56,6 +60,25 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         } }
+        // App lock (lib/features/app_lock): hide the content in Recents while
+        // the lock is on, and back on the lock screen backgrounds the app.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "finroot/app_lock")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setHideInRecents" -> {
+                        hideInRecents = call.arguments as Boolean
+                        if (Build.VERSION.SDK_INT >= 33) {
+                            setRecentsScreenshotEnabled(!hideInRecents)
+                        }
+                        result.success(null)
+                    }
+                    "moveToBack" -> {
+                        moveTaskToBack(true)
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         // Scan & pay: a shop's UPI QR, paid in the person's own UPI app.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "finroot/upi")
             .setMethodCallHandler { call, result ->
@@ -123,6 +146,24 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         } }
+    }
+
+    // Below API 33 there is no "no Recents screenshot" switch: FLAG_SECURE
+    // only while in the background with the lock on, so screenshots still
+    // work in normal use. Best-effort — some launchers snapshot before
+    // onPause, and those may still show a frame.
+    override fun onPause() {
+        if (hideInRecents && Build.VERSION.SDK_INT < 33) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (Build.VERSION.SDK_INT < 33) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
     }
 
     // A pop-up tapped, or text shared, while FinRoot is already running.

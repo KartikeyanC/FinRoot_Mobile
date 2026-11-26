@@ -17,12 +17,13 @@ class AccountEditorController {
 
   final Ref _ref;
 
-  Future<void> create(AccountDraft draft) => _write((tenantId, userId, repo) async {
-    final row = await _ref
-        .read(accountWriteGatewayProvider)
-        .create(tenantId, userId, draft);
-    await repo.cacheServerRow(row);
-  });
+  Future<void> create(AccountDraft draft) =>
+      _write((tenantId, userId, repo) async {
+        final row = await _ref
+            .read(accountWriteGatewayProvider)
+            .create(tenantId, userId, draft);
+        await repo.cacheServerRow(row);
+      });
 
   Future<void> update(String id, AccountDraft draft) =>
       _write((tenantId, userId, repo) async {
@@ -37,8 +38,23 @@ class AccountEditorController {
     await repo.removeFromCache(id);
   });
 
+  /// The stored opening date of account [id], for pre-filling the edit form
+  /// (the local cache does not keep it). Null when unset, offline, or with no
+  /// workspace — the form then just shows an empty picker.
+  Future<DateTime?> openingDate(String id) async {
+    final tenantId = _ref.read(currentTenantIdProvider);
+    if (tenantId == null || !_ref.read(isOnlineProvider)) return null;
+    return _ref
+        .read(accountWriteGatewayProvider)
+        .fetchOpeningDate(tenantId, id);
+  }
+
   Future<void> _write(
-    Future<void> Function(String tenantId, String? userId, AccountsRepository repo)
+    Future<void> Function(
+      String tenantId,
+      String? userId,
+      AccountsRepository repo,
+    )
     action,
   ) async {
     final tenantId = _ref.read(currentTenantIdProvider);

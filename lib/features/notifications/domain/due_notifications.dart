@@ -5,7 +5,8 @@ import '../../subscriptions/subscriptions.dart';
 import 'planned_notification.dart';
 
 /// How many days ahead of a subscription renewal or premium due date the
-/// heads-up fires (plus one on the day itself), both at [kNotifyHour].
+/// heads-up fires (plus one on the day itself), both at [kNotifyHour] —
+/// the defaults; Settings → Notifications can change both per device.
 const int kDueNoticeDaysBefore = 1;
 
 /// Notifications for tracked subscriptions (next renewal) and insurance
@@ -22,11 +23,13 @@ List<PlannedNotification> planDueNotifications({
   List<InsurancePolicy> policies = const [],
   int daysBefore = kDueNoticeDaysBefore,
   DateTime? now,
+  int hour = kNotifyHour,
+  int minute = 0,
 }) {
   final at = now ?? DateTime.now();
   final today = DateTime(at.year, at.month, at.day);
   final tomorrow = DateTime(at.year, at.month, at.day + 1);
-  DateTime slot(DateTime d) => DateTime(d.year, d.month, d.day, kNotifyHour);
+  DateTime slot(DateTime d) => DateTime(d.year, d.month, d.day, hour, minute);
 
   final out = <PlannedNotification>[];
 
@@ -60,7 +63,7 @@ List<PlannedNotification> planDueNotifications({
       today,
       intervalMonths: s.intervalMonths,
     );
-    // Today's renewal whose 09:00 slot already passed → plan the next one.
+    // Today's renewal whose slot already passed → plan the next one.
     if (!slot(due).isAfter(at)) {
       due = catchUpRenewal(
         s.renewal!,

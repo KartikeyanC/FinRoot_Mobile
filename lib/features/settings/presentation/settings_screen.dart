@@ -9,6 +9,7 @@ import '../../app_lock/app_lock_settings.dart';
 import '../../auth/application/sign_out.dart';
 import '../../home/presentation/home_layout_screen.dart';
 import '../../more/presentation/workspace_row.dart';
+import '../../notifications/presentation/notification_settings_screen.dart';
 import '../../profile/profile_providers.dart';
 
 /// Settings — profile, workspace, appearance, sign-out.
@@ -95,6 +96,19 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: 'Choose and order the cards on Home',
             chevron: true,
             onTap: () => context.push(HomeLayoutScreen.route),
+          ),
+
+          const SectionTitle('Notifications'),
+          ListRow(
+            icon: Icons.notifications_outlined,
+            title: 'Notifications',
+            subtitle: 'Which reminders arrive, and when',
+            chevron: true,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const NotificationSettingsScreen(),
+              ),
+            ),
           ),
 
           const SectionTitle('App lock'),

@@ -141,6 +141,48 @@ final deviceLockAuthenticatorProvider = Provider<DeviceLockAuthenticator>(
   name: 'deviceLockAuthenticator',
 );
 
+/// The Android side of the lock (MainActivity, channel `finroot/app_lock`):
+///  * [setHideInRecents] — keep the app's content out of the recent-apps
+///    thumbnail while the lock is on (API 33+: no Recents screenshot; below
+///    that FLAG_SECURE only while the app is in the background, so
+///    screenshots in normal use still work);
+///  * [moveToBack] — send the app to the background, keeping it alive, as
+///    back on the lock screen does.
+/// Overridden in tests. Every call is best-effort: another platform, or an
+/// engine with no channel, simply does nothing.
+class AppLockPlatform {
+  const AppLockPlatform([this._channel = const MethodChannel(channelName)]);
+  static const channelName = 'finroot/app_lock';
+  final MethodChannel _channel;
+
+  Future<void> setHideInRecents(bool hide) async {
+    try {
+      await _channel.invokeMethod<void>('setHideInRecents', hide);
+    } on MissingPluginException {
+      // Not Android / not MainActivity.
+    } on PlatformException {
+      // Best-effort.
+    }
+  }
+
+  /// Backgrounds the app; falls back to [SystemNavigator.pop] where the
+  /// channel is missing.
+  Future<void> moveToBack() async {
+    try {
+      await _channel.invokeMethod<void>('moveToBack');
+    } on MissingPluginException {
+      await SystemNavigator.pop();
+    } on PlatformException {
+      await SystemNavigator.pop();
+    }
+  }
+}
+
+final appLockPlatformProvider = Provider<AppLockPlatform>(
+  (ref) => const AppLockPlatform(),
+  name: 'appLockPlatform',
+);
+
 /// PBKDF2 cost for new records; lowered in tests only.
 final pinIterationsProvider = Provider<int>(
   (ref) => PinRecord.currentIterations,
@@ -257,6 +299,16 @@ class AppLockController extends Notifier<AppLockState>
     final wait = p?.getInt(_kWaitUntil);
     final signedIn = ref.read(appLockSignedInProvider);
     final quickAdd = _isQuickAdd();
+    // Recents thumbnail: set at start, and again whenever the lock is turned
+    // on or off. The Quick Add engine is never locked, and has no channel.
+    if (!quickAdd) {
+      unawaited(_platform()?.setHideInRecents(mode != AppLockMode.off));
+      listenSelf((prev, next) {
+        if (prev != null && prev.enabled != next.enabled) {
+          unawaited(_platform()?.setHideInRecents(next.enabled));
+        }
+      });
+    }
     return AppLockState(
       mode: mode,
       graceMinutes: graceOptions.contains(grace) ? grace! : defaultGraceMinutes,
@@ -281,6 +333,14 @@ class AppLockController extends Notifier<AppLockState>
   SharedPreferences? _prefs() {
     try {
       return ref.read(sharedPreferencesProvider);
+    } on Object {
+      return null;
+    }
+  }
+
+  AppLockPlatform? _platform() {
+    try {
+      return ref.read(appLockPlatformProvider);
     } on Object {
       return null;
     }
@@ -394,6 +454,39 @@ class AppLockController extends Notifier<AppLockState>
     await p?.remove(_kWaitUntil);
     _hiddenAt = null;
     state = AppLockState(graceMinutes: state.graceMinutes);
+  }
+
+  // ---- back button --------------------------------------------------------
+  //
+  // While locked, back must not reach the router: the app underneath would
+  // pop routes behind the curtain. A PopScope cannot do this — AppLockGate
+  // sits in MaterialApp.router's builder, above the Navigator, and PopScope
+  // only registers with an enclosing route. So the controller answers the
+  // system back itself. WidgetsBinding asks observers in the order they were
+  // added; this one is added when the gate first builds, before the Router
+  // (the gate's child) subscribes its back-button dispatcher, so it is asked
+  // first. Unlocked, it answers false and the router handles back as usual.
+  //
+  // On the lock screen, back sends FinRoot to the background (moveTaskToBack)
+  // — as banking and other lock apps do — instead of doing nothing (which
+  // feels broken) or finishing the activity (which throws away where the
+  // person was and makes the next open a cold start).
+
+  @override
+  Future<bool> didPopRoute() async {
+    if (!state.locked) return false;
+    await _platform()?.moveToBack();
+    return true;
+  }
+
+  /// Predictive back (if ever enabled): claim the gesture while locked so it
+  /// never animates the route underneath, and background on commit.
+  @override
+  bool handleStartBackGesture(PredictiveBackEvent backEvent) => state.locked;
+
+  @override
+  void handleCommitBackGesture() {
+    if (state.locked) unawaited(_platform()?.moveToBack());
   }
 
   // ---- lifecycle ----------------------------------------------------------

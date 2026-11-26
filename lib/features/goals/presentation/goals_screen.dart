@@ -16,6 +16,7 @@ import '../application/goals_providers.dart';
 import '../domain/goal.dart';
 import 'contribute_sheet.dart';
 import 'goal_form_sheet.dart';
+import 'goal_history_sheet.dart';
 
 /// Goals (M10) — savings targets. Menu-gated (ADR-0002). Contributions go
 /// through the `goal_contribute` RPC.
@@ -263,6 +264,15 @@ class _GoalCard extends ConsumerWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 36),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () => openGoalHistorySheet(context, goal),
+                  child: const Text('History'),
                 ),
                 if (canWrite)
                   OutlinedButton(

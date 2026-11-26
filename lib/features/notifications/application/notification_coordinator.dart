@@ -15,6 +15,7 @@ import '../../subscriptions/subscriptions.dart';
 import '../data/notification_service.dart';
 import '../domain/due_notifications.dart';
 import '../domain/planned_notification.dart';
+import 'notification_settings.dart';
 
 /// Keeps the OS's scheduled notifications in step with recurring items, their
 /// bell settings, standalone reminders, tracked-subscription renewals and
@@ -51,6 +52,7 @@ class NotificationCoordinator extends Notifier<void> {
       (_, _) => _schedule('subscriptions'),
     );
     ref.listen(insuranceProvider, (_, _) => _schedule('insurance'));
+    ref.listen(notificationSettingsProvider, (_, _) => _schedule('settings'));
 
     ref.listen(isSignedInProvider, (_, signedIn) {
       if (!signedIn) {
@@ -70,17 +72,26 @@ class NotificationCoordinator extends Notifier<void> {
   Future<void> _reconcile(String reason) async {
     if (!ref.read(isSignedInProvider)) return;
 
-    final items =
-        ref.read(recurringItemsProvider).value ?? const <RecurringItem>[];
-    final bells =
-        ref.read(recurringRemindersProvider).value ??
-        const <String, ReminderSetting>{};
-    final reminders = ref.read(remindersProvider).value ?? const <Reminder>[];
-    final subscriptions =
-        ref.read(trackedSubscriptionsProvider).value ??
-        const <TrackedSubscription>[];
-    final policies =
-        ref.read(insuranceProvider).value ?? const <InsurancePolicy>[];
+    // A kind switched off in Settings → Notifications plans as if empty, so
+    // the reconcile below cancels whatever it had scheduled.
+    final settings = ref.read(notificationSettingsProvider);
+    final items = settings.recurring
+        ? ref.read(recurringItemsProvider).value ?? const <RecurringItem>[]
+        : const <RecurringItem>[];
+    final bells = settings.recurring
+        ? ref.read(recurringRemindersProvider).value ??
+              const <String, ReminderSetting>{}
+        : const <String, ReminderSetting>{};
+    final reminders = settings.reminders
+        ? ref.read(remindersProvider).value ?? const <Reminder>[]
+        : const <Reminder>[];
+    final subscriptions = settings.subscriptions
+        ? ref.read(trackedSubscriptionsProvider).value ??
+              const <TrackedSubscription>[]
+        : const <TrackedSubscription>[];
+    final policies = settings.insurance
+        ? ref.read(insuranceProvider).value ?? const <InsurancePolicy>[]
+        : const <InsurancePolicy>[];
 
     // Nothing to schedule and nothing pending → skip the platform round-trip.
     final anyBell = bells.values.any((s) => s.enabled);
@@ -105,8 +116,21 @@ class NotificationCoordinator extends Notifier<void> {
         recurringItems: items,
         reminderSettings: bells,
         reminders: reminders,
+        hour: settings.hour,
+        minute: settings.minute,
       ),
-      ...planDueNotifications(subscriptions: subscriptions, policies: policies),
+      ...planDueNotifications(
+        subscriptions: subscriptions,
+        daysBefore: settings.subscriptionLeadDays,
+        hour: settings.hour,
+        minute: settings.minute,
+      ),
+      ...planDueNotifications(
+        policies: policies,
+        daysBefore: settings.insuranceLeadDays,
+        hour: settings.hour,
+        minute: settings.minute,
+      ),
     ]..sort((a, b) => a.fireAt.compareTo(b.fireAt));
     _log.info('reconcile ($reason): ${plan.length} scheduled');
     await service.reconcile(plan);

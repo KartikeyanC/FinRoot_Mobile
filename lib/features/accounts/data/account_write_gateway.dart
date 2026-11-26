@@ -29,6 +29,10 @@ abstract interface class AccountWriteGateway {
   );
 
   Future<void> delete(String tenantId, String id);
+
+  /// The account's stored `opening_date` (not kept in the local cache), for
+  /// pre-filling the edit form. Null when unset.
+  Future<DateTime?> fetchOpeningDate(String tenantId, String id);
 }
 
 class SupabaseAccountWriteGateway implements AccountWriteGateway {
@@ -49,10 +53,7 @@ class SupabaseAccountWriteGateway implements AccountWriteGateway {
             'id': _uuid.v4(),
             'tenant_id': tenantId,
             'user_id': ?userId,
-            'name': draft.name.trim(),
-            'type': draft.type,
-            'opening_balance': draft.openingBalance?.amount.toDouble(),
-            'opening_date': _today(),
+            ...accountWriteBody(draft, creating: true),
           })
           .select()
           .single();
@@ -71,11 +72,7 @@ class SupabaseAccountWriteGateway implements AccountWriteGateway {
     try {
       final row = await _client
           .from('accounts')
-          .update({
-            'name': draft.name.trim(),
-            'type': draft.type,
-            'opening_balance': draft.openingBalance?.amount.toDouble(),
-          })
+          .update(accountWriteBody(draft, creating: false))
           .eq('id', id)
           .eq('tenant_id', tenantId)
           .select()
@@ -99,11 +96,19 @@ class SupabaseAccountWriteGateway implements AccountWriteGateway {
     }
   }
 
-  static String _today() {
-    final n = DateTime.now();
-    return '${n.year.toString().padLeft(4, '0')}-'
-        '${n.month.toString().padLeft(2, '0')}-'
-        '${n.day.toString().padLeft(2, '0')}';
+  @override
+  Future<DateTime?> fetchOpeningDate(String tenantId, String id) async {
+    try {
+      final row = await _client
+          .from('accounts')
+          .select('opening_date')
+          .eq('id', id)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+      return parseAccountDate(row?['opening_date']);
+    } catch (error, stack) {
+      throw mapError(error, stack);
+    }
   }
 }
 

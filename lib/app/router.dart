@@ -34,10 +34,14 @@ import '../features/recurring/presentation/recurring_screen.dart';
 import '../features/reminders/presentation/reminders_screen.dart';
 import '../features/search/presentation/search_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
+import '../features/split/presentation/split_with_friends_screen.dart';
+import '../features/split/presentation/who_owes_what_screen.dart';
 import '../features/subscriptions/subscriptions_screen.dart';
 import '../features/trackers/presentation/tracker_detail_screen.dart';
 import '../features/trackers/presentation/trackers_screen.dart';
 import '../features/transactions/presentation/transactions_screen.dart';
+import '../features/trips/presentation/trip_detail_screen.dart';
+import '../features/trips/presentation/trip_list_screen.dart';
 import '../features/upi_pay/presentation/scan_pay_screen.dart';
 import '../features/voice/presentation/voice_screen.dart';
 import '../features/web_link/presentation/web_link_screen.dart';
@@ -73,7 +77,9 @@ class _Routes {
   static const insurance = '/insurance';
   static const calendar = '/calendar';
   static const backup = '/backup';
-  static const trips = '/trips';
+  static const trips = TripListScreen.route;
+  static const whoOwesWhat = WhoOwesWhatScreen.route;
+  static const split = SplitWithFriendsScreen.route;
   static const calculator = '/calculator';
   static const import = '/import';
   static const export = '/export';
@@ -105,6 +111,8 @@ class _Routes {
     calendar,
     backup,
     trips,
+    whoOwesWhat,
+    split,
     calculator,
     import,
     export,
@@ -350,7 +358,27 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: _Routes.trips,
         parentNavigatorKey: _rootKey,
-        builder: (_, _) => const TripsScreen(),
+        builder: (_, _) => const TripListScreen(),
+      ),
+      GoRoute(
+        path: '/trips/:id',
+        parentNavigatorKey: _rootKey,
+        builder: (_, state) =>
+            TripDetailScreen(tripId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: _Routes.whoOwesWhat,
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const WhoOwesWhatScreen(),
+      ),
+      GoRoute(
+        path: _Routes.split,
+        parentNavigatorKey: _rootKey,
+        builder: (_, state) => SplitWithFriendsScreen(
+          prefill: state.extra is SplitPrefill
+              ? state.extra! as SplitPrefill
+              : null,
+        ),
       ),
       GoRoute(
         path: _Routes.calculator,
